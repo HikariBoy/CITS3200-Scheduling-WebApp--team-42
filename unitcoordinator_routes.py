@@ -2011,10 +2011,8 @@ def confirm_facilitators():
             db.session.flush()  # <-- ensure user_obj.id is available
             created_users += 1
             new_user_emails.append(email)  # Track for email sending
-        elif user_obj.role != UserRole.FACILITATOR:
-            # If user exists but is not a facilitator, update their role
-            user_obj.role = UserRole.FACILITATOR
-            # Note: We don't change their password as they might already be using the system
+        # If user exists with UC or Admin role, keep their role intact
+        # They can perform facilitator duties without being downgraded
 
         # Ensure link to unit exists
         link = UnitFacilitator.query.filter_by(unit_id=unit.id, user_id=user_obj.id).first()
@@ -2326,11 +2324,11 @@ def check_auto_assign_validation(unit_id: int):
     
     try:
         # Get facilitators assigned to this unit
+        # Include all users linked to unit (including UCs and Admins who can also facilitate)
         facilitators_from_db = (
             db.session.query(User)
             .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
             .filter(UnitFacilitator.unit_id == unit_id)
-            .filter(User.role == UserRole.FACILITATOR)
             .all()
         )
         
@@ -2411,11 +2409,11 @@ def auto_assign_facilitators(unit_id: int):
         from flask import session as flask_session
         
         # Get facilitators assigned to this unit
+        # Include all users linked to unit (including UCs and Admins who can also facilitate)
         facilitators_from_db = (
             db.session.query(User)
             .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
             .filter(UnitFacilitator.unit_id == unit_id)
-            .filter(User.role == UserRole.FACILITATOR)
             .all()
         )
         
