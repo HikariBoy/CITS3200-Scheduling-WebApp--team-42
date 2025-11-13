@@ -391,7 +391,17 @@ google = oauth.register(
 # Make current user available globally (optional, handy for headers)
 @app.context_processor
 def inject_user():
-    return {"user": get_current_user()}
+    user = get_current_user()
+    context = {"user": user}
+    
+    # Add role-related information for hierarchical role system
+    if user:
+        from utils import get_available_roles
+        context["available_roles"] = get_available_roles(user.role)
+        context["selected_role"] = session.get("selected_role", "facilitator")
+        context["actual_role"] = user.role.value
+    
+    return context
 
 # Set g.user for all requests (kept from your version)
 @app.before_request
@@ -433,13 +443,25 @@ def index():
             flash("Session expired. Please log in again.")
             return render_template("login.html")
 
-        role = user.role
-        if role == UserRole.ADMIN:
+        # Use selected_role from session if available (hierarchical role system)
+        # Otherwise fall back to user's actual role
+        selected_role = session.get("selected_role")
+        
+        if selected_role == "admin":
             return redirect(url_for('admin.dashboard'))
-        elif role == UserRole.UNIT_COORDINATOR:
+        elif selected_role == "unit_coordinator":
             return redirect(url_for('unitcoordinator.dashboard'))
-        else:
+        elif selected_role == "facilitator":
             return redirect(url_for('facilitator.dashboard'))
+        else:
+            # Fallback: use actual role if selected_role not in session
+            role = user.role
+            if role == UserRole.ADMIN:
+                return redirect(url_for('admin.dashboard'))
+            elif role == UserRole.UNIT_COORDINATOR:
+                return redirect(url_for('unitcoordinator.dashboard'))
+            else:
+                return redirect(url_for('facilitator.dashboard'))
     return render_template("login.html")
 
 @app.route("/login", methods=["GET", "POST"])
@@ -452,25 +474,30 @@ def login():
 
         user = User.query.filter_by(email=email).first()
         if user and user.password_hash and check_password_hash(user.password_hash, password):
-            allowed = (
-                (selected_role == "admin" and user.role == UserRole.ADMIN) or
-                (selected_role == "unit_coordinator" and user.role == UserRole.UNIT_COORDINATOR) or
-                (selected_role == "facilitator" and user.role == UserRole.FACILITATOR)
-            )
-            if not allowed:
+            # Import the hierarchical role checking function
+            from utils import can_access_as_role
+            
+            # Check if user can access the selected role (hierarchical)
+            # Admin can access all roles, Unit Coordinator can access UC and Facilitator, etc.
+            if not can_access_as_role(user.role, selected_role):
                 flash("You don't have permission for the selected role.")
                 return render_template("login.html", selected_role=selected_role)
             
+            # Store both user_id and selected_role in session
             session["user_id"] = user.id
+            session["selected_role"] = selected_role
+            
             target = request.args.get("next")
             if target and is_safe_url(target):
                 return redirect(target)
 
-            if user.role == UserRole.ADMIN:
+            # Redirect based on SELECTED role, not user's actual role
+            # This allows admins to log in as facilitators/UCs, and UCs to log in as facilitators
+            if selected_role == "admin":
                 return redirect(url_for("admin.dashboard"))
-            elif user.role == UserRole.UNIT_COORDINATOR:
+            elif selected_role == "unit_coordinator":
                 return redirect(url_for("unitcoordinator.dashboard"))
-            else:
+            else:  # facilitator
                 return redirect(url_for("facilitator.dashboard"))
 
         flash("Invalid credentials")
@@ -517,16 +544,52 @@ def google_callback():
         db.session.commit()
 
         session['user_id'] = user.id
+        # For OAuth login, set selected_role based on user's actual role
         if user.role == UserRole.ADMIN:
+            session['selected_role'] = 'admin'
             return redirect(url_for("admin.dashboard"))
         elif user.role == UserRole.UNIT_COORDINATOR:
+            session['selected_role'] = 'unit_coordinator'
             return redirect(url_for("unitcoordinator.dashboard"))
         else:
+            session['selected_role'] = 'facilitator'
             return redirect(url_for("facilitator.dashboard"))
 
     flash('Google login failed')
     return redirect(url_for('login'))
 
+@app.route("/switch-role", methods=["POST"])
+@login_required
+def switch_role():
+    """Allow users with hierarchical permissions to switch their active role"""
+    new_role = request.form.get("new_role")
+    
+    if not new_role:
+        flash("No role specified.", "error")
+        return redirect(url_for("index"))
+    
+    user = get_current_user()
+    if not user:
+        flash("Please log in.", "error")
+        return redirect(url_for("login"))
+    
+    # Check if user can access the new role (hierarchical)
+    from utils import can_access_as_role
+    if not can_access_as_role(user.role, new_role):
+        flash("You don't have permission to access that role.", "error")
+        return redirect(url_for("index"))
+    
+    # Update the selected role in session
+    session["selected_role"] = new_role
+    flash(f"Switched to {new_role.replace('_', ' ').title()} view.", "success")
+    
+    # Redirect to appropriate dashboard
+    if new_role == "admin":
+        return redirect(url_for("admin.dashboard"))
+    elif new_role == "unit_coordinator":
+        return redirect(url_for("unitcoordinator.dashboard"))
+    else:  # facilitator
+        return redirect(url_for("facilitator.dashboard"))
 
 @app.route("/forgot-password", methods=["GET", "POST"])
 @limiter.limit("10 per hour")

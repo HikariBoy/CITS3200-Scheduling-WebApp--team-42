@@ -6,12 +6,32 @@ from flask import Blueprint
 
 auth_bp = Blueprint("auth", __name__)
 
-def set_user_session(user):
-    """Set user session data with authentication flag"""
+def set_user_session(user, selected_role=None):
+    """
+    Set user session data with authentication flag.
+    
+    Args:
+        user: The User object
+        selected_role: Optional selected role string ('admin', 'unit_coordinator', 'facilitator')
+                      If not provided, defaults to user's actual role
+    """
     if user:
         session['user_id'] = user.id
         session['role'] = user.role.value
-        session['authenticated'] = True  
+        session['authenticated'] = True
+        
+        # Set selected_role for hierarchical role system
+        if selected_role:
+            session['selected_role'] = selected_role
+        else:
+            # Default to user's actual role
+            role_map = {
+                UserRole.ADMIN: 'admin',
+                UserRole.UNIT_COORDINATOR: 'unit_coordinator',
+                UserRole.FACILITATOR: 'facilitator'
+            }
+            session['selected_role'] = role_map.get(user.role, 'facilitator')
+        
         return True
     return False
 
@@ -51,6 +71,10 @@ def login_required(f):
 
 
 def admin_required(f):
+    """
+    Decorator requiring admin role (only exact admin role, no hierarchy).
+    For hierarchical access, use @role_required from utils.py
+    """
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "user_id" not in session:
@@ -64,13 +88,23 @@ def admin_required(f):
     return wrapper
 
 def facilitator_required(f):
+    """
+    Decorator requiring facilitator access (allows FACILITATOR, UNIT_COORDINATOR, and ADMIN roles).
+    This implements hierarchical role access.
+    """
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "user_id" not in session:
             return redirect(url_for("login", next=request.path))
         
         user = User.query.get(session['user_id'])
-        if not user or user.role != UserRole.FACILITATOR:
+        if not user:
+            flash("Access denied. Please log in.")
+            return redirect(url_for("index"))
+        
+        # Allow FACILITATOR, UNIT_COORDINATOR, and ADMIN to access facilitator routes
+        allowed_roles = [UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN]
+        if user.role not in allowed_roles:
             flash("Access denied. Facilitator privileges required.")
             return redirect(url_for("index"))
         return f(*args, **kwargs)

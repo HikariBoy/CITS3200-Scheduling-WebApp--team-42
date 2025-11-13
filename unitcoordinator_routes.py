@@ -14,7 +14,6 @@ from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
     jsonify, send_file
 )
-
 from auth import login_required, get_current_user
 from utils import role_required
 from models import db
@@ -52,10 +51,8 @@ def _parse_date_multi(s: str):
             continue
     return None
 
-
 def _valid_email(s: str) -> bool:
     return bool(EMAIL_RE.match(s or ""))
-
 
 def _get_user_unit_or_404(user, unit_id: int):
     """Return Unit if it exists AND is owned by user (or user is admin); else None."""
@@ -71,10 +68,8 @@ def _get_user_unit_or_404(user, unit_id: int):
         return None
     return unit
 
-
 def _iso(d: date) -> str:
     return d.isoformat()
-
 
 def _parse_dt(s: str):
     """Parse 'YYYY-MM-DDTHH:MM' or 'YYYY-MM-DD HH:MM' to datetime."""
@@ -84,8 +79,6 @@ def _parse_dt(s: str):
         except ValueError:
             continue
     return None
-
-
 
 def _cleanup_old_temp_files(temp_dir: str, prefix: str, max_age_hours: int = 168):  # 7 days
     """
@@ -194,8 +187,6 @@ def _serialize_session(s: Session, venues_by_name=None):
         }
     }
 
-
-
 def _get_or_create_module_by_name(unit: Unit, name: str) -> Module:
     name = (name or "").strip()
     if not name:
@@ -206,7 +197,6 @@ def _get_or_create_module_by_name(unit: Unit, name: str) -> Module:
         db.session.add(m)
         db.session.flush()  # no commit yet; caller may commit
     return m
-
 
 ACTIVITY_ALLOWED = {"workshop", "tutorial", "lab"}
 
@@ -324,7 +314,6 @@ def _parse_recurrence(d: dict):
         "until": until_date,  # Python date or None
     }
 
-
 def _within_unit_range(unit: Unit, dt: datetime) -> bool:
     """Check datetime against unit.start_date/end_date (if set)."""
     d = dt.date()
@@ -333,7 +322,6 @@ def _within_unit_range(unit: Unit, dt: datetime) -> bool:
     if unit.end_date and d > unit.end_date:
         return False
     return True
-
 
 def _iter_weekly_occurrences(unit: Unit, start_dt: datetime, end_dt: datetime, rec: dict):
     """
