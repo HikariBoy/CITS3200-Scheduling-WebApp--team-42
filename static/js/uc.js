@@ -10,7 +10,8 @@ const {
   UPLOAD_SETUP_CSV,
   REMOVE_FACILITATORS_TEMPLATE,
   UPLOAD_SESSIONS_TEMPLATE,
-  UPLOAD_CAS_TEMPLATE
+  UPLOAD_CAS_TEMPLATE,
+  CLEAR_CSV_SESSIONS_TEMPLATE
 } = window.FLASK_ROUTES || {};
 
 const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
@@ -476,12 +477,23 @@ function setStep(n) {
     s.classList.toggle('hidden', parseInt(s.dataset.step) !== currentStep);
   });
   
-  // Ensure CSV upload card remains visible on step 3 after successful upload
+  // Always keep facilitator CSV upload section visible on step 3
   if (n === 3) {
-    const setupComplete = document.getElementById('setup_complete')?.value === 'true';
     const wrapUpload = document.getElementById('setup_wrap');
-    if (setupComplete && wrapUpload) {
+    if (wrapUpload) {
       wrapUpload.classList.remove('hidden');
+    }
+    
+    // Check if we're in edit mode and show existing sessions info
+    const modal = document.getElementById('createUnitModal');
+    const isEditMode = modal?.getAttribute('data-edit-mode') === 'true';
+    console.log('Step 3 - Edit mode check:', isEditMode);
+    if (isEditMode) {
+      // Small delay to ensure unit_id is set, then check for existing sessions
+      setTimeout(() => {
+        console.log('Calling checkAndShowExistingSessionsInEditMode...');
+        checkAndShowExistingSessionsInEditMode();
+      }, 100);
     }
   }
   document.querySelectorAll('.modal-steps .step').forEach((el, idx) => {
@@ -1006,12 +1018,91 @@ async function uploadCasCsv() {
     return;
   }
 
+  // In edit mode, ALWAYS clear all sessions before uploading to prevent duplicates
+  const modal = document.getElementById('createUnitModal');
+  const isEditMode = modal?.getAttribute('data-edit-mode') === 'true';
+  
+  console.log('Upload mode check:', { isEditMode, unitId });
+  
+  if (isEditMode) {
+    // In edit mode, always clear sessions first (CSV upload should replace everything)
+    const confirmed = confirm(
+      'Uploading a new CSV will REPLACE all existing sessions for this unit.\n\n' +
+      'This action cannot be undone.\n\n' +
+      'Do you want to continue?'
+    );
+    
+    if (!confirmed) {
+      console.log('User cancelled upload');
+      return;
+    }
+    
+    // Clear all existing sessions
+    try {
+      console.log('Clearing all existing sessions before upload...');
+      casStatus.className = 'upload-status';
+      casStatus.classList.remove('hidden');
+      casStatus.textContent = 'Clearing existing sessions...';
+      
+      const clearUrl = withUnitId(CLEAR_CSV_SESSIONS_TEMPLATE, unitId);
+      console.log('Calling clear endpoint:', clearUrl);
+      
+      const clearRes = await fetch(clearUrl, {
+        method: 'DELETE',
+        headers: { 
+          'X-CSRFToken': CSRF_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!clearRes.ok) {
+        const errorText = await clearRes.text();
+        console.error('Clear failed:', errorText);
+        casStatus.className = 'upload-status error';
+        casStatus.textContent = 'Failed to clear existing sessions. Please try again.';
+        return;
+      }
+      
+      const clearData = await clearRes.json();
+      console.log('Clear response:', clearData);
+      
+      if (!clearData.ok) {
+        casStatus.className = 'upload-status error';
+        casStatus.textContent = `Failed to clear existing sessions: ${clearData.error || 'Unknown error'}`;
+        return;
+      }
+      
+      console.log(`Successfully cleared ${clearData.deleted_sessions || 0} sessions and ${clearData.deleted_assignments || 0} assignments`);
+      
+      // Refresh the calendar to show cleared state
+      if (window.calendar) {
+        console.log('Refreshing calendar after clear...');
+        window.calendar.removeAllEvents();
+        window.calendar.refetchEvents?.();
+      }
+      
+      // Wait for database transaction to complete and commit
+      console.log('Waiting 1.5 seconds for database to fully commit...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('Clear complete, proceeding with upload...');
+      
+    } catch (err) {
+      console.error('Error clearing existing sessions:', err);
+      casStatus.className = 'upload-status error';
+      casStatus.classList.remove('hidden');
+      casStatus.textContent = `Error: ${err.message}`;
+      return;
+    }
+  } else {
+    console.log('Create mode - no need to clear existing sessions');
+  }
+
   const fd = new FormData();
   fd.append('cas_csv', casInput.files[0]);
 
   casStatus.className = 'upload-status';
   casStatus.classList.remove('hidden');
-  casStatus.textContent = 'Uploading…';
+  casStatus.textContent = 'Uploading new CSV...';
 
   const url = withUnitId(UPLOAD_CAS_TEMPLATE, unitId);
   try {
@@ -1033,10 +1124,15 @@ async function uploadCasCsv() {
       return;
     }
 
+    const successMessage = isEditMode ? 'CSV uploaded successfully (replaced existing sessions)' : 'Upload successful';
     casStatus.className = 'upload-status success';
     casStatus.innerHTML = `
-      <div class="font-semibold">Upload successful</div>
-      <div class="text-sm mt-1">Sessions created: ${data.created || 0}, Skipped: ${data.skipped || 0}</div>`;
+      <div class="font-semibold">${successMessage}</div>
+      <div class="text-sm mt-1">Sessions created: ${data.created || 0}, Skipped: ${data.skipped || 0}</div>
+      <button type="button" id="clearCsvBtn" class="cal-btn danger mt-2" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+        <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">delete</span>
+        Remove All Sessions
+      </button>`;
 
     // Mark setup complete so the calendar section is shown, then refresh/init
     const setupFlagEl = document.getElementById('setup_complete');
@@ -1054,6 +1150,12 @@ async function uploadCasCsv() {
     
     // Also refresh list view data
     loadListSessionData();
+    
+    // Add event listener to the clear button
+    const clearBtn = document.getElementById('clearCsvBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', clearCsvSessions);
+    }
   } catch (err) {
     casStatus.className = 'upload-status error';
     casStatus.textContent = String(err.message || 'Unexpected error during upload.');
@@ -1062,6 +1164,338 @@ async function uploadCasCsv() {
 
 if (uploadCasBtn) {
   uploadCasBtn.addEventListener('click', uploadCasCsv);
+}
+
+// Check if sessions exist and show clear button
+async function checkAndShowClearButton() {
+  const unitId = document.getElementById('unit_id')?.value;
+  const casStatus = document.getElementById('cas_upload_status');
+  
+  if (!unitId || !casStatus) return;
+  
+  try {
+    // Use the calendar API to check if sessions exist
+    const weekStart = new Date().toISOString().split('T')[0];
+    const res = await fetch(`${withUnitId(CAL_WEEK_TEMPLATE, unitId)}?week_start=${weekStart}`, {
+      headers: { 'X-CSRFToken': CSRF_TOKEN }
+    });
+    const data = await res.json();
+    
+    if (res.ok && data.ok && data.sessions && data.sessions.length > 0) {
+      // Sessions exist, show the clear button
+      const existingBtn = document.getElementById('clearCsvBtn');
+      if (!existingBtn) {
+        casStatus.className = 'upload-status success';
+        casStatus.classList.remove('hidden');
+        casStatus.innerHTML = `
+          <div class="font-semibold">Sessions exist</div>
+          <div class="text-sm mt-1">${data.sessions.length} session(s) found</div>
+          <button type="button" id="clearCsvBtn" class="cal-btn danger mt-2" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+            <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">delete</span>
+            Remove All Sessions
+          </button>`;
+        
+        // Add event listener
+        const clearBtn = document.getElementById('clearCsvBtn');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', clearCsvSessions);
+        }
+      }
+    }
+  } catch (err) {
+    console.log('Could not check for existing sessions:', err);
+  }
+}
+
+// Check and show existing sessions in edit mode
+async function checkAndShowExistingSessionsInEditMode() {
+  const unitId = document.getElementById('unit_id')?.value;
+  const casStatus = document.getElementById('cas_upload_status');
+  
+  if (!unitId) {
+    console.log('checkAndShowExistingSessionsInEditMode: No unit_id set yet');
+    return;
+  }
+  
+  if (!casStatus) {
+    console.warn('checkAndShowExistingSessionsInEditMode: cas_upload_status element not found');
+    return;
+  }
+  
+  try {
+    // Use the calendar endpoint to check if ANY sessions exist
+    // Start with a date that would catch most units
+    const url = `${withUnitId(CAL_WEEK_TEMPLATE, unitId)}?week_start=2020-01-01`;
+    console.log('Checking if sessions exist:', url);
+    
+    const res = await fetch(url, {
+      headers: { 'X-CSRFToken': CSRF_TOKEN }
+    });
+    const data = await res.json();
+    
+    console.log('Session check response:', { ok: res.ok, dataOk: data.ok, sessionCount: data.sessions?.length });
+    
+    // Check if sessions exist (we just need to know if ANY exist)
+    let hasAnySessions = res.ok && data.ok && data.sessions && data.sessions.length > 0;
+    let sessionCount = data.sessions?.length || 0;
+    
+    // If no sessions found with 2020 start, try with unit's actual start date
+    if (!hasAnySessions && res.ok && data.ok && data.unit_range?.start) {
+      const unitStartUrl = `${withUnitId(CAL_WEEK_TEMPLATE, unitId)}?week_start=${data.unit_range.start}`;
+      console.log('No sessions found, checking from unit start date:', unitStartUrl);
+      
+      const unitRes = await fetch(unitStartUrl, {
+        headers: { 'X-CSRFToken': CSRF_TOKEN }
+      });
+      const unitData = await unitRes.json();
+      
+      hasAnySessions = unitRes.ok && unitData.ok && unitData.sessions && unitData.sessions.length > 0;
+      if (hasAnySessions) {
+        sessionCount = unitData.sessions.length;
+        Object.assign(data, unitData);
+      }
+    }
+    
+    if (hasAnySessions) {
+      console.log('Found existing sessions:', sessionCount);
+      
+      // Get unique modules/activities
+      const modules = new Set();
+      const venues = new Set();
+      let earliestDate = null;
+      
+      data.sessions.forEach(s => {
+        if (s.extendedProps?.session_name) {
+          modules.add(s.extendedProps.session_name);
+        }
+        if (s.extendedProps?.venue) {
+          venues.add(s.extendedProps.venue);
+        }
+        // Track earliest session date as proxy for upload date
+        if (s.start) {
+          const sessionDate = new Date(s.start);
+          if (!earliestDate || sessionDate < earliestDate) {
+            earliestDate = sessionDate;
+          }
+        }
+      });
+      
+      // Create a descriptive "filename" based on module names
+      const moduleList = Array.from(modules).slice(0, 3).join(', ');
+      const csvDescription = modules.size > 3 
+        ? `${moduleList}, +${modules.size - 3} more` 
+        : moduleList;
+      
+      console.log('Displaying CSV file info with Clear button');
+      casStatus.className = 'upload-status info csv-file-display';
+      casStatus.classList.remove('hidden');
+      casStatus.innerHTML = `
+        <div style="display: flex; align-items: start; gap: 12px;">
+          <div style="flex-shrink: 0;">
+            <span class="material-icons" style="font-size: 2rem; color: #3b82f6;">description</span>
+          </div>
+          <div style="flex: 1;">
+            <div class="font-semibold" style="font-size: 15px; margin-bottom: 4px;">
+              <span class="material-icons" style="font-size: 16px; vertical-align: text-bottom; color: #10b981;">check_circle</span>
+              Existing Sessions Detected
+            </div>
+            <div style="color: #6b7280; font-size: 13px; line-height: 1.5; margin-bottom: 8px;">
+              <div><strong>Status:</strong> This unit has sessions imported from CSV</div>
+              <div><strong>Activities/Modules:</strong> ${csvDescription || 'Multiple modules'}</div>
+              ${venues.size > 0 ? `<div><strong>Venues:</strong> ${venues.size} unique venue(s)</div>` : ''}
+            </div>
+            <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 6px; padding: 8px; font-size: 12px; color: #1e40af;">
+              <span class="material-icons" style="font-size: 14px; vertical-align: text-bottom;">info</span>
+              <strong>To upload a new CSV:</strong> Simply select and upload a new file below - it will automatically replace these sessions.
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+          <button type="button" id="clearAndReuploadBtn" class="cal-btn danger" style="font-size: 0.875rem; padding: 0.5rem 1rem; width: 100%;">
+            <span class="material-icons" style="font-size: 1rem; vertical-align: middle; margin-right: 4px;">delete</span>
+            Clear Existing CSV Data
+          </button>
+          <div style="font-size: 11px; color: #6b7280; margin-top: 6px; text-align: center;">
+            This will remove all ${sessionCount} sessions and allow you to upload a new CSV
+          </div>
+        </div>`;
+      
+      // Add event listener for clear and re-upload
+      const clearBtn = document.getElementById('clearAndReuploadBtn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', clearSessionsForReupload);
+      }
+    } else {
+      // No sessions exist - show a message in edit mode
+      console.log('checkAndShowExistingSessionsInEditMode: No existing sessions found');
+      casStatus.className = 'upload-status info';
+      casStatus.classList.remove('hidden');
+      casStatus.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="material-icons" style="color: #3b82f6;">info</span>
+          <div>
+            <div class="font-semibold">Ready to Upload</div>
+            <div class="text-sm mt-1">Upload a CSV file below. If sessions already exist, they will be replaced.</div>
+          </div>
+        </div>`;
+    }
+  } catch (err) {
+    console.error('Could not check for existing sessions in edit mode:', err);
+    // Show a helpful message to the user if the check fails
+    casStatus.className = 'upload-status error';
+    casStatus.classList.remove('hidden');
+    casStatus.innerHTML = `
+      <div class="font-semibold">Could not check for existing sessions</div>
+      <div class="text-sm mt-1">You can still upload a new CSV file below</div>`;
+  }
+}
+
+// Clear sessions for re-upload (edit mode)
+async function clearSessionsForReupload() {
+  const unitId = document.getElementById('unit_id').value;
+  if (!unitId) {
+    alert('No unit selected');
+    return;
+  }
+  
+  // Confirm deletion with clear messaging for re-upload scenario
+  if (!confirm('Clear Existing CSV Data?\n\nThis will remove all sessions that were imported from the CSV file. After clearing, you can upload a new/corrected CSV file.\n\nThis action cannot be undone.')) {
+    return;
+  }
+  
+  const casStatus = document.getElementById('cas_upload_status');
+  casStatus.className = 'upload-status';
+  casStatus.classList.remove('hidden');
+  casStatus.innerHTML = `
+    <div class="font-semibold">Clearing CSV data...</div>
+    <div class="text-sm mt-1">Removing all sessions imported from CSV file</div>`;
+  
+  const url = withUnitId(CLEAR_CSV_SESSIONS_TEMPLATE, unitId);
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 
+        'X-CSRFToken': CSRF_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await res.json();
+    
+    if (!res.ok || !data.ok) {
+      casStatus.className = 'upload-status error';
+      casStatus.innerHTML = `
+        <div class="font-semibold">Failed to clear CSV data</div>
+        <div class="text-sm mt-1">${data.error || 'An error occurred'}</div>`;
+      return;
+    }
+    
+    // Show success and allow re-upload
+    casStatus.className = 'upload-status success';
+    casStatus.innerHTML = `
+      <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
+        <span class="material-icons" style="color: #10b981; font-size: 2rem;">check_circle</span>
+        <div style="flex: 1;">
+          <div class="font-semibold" style="font-size: 15px;">CSV Data Cleared Successfully</div>
+          <div style="color: #065f46; font-size: 13px; margin-top: 4px;">
+            Removed ${data.deleted_sessions || 0} sessions and ${data.deleted_assignments || 0} assignments
+          </div>
+        </div>
+      </div>
+      <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 6px; padding: 10px; font-size: 13px; color: #1e40af;">
+        <span class="material-icons" style="font-size: 16px; vertical-align: text-bottom;">upload_file</span>
+        <strong>Ready for new upload:</strong> Select your corrected CSV file below and click "Upload CAS"
+      </div>`;
+    
+    // Refresh calendar and list view
+    if (window.calendar) {
+      window.calendar.refetchEvents?.();
+    }
+    loadListSessionData();
+    
+    // Clear file input and reset its display
+    const casInput = document.getElementById('cas_csv');
+    if (casInput) {
+      casInput.value = '';
+      const fileName = document.getElementById('cas_file_name');
+      if (fileName) fileName.textContent = 'No file selected';
+    }
+    
+    // Hide the status message after a longer delay to give user time to read
+    setTimeout(() => {
+      casStatus.classList.add('hidden');
+    }, 10000);
+    
+  } catch (err) {
+    casStatus.className = 'upload-status error';
+    casStatus.innerHTML = `
+      <div class="font-semibold">Error clearing CSV data</div>
+      <div class="text-sm mt-1">${err.message || 'Unexpected error during deletion'}</div>`;
+  }
+}
+
+// Clear CSV sessions (for create mode)
+async function clearCsvSessions() {
+  const unitId = document.getElementById('unit_id').value;
+  if (!unitId) {
+    alert('No unit selected');
+    return;
+  }
+  
+  // Confirm deletion
+  if (!confirm('Are you sure you want to remove all sessions? This will delete all sessions and their assignments for this unit. This action cannot be undone.')) {
+    return;
+  }
+  
+  const casStatus = document.getElementById('cas_upload_status');
+  casStatus.className = 'upload-status';
+  casStatus.classList.remove('hidden');
+  casStatus.textContent = 'Deleting sessions...';
+  
+  const url = withUnitId(CLEAR_CSV_SESSIONS_TEMPLATE, unitId);
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 
+        'X-CSRFToken': CSRF_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await res.json();
+    
+    if (!res.ok || !data.ok) {
+      casStatus.className = 'upload-status error';
+      casStatus.textContent = data.error || 'Failed to delete sessions';
+      return;
+    }
+    
+    casStatus.className = 'upload-status success';
+    casStatus.innerHTML = `
+      <div class="font-semibold">Sessions cleared</div>
+      <div class="text-sm mt-1">Deleted: ${data.deleted_sessions || 0} sessions, ${data.deleted_assignments || 0} assignments</div>`;
+    
+    // Refresh calendar and list view
+    if (window.calendar) {
+      window.calendar.refetchEvents?.();
+    }
+    loadListSessionData();
+    
+    // Clear file input
+    const casInput = document.getElementById('cas_csv');
+    if (casInput) {
+      casInput.value = '';
+      const fileName = document.getElementById('cas_file_name');
+      if (fileName) fileName.textContent = 'No file selected';
+    }
+    
+    // Hide the status message after a delay
+    setTimeout(() => {
+      casStatus.classList.add('hidden');
+    }, 5000);
+    
+  } catch (err) {
+    casStatus.className = 'upload-status error';
+    casStatus.textContent = String(err.message || 'Unexpected error during deletion.');
+  }
 }
 
 
@@ -1666,12 +2100,16 @@ function showCalendarIfReady() {
     if (window.__calendarInitRan && calendar) {
       setTimeout(() => calendar.updateSize(), 0);
     }
+    // Check if sessions exist and show clear button if so
+    checkAndShowClearButton();
   } else {
     wrapCal.classList.add('hidden');
   }
   // Always keep the facilitator upload section visible when on step 3
   if (wrapUpload && currentStep === 3) {
     wrapUpload.classList.remove('hidden');
+    // Also check for existing sessions when on step 3
+    checkAndShowClearButton();
   }
 }
 
@@ -1943,21 +2381,67 @@ function handleCloseUnitModal() {
 
 // Add this new function to show the popup
 function showCloseConfirmationPopup() {
-  // Create popup HTML
+  const modal = document.getElementById('createUnitModal');
+  const isEditMode = modal?.getAttribute('data-edit-mode') === 'true';
+  const unitId = document.getElementById('unit_id')?.value;
+  const hasUnitData = unitId && unitId.trim() !== '';
+  
+  // In edit mode, just ask for confirmation without threatening to delete
+  if (isEditMode) {
+    const popup = document.createElement('div');
+    popup.className = 'simple-popup';
+    popup.innerHTML = `
+      <div class="popup-content">
+        <div class="popup-title">Close Edit Unit Wizard</div>
+        <div class="popup-message">
+          Are you sure you want to close? Any unsaved changes will be lost.
+        </div>
+        <div class="popup-buttons">
+          <button class="popup-btn popup-btn-cancel" onclick="closeConfirmationPopup()">
+            Keep Editing
+          </button>
+          <button class="popup-btn popup-btn-confirm-close" onclick="confirmCloseEditMode()">
+            Close Without Saving
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(popup);
+    
+    popup.addEventListener('click', (e) => {
+      if (e.target === popup) {
+        closeConfirmationPopup();
+      }
+    });
+    
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape') {
+        closeConfirmationPopup();
+        document.removeEventListener('keydown', handleEscKey);
+      }
+    };
+    document.addEventListener('keydown', handleEscKey);
+    return;
+  }
+  
+  // Create mode: warn about draft deletion
   const popup = document.createElement('div');
   popup.className = 'simple-popup';
   popup.innerHTML = `
     <div class="popup-content">
-      <div class="popup-title">Unsaved Changes</div>
+      <div class="popup-title">${hasUnitData ? 'Cancel Unit Creation' : 'Close Wizard'}</div>
       <div class="popup-message">
-        Are you sure you want to close? All unsaved changes will be lost.
+        ${hasUnitData 
+          ? 'Are you sure you want to cancel? This will permanently delete the draft unit and all uploaded sessions. This action cannot be undone.'
+          : 'Are you sure you want to close? All unsaved changes will be lost.'}
       </div>
       <div class="popup-buttons">
         <button class="popup-btn popup-btn-cancel" onclick="closeConfirmationPopup()">
-          Cancel
+          Keep Editing
         </button>
         <button class="popup-btn popup-btn-confirm-close" onclick="confirmCloseModal()">
-          Close & Lose Changes
+          ${hasUnitData ? 'Delete Draft & Close' : 'Close'}
         </button>
       </div>
     </div>
@@ -1991,19 +2475,33 @@ function closeConfirmationPopup() {
   }
 }
 
+// Close edit mode without deleting the unit
+function confirmCloseEditMode() {
+  closeConfirmationPopup();
+  console.log('Closing edit mode without deleting unit');
+  
+  // Just close the modal, don't delete anything
+  closeCreateUnitModal();
+  
+  // No need to reload since we didn't delete anything
+}
+
+// Close create mode and delete draft unit
 async function confirmCloseModal() {
   closeConfirmationPopup();
   
-  // Mark draft as cancelled instead of trying to delete
+  // Delete draft unit and all its data on the backend
   const unitId = document.getElementById('unit_id').value;
-  if (unitId) {
+  if (unitId && unitId.trim() !== '') {
     try {
-      console.log('Marking draft as cancelled on backend:', unitId);
+      console.log('Deleting draft unit on backend:', unitId);
+      
+      // Show temporary loading notification
+      showSimpleNotification('Deleting draft unit...', 'info');
       
       const form = new FormData();
       form.append('unit_id', unitId);
       form.append('action', 'cancel_draft');
-      form.append('cancelled', 'true');
       
       const response = await fetch(CREATE_OR_GET_DRAFT, {
         method: 'POST',
@@ -2011,19 +2509,29 @@ async function confirmCloseModal() {
         body: form
       });
       
-      if (response.ok) {
-        console.log('Draft successfully marked as cancelled');
+      const data = await response.json();
+      
+      if (response.ok && data.ok) {
+        console.log('Draft successfully deleted:', data.message);
+        showSimpleNotification('Draft unit deleted successfully', 'success');
       } else {
-        console.warn('Failed to cancel draft on backend, but continuing with close');
+        console.warn('Failed to delete draft on backend:', data.error);
+        showSimpleNotification('Warning: Draft may not have been fully deleted', 'warning');
       }
     } catch (error) {
-      console.error('Error cancelling draft:', error);
+      console.error('Error deleting draft:', error);
+      showSimpleNotification('Error deleting draft unit', 'error');
       // Continue with close even if backend call fails
     }
   }
   
-  // Ensure the UI fully resets after backend cancel
+  // Ensure the UI fully resets after backend delete
   closeCreateUnitModal();
+  
+  // Reload the dashboard to show updated unit list
+  setTimeout(() => {
+    window.location.reload();
+  }, 1000);
 }
 
 async function createUnit() {

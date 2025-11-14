@@ -1790,21 +1790,34 @@ def create_or_get_draft():
                 unit_id = int(unit_id)
                 unit = Unit.query.get(unit_id)
                 if unit and (unit.created_by == user.id or user.role == UserRole.ADMIN):
+                    # Get all modules for this unit
+                    modules = Module.query.filter_by(unit_id=unit.id).all()
+                    module_ids = [m.id for m in modules]
+                    
+                    # Delete all assignments first (foreign key constraint)
+                    if module_ids:
+                        Assignment.query.filter(
+                            Assignment.session_id.in_(
+                                db.session.query(Session.id).filter(
+                                    Session.module_id.in_(module_ids)
+                                )
+                            )
+                        ).delete(synchronize_session=False)
+                    
                     # Delete all sessions for this unit
-                    sessions = db.session.query(Session).join(Module).filter(Module.unit_id == unit.id).all()
-                    for session in sessions:
-                        db.session.delete(session)
+                    if module_ids:
+                        Session.query.filter(
+                            Session.module_id.in_(module_ids)
+                        ).delete(synchronize_session=False)
                     
                     # Delete all modules for this unit
-                    modules = Module.query.filter_by(unit_id=unit.id).all()
-                    for module in modules:
-                        db.session.delete(module)
+                    Module.query.filter_by(unit_id=unit.id).delete(synchronize_session=False)
                     
                     # Delete unit facilitator links
-                    UnitFacilitator.query.filter_by(unit_id=unit.id).delete()
+                    UnitFacilitator.query.filter_by(unit_id=unit.id).delete(synchronize_session=False)
                     
                     # Delete unit venue links
-                    UnitVenue.query.filter_by(unit_id=unit.id).delete()
+                    UnitVenue.query.filter_by(unit_id=unit.id).delete(synchronize_session=False)
                     
                     # Delete the unit itself
                     db.session.delete(unit)
@@ -3863,6 +3876,49 @@ def upload_cas_csv(unit_id: int):
         "errors": errors[:30],
         "created_session_ids": created_ids,
     })
+
+@unitcoordinator_bp.delete("/units/<int:unit_id>/clear_csv_sessions")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def clear_csv_sessions(unit_id: int):
+    """
+    Delete all sessions for a unit. This allows users to remove sessions
+    that were created via CSV upload and start fresh.
+    """
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+
+    try:
+        # Get all modules for this unit
+        modules = Module.query.filter_by(unit_id=unit.id).all()
+        module_ids = [m.id for m in modules]
+        
+        # Delete all assignments first (foreign key constraint)
+        deleted_assignments = Assignment.query.filter(
+            Assignment.session_id.in_(
+                db.session.query(Session.id).filter(
+                    Session.module_id.in_(module_ids)
+                )
+            )
+        ).delete(synchronize_session=False)
+        
+        # Delete all sessions for this unit's modules
+        deleted_sessions = Session.query.filter(
+            Session.module_id.in_(module_ids)
+        ).delete(synchronize_session=False)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "ok": True,
+            "deleted_sessions": deleted_sessions,
+            "deleted_assignments": deleted_assignments
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Failed to delete sessions: {e}"}), 500
 
 @unitcoordinator_bp.get("/units/<int:unit_id>/dashboard-sessions")
 @login_required
