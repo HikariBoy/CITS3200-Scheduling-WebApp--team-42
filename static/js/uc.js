@@ -2064,21 +2064,26 @@ function handleCloseUnitModal() {
 
 // Add this new function to show the popup
 function showCloseConfirmationPopup() {
+  const unitId = document.getElementById('unit_id')?.value;
+  const hasUnitData = unitId && unitId.trim() !== '';
+  
   // Create popup HTML
   const popup = document.createElement('div');
   popup.className = 'simple-popup';
   popup.innerHTML = `
     <div class="popup-content">
-      <div class="popup-title">Unsaved Changes</div>
+      <div class="popup-title">${hasUnitData ? 'Cancel Unit Creation' : 'Close Wizard'}</div>
       <div class="popup-message">
-        Are you sure you want to close? All unsaved changes will be lost.
+        ${hasUnitData 
+          ? 'Are you sure you want to cancel? This will permanently delete the draft unit and all uploaded sessions. This action cannot be undone.'
+          : 'Are you sure you want to close? All unsaved changes will be lost.'}
       </div>
       <div class="popup-buttons">
         <button class="popup-btn popup-btn-cancel" onclick="closeConfirmationPopup()">
-          Cancel
+          Keep Editing
         </button>
         <button class="popup-btn popup-btn-confirm-close" onclick="confirmCloseModal()">
-          Close & Lose Changes
+          ${hasUnitData ? 'Delete Draft & Close' : 'Close'}
         </button>
       </div>
     </div>
@@ -2115,16 +2120,18 @@ function closeConfirmationPopup() {
 async function confirmCloseModal() {
   closeConfirmationPopup();
   
-  // Mark draft as cancelled instead of trying to delete
+  // Delete draft unit and all its data on the backend
   const unitId = document.getElementById('unit_id').value;
-  if (unitId) {
+  if (unitId && unitId.trim() !== '') {
     try {
-      console.log('Marking draft as cancelled on backend:', unitId);
+      console.log('Deleting draft unit on backend:', unitId);
+      
+      // Show temporary loading notification
+      showSimpleNotification('Deleting draft unit...', 'info');
       
       const form = new FormData();
       form.append('unit_id', unitId);
       form.append('action', 'cancel_draft');
-      form.append('cancelled', 'true');
       
       const response = await fetch(CREATE_OR_GET_DRAFT, {
         method: 'POST',
@@ -2132,19 +2139,29 @@ async function confirmCloseModal() {
         body: form
       });
       
-      if (response.ok) {
-        console.log('Draft successfully marked as cancelled');
+      const data = await response.json();
+      
+      if (response.ok && data.ok) {
+        console.log('Draft successfully deleted:', data.message);
+        showSimpleNotification('Draft unit deleted successfully', 'success');
       } else {
-        console.warn('Failed to cancel draft on backend, but continuing with close');
+        console.warn('Failed to delete draft on backend:', data.error);
+        showSimpleNotification('Warning: Draft may not have been fully deleted', 'warning');
       }
     } catch (error) {
-      console.error('Error cancelling draft:', error);
+      console.error('Error deleting draft:', error);
+      showSimpleNotification('Error deleting draft unit', 'error');
       // Continue with close even if backend call fails
     }
   }
   
-  // Ensure the UI fully resets after backend cancel
+  // Ensure the UI fully resets after backend delete
   closeCreateUnitModal();
+  
+  // Reload the dashboard to show updated unit list
+  setTimeout(() => {
+    window.location.reload();
+  }, 1000);
 }
 
 async function createUnit() {

@@ -1790,21 +1790,34 @@ def create_or_get_draft():
                 unit_id = int(unit_id)
                 unit = Unit.query.get(unit_id)
                 if unit and (unit.created_by == user.id or user.role == UserRole.ADMIN):
+                    # Get all modules for this unit
+                    modules = Module.query.filter_by(unit_id=unit.id).all()
+                    module_ids = [m.id for m in modules]
+                    
+                    # Delete all assignments first (foreign key constraint)
+                    if module_ids:
+                        Assignment.query.filter(
+                            Assignment.session_id.in_(
+                                db.session.query(Session.id).filter(
+                                    Session.module_id.in_(module_ids)
+                                )
+                            )
+                        ).delete(synchronize_session=False)
+                    
                     # Delete all sessions for this unit
-                    sessions = db.session.query(Session).join(Module).filter(Module.unit_id == unit.id).all()
-                    for session in sessions:
-                        db.session.delete(session)
+                    if module_ids:
+                        Session.query.filter(
+                            Session.module_id.in_(module_ids)
+                        ).delete(synchronize_session=False)
                     
                     # Delete all modules for this unit
-                    modules = Module.query.filter_by(unit_id=unit.id).all()
-                    for module in modules:
-                        db.session.delete(module)
+                    Module.query.filter_by(unit_id=unit.id).delete(synchronize_session=False)
                     
                     # Delete unit facilitator links
-                    UnitFacilitator.query.filter_by(unit_id=unit.id).delete()
+                    UnitFacilitator.query.filter_by(unit_id=unit.id).delete(synchronize_session=False)
                     
                     # Delete unit venue links
-                    UnitVenue.query.filter_by(unit_id=unit.id).delete()
+                    UnitVenue.query.filter_by(unit_id=unit.id).delete(synchronize_session=False)
                     
                     # Delete the unit itself
                     db.session.delete(unit)
