@@ -1018,9 +1018,8 @@
                     <div class="flex items-start justify-between gap-6">
                       <!-- Left: identity + contact -->
                       <div>
-                        <div class="flex items-center gap-3">
-                          <h4 class="font-semibold text-gray-900">{{ f.name }}</h4>
-
+                        <div class="flex flex-wrap items-baseline gap-2">
+                          <h4 class="font-semibold text-gray-900 text-lg mr-2">{{ f.name }}</h4>
                           {% if f.is_ready %}
                             <span class="status-badge status-badge--green">
                               <span class="material-icons">check_circle</span> Ready
@@ -1032,7 +1031,6 @@
                             <span class="status-badge status-badge--amber">
                               <span class="material-icons">priority_high</span> Needs Skills
                             </span>
-
                           {% elif f.has_profile and not f.has_availability %}
                             <span class="status-badge status-badge--amber">
                               <span class="material-icons">hourglass_bottom</span> Pending
@@ -1040,7 +1038,6 @@
                             <span class="status-badge status-badge--amber">
                               <span class="material-icons">priority_high</span> Needs Availability
                             </span>
-
                           {% else %}
                             <span class="status-badge status-badge--gray">
                               <span class="material-icons">pause_circle</span> Inactive
@@ -1049,7 +1046,6 @@
                               <span class="material-icons">warning</span> Setup Required
                             </span>
                           {% endif %}
-
                         </div>
 
                         <div class="mt-2 space-y-1 text-sm text-gray-800">
@@ -1093,21 +1089,33 @@
 
                     <!-- Status row -->
                     <div class="mt-3 pt-3 border-t flex items-center justify-between gap-4">
-                      <div class="flex flex-wrap items-center gap-3 text-sm">
-                        <span class="inline-flex items-center gap-2">
-                          {% if f.has_profile %}
-                            <span class="material-icons text-green-600">task_alt</span> Account Setup
-                          {% else %}
-                            <span class="material-icons text-gray-500">radio_button_unchecked</span> Account Setup
+                      <div class="flex flex-wrap items-center gap-2 text-sm">
+                        {% if f.has_profile and f.has_availability and f.has_skills %}
+                          <span class="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                            <span class="material-icons text-base">task_alt</span>
+                            All setup steps complete
+                          </span>
+                        {% else %}
+                          <span class="text-gray-600">Next steps:</span>
+                          {% if not f.has_profile %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs bg-gray-50 text-gray-700">
+                              <span class="material-icons text-base text-amber-600">person_add</span>
+                              Complete account setup
+                            </span>
                           {% endif %}
-                        </span>
-                        <span class="inline-flex items-center gap-2">
-                          {% if f.has_availability %}
-                            <span class="material-icons text-green-600">task_alt</span> Availability Set
-                          {% else %}
-                            <span class="material-icons text-amber-600">error_outline</span> Needs Availability
+                          {% if not f.has_availability %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs bg-gray-50 text-gray-700">
+                              <span class="material-icons text-base text-amber-600">event_available</span>
+                              Add availability
+                            </span>
                           {% endif %}
-                        </span>
+                          {% if not f.has_skills %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs bg-gray-50 text-gray-700">
+                              <span class="material-icons text-base text-amber-600">auto_awesome</span>
+                              Declare skills
+                            </span>
+                          {% endif %}
+                        {% endif %}
                       </div>
 
                       <div class="flex items-center gap-2">
