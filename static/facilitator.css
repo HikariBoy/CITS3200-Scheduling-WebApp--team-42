@@ -5159,18 +5159,27 @@ textarea::placeholder {
 
 /* User info link styling */
 .user-info-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   text-decoration: none;
-  color: inherit;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: background-color 0.2s ease;
+  color: var(--color-text-primary);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  cursor: pointer;
+  appearance: none;
 }
 
 .user-info-link:hover {
-  background-color: var(--surface-secondary);
+  background-color: #f3f4f6;
+}
+
+.user-info-link:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
 }
 
 .user-info-link:visited {
