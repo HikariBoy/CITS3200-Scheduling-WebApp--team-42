@@ -1861,6 +1861,7 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
     UPLOAD_SESSIONS_TEMPLATE: "{{ url_for('unitcoordinator.upload_sessions_csv', unit_id=0) }}",
     LIST_FACILITATORS_TEMPLATE: "{{ url_for('unitcoordinator.list_facilitators', unit_id=0) }}",
     UPLOAD_CAS_TEMPLATE: "{{ url_for('unitcoordinator.upload_cas_csv', unit_id=0) }}",
+    CLEAR_CSV_SESSIONS_TEMPLATE: "{{ url_for('unitcoordinator.clear_csv_sessions', unit_id=0) }}",
     AUTO_ASSIGN_TEMPLATE: "{{ url_for('unitcoordinator.auto_assign_facilitators', unit_id=0) }}"
   };
   window.CSRF_TOKEN = "{{ csrf_token() }}";

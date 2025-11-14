@@ -10,7 +10,8 @@ const {
   UPLOAD_SETUP_CSV,
   REMOVE_FACILITATORS_TEMPLATE,
   UPLOAD_SESSIONS_TEMPLATE,
-  UPLOAD_CAS_TEMPLATE
+  UPLOAD_CAS_TEMPLATE,
+  CLEAR_CSV_SESSIONS_TEMPLATE
 } = window.FLASK_ROUTES || {};
 
 const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
@@ -1036,7 +1037,11 @@ async function uploadCasCsv() {
     casStatus.className = 'upload-status success';
     casStatus.innerHTML = `
       <div class="font-semibold">Upload successful</div>
-      <div class="text-sm mt-1">Sessions created: ${data.created || 0}, Skipped: ${data.skipped || 0}</div>`;
+      <div class="text-sm mt-1">Sessions created: ${data.created || 0}, Skipped: ${data.skipped || 0}</div>
+      <button type="button" id="clearCsvBtn" class="cal-btn danger mt-2" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+        <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">delete</span>
+        Remove All Sessions
+      </button>`;
 
     // Mark setup complete so the calendar section is shown, then refresh/init
     const setupFlagEl = document.getElementById('setup_complete');
@@ -1054,6 +1059,12 @@ async function uploadCasCsv() {
     
     // Also refresh list view data
     loadListSessionData();
+    
+    // Add event listener to the clear button
+    const clearBtn = document.getElementById('clearCsvBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', clearCsvSessions);
+    }
   } catch (err) {
     casStatus.className = 'upload-status error';
     casStatus.textContent = String(err.message || 'Unexpected error during upload.');
@@ -1062,6 +1073,112 @@ async function uploadCasCsv() {
 
 if (uploadCasBtn) {
   uploadCasBtn.addEventListener('click', uploadCasCsv);
+}
+
+// Check if sessions exist and show clear button
+async function checkAndShowClearButton() {
+  const unitId = document.getElementById('unit_id')?.value;
+  const casStatus = document.getElementById('cas_upload_status');
+  
+  if (!unitId || !casStatus) return;
+  
+  try {
+    // Use the calendar API to check if sessions exist
+    const weekStart = new Date().toISOString().split('T')[0];
+    const res = await fetch(`${withUnitId(CAL_WEEK_TEMPLATE, unitId)}?week_start=${weekStart}`, {
+      headers: { 'X-CSRFToken': CSRF_TOKEN }
+    });
+    const data = await res.json();
+    
+    if (res.ok && data.ok && data.sessions && data.sessions.length > 0) {
+      // Sessions exist, show the clear button
+      const existingBtn = document.getElementById('clearCsvBtn');
+      if (!existingBtn) {
+        casStatus.className = 'upload-status success';
+        casStatus.classList.remove('hidden');
+        casStatus.innerHTML = `
+          <div class="font-semibold">Sessions exist</div>
+          <div class="text-sm mt-1">${data.sessions.length} session(s) found</div>
+          <button type="button" id="clearCsvBtn" class="cal-btn danger mt-2" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+            <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">delete</span>
+            Remove All Sessions
+          </button>`;
+        
+        // Add event listener
+        const clearBtn = document.getElementById('clearCsvBtn');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', clearCsvSessions);
+        }
+      }
+    }
+  } catch (err) {
+    console.log('Could not check for existing sessions:', err);
+  }
+}
+
+// Clear CSV sessions
+async function clearCsvSessions() {
+  const unitId = document.getElementById('unit_id').value;
+  if (!unitId) {
+    alert('No unit selected');
+    return;
+  }
+  
+  // Confirm deletion
+  if (!confirm('Are you sure you want to remove all sessions? This will delete all sessions and their assignments for this unit. This action cannot be undone.')) {
+    return;
+  }
+  
+  const casStatus = document.getElementById('cas_upload_status');
+  casStatus.className = 'upload-status';
+  casStatus.classList.remove('hidden');
+  casStatus.textContent = 'Deleting sessions...';
+  
+  const url = withUnitId(CLEAR_CSV_SESSIONS_TEMPLATE, unitId);
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 
+        'X-CSRFToken': CSRF_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await res.json();
+    
+    if (!res.ok || !data.ok) {
+      casStatus.className = 'upload-status error';
+      casStatus.textContent = data.error || 'Failed to delete sessions';
+      return;
+    }
+    
+    casStatus.className = 'upload-status success';
+    casStatus.innerHTML = `
+      <div class="font-semibold">Sessions cleared</div>
+      <div class="text-sm mt-1">Deleted: ${data.deleted_sessions || 0} sessions, ${data.deleted_assignments || 0} assignments</div>`;
+    
+    // Refresh calendar and list view
+    if (window.calendar) {
+      window.calendar.refetchEvents?.();
+    }
+    loadListSessionData();
+    
+    // Clear file input
+    const casInput = document.getElementById('cas_csv');
+    if (casInput) {
+      casInput.value = '';
+      const fileName = document.getElementById('cas_file_name');
+      if (fileName) fileName.textContent = 'No file selected';
+    }
+    
+    // Hide the status message after a delay
+    setTimeout(() => {
+      casStatus.classList.add('hidden');
+    }, 5000);
+    
+  } catch (err) {
+    casStatus.className = 'upload-status error';
+    casStatus.textContent = String(err.message || 'Unexpected error during deletion.');
+  }
 }
 
 
@@ -1666,12 +1783,16 @@ function showCalendarIfReady() {
     if (window.__calendarInitRan && calendar) {
       setTimeout(() => calendar.updateSize(), 0);
     }
+    // Check if sessions exist and show clear button if so
+    checkAndShowClearButton();
   } else {
     wrapCal.classList.add('hidden');
   }
   // Always keep the facilitator upload section visible when on step 3
   if (wrapUpload && currentStep === 3) {
     wrapUpload.classList.remove('hidden');
+    // Also check for existing sessions when on step 3
+    checkAndShowClearButton();
   }
 }
 
