@@ -659,6 +659,12 @@ input[name="bulk_filter_type"]:focus {
 .upload-status.success { background: #ecfdf5; border-color: #10b981; color: #065f46; }
 .upload-status.error { background: #fef2f2; border-color: var(--c-danger); color: #7f1d1d; }
 .upload-status.info { background: #eff6ff; border-color: #3b82f6; color: #1e40af; }
+.upload-status.csv-file-display { 
+  background: #f8fafc; 
+  border: 2px solid #e2e8f0; 
+  padding: 16px; 
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
 
 /* =========================================
    Step 3B: Calendar + Inspector
