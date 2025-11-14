@@ -477,11 +477,10 @@ function setStep(n) {
     s.classList.toggle('hidden', parseInt(s.dataset.step) !== currentStep);
   });
   
-  // Ensure CSV upload card remains visible on step 3 after successful upload
+  // Always keep facilitator CSV upload section visible on step 3
   if (n === 3) {
-    const setupComplete = document.getElementById('setup_complete')?.value === 'true';
     const wrapUpload = document.getElementById('setup_wrap');
-    if (setupComplete && wrapUpload) {
+    if (wrapUpload) {
       wrapUpload.classList.remove('hidden');
     }
   }
