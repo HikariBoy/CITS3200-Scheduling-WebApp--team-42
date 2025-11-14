@@ -12,37 +12,222 @@
 
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='facilitator.css') }}">
+  <style>
+    .uc-header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .uc-header .uc-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .uc-left,
+    .uc-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .uc-left {
+      gap: 8px;
+    }
+    .uc-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      white-space: nowrap;
+    }
+    .uc-icon {
+      color: #0f172a;
+      font-size: 18px;
+    }
+    .role-switcher {
+      position: relative;
+      display: inline-block;
+    }
+    .role-switcher summary {
+      list-style: none;
+    }
+    .role-switcher summary::-webkit-details-marker {
+      display: none;
+    }
+    .role-switcher__btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 18px;
+      border-radius: 9999px;
+      border: 1px solid #c7d2fe;
+      background: #e0e7ff;
+      color: #312e81;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .role-switcher__btn:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+    }
+    .role-switcher__chevron {
+      font-size: 18px;
+      color: #4b5563;
+    }
+    .role-switcher__menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+      min-width: 240px;
+      padding: 8px 0;
+      z-index: 200;
+    }
+    .role-switcher__menu form {
+      margin: 0;
+    }
+    .role-switcher__option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: none;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-size: 14px;
+      color: #1f2937;
+    }
+    .role-switcher__option:hover:not(:disabled) {
+      background: #f3f4f6;
+    }
+    .role-switcher__option:disabled {
+      cursor: default;
+    }
+    .role-switcher__option--active {
+      background: #f3f4f6;
+    }
+    .role-switcher__label {
+      font-weight: 600;
+    }
+    .role-switcher__hint {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+    .role-switcher__option .material-icons {
+      font-size: 20px;
+      color: #6366f1;
+    }
+    .role-switcher__status {
+      margin-left: auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: #059669;
+    }
+    .fac-user-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+  </style>
   <script src="{{ url_for('static', filename='js/facilitator.js') }}" defer></script>
 </head>
 <body>
-<header class="site-header">
-    <div class="container">
-        <div class="logo">
-            <span class="material-icons" aria-hidden="true">person</span>
-            <h1>Facilitator Portal</h1>
+<header class="uc-header">
+    <div class="uc-container">
+        <div class="uc-left">
+            <span class="material-icons uc-icon" aria-hidden="true">person</span>
+            <h1 class="uc-title">Facilitator Portal</h1>
         </div>
-        <nav class="user-nav">
-            <div class="user-profile-dropdown" id="fac-profile-dropdown">
-                <button class="user-info-link" id="fac-profile-trigger" aria-haspopup="true" aria-expanded="false">
-                    <span class="material-icons profile-icon" aria-hidden="true">account_circle</span>
-                    <span class="user-name">{{ user.first_name }} {{ user.last_name }}</span>
-                    <span class="material-icons" aria-hidden="true">arrow_drop_down</span>
-                </button>
-                <div class="fac-dropdown-menu" id="fac-dropdown-menu" role="menu" aria-label="User menu" style="display:none;">
-                    <a class="fac-dropdown-item" href="{{ url_for('facilitator.profile') }}" role="menuitem">
-                        <span class="material-icons" aria-hidden="true">person</span>
-                        <span>View Profile</span>
-                    </a>
-                    <form method="POST" action="{{ url_for('auth.logout') }}" role="none">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <button type="submit" class="fac-dropdown-item danger" role="menuitem">
-                            <span class="material-icons" aria-hidden="true">logout</span>
-                            <span>Logout</span>
-                        </button>
+        <div class="uc-right">
+            {% set role_labels = {
+              'admin': 'Admin',
+              'unit_coordinator': 'Unit Coordinator',
+              'facilitator': 'Facilitator'
+            } %}
+            {% set role_hints = {
+              'admin': 'Full system access',
+              'unit_coordinator': 'Manage units & staffing',
+              'facilitator': 'View facilitator tools'
+            } %}
+            {% set role_icons = {
+              'admin': 'workspace_premium',
+              'unit_coordinator': 'school',
+              'facilitator': 'groups'
+            } %}
+            {% set current_role = (selected_role if selected_role is defined else user.role.value.lower()) %}
+            {% set role_options = (available_roles if available_roles is defined and available_roles else [current_role]) %}
+            {% set can_switch_roles = role_options|length > 1 %}
+
+            <nav class="fac-user-nav">
+              <div class="user-profile-dropdown" id="fac-profile-dropdown">
+                  <button class="user-info-link" id="fac-profile-trigger" aria-haspopup="true" aria-expanded="false">
+                      <span class="material-icons profile-icon" aria-hidden="true">account_circle</span>
+                      <span class="user-name">{{ user.first_name }} {{ user.last_name }}</span>
+                      <span class="material-icons" aria-hidden="true">arrow_drop_down</span>
+                  </button>
+                  <div class="fac-dropdown-menu" id="fac-dropdown-menu" role="menu" aria-label="User menu" style="display:none;">
+                      <a class="fac-dropdown-item" href="{{ url_for('facilitator.profile') }}" role="menuitem">
+                          <span class="material-icons" aria-hidden="true">person</span>
+                          <span>View Profile</span>
+                      </a>
+                      <form method="POST" action="{{ url_for('auth.logout') }}" role="none">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                          <button type="submit" class="fac-dropdown-item danger" role="menuitem">
+                              <span class="material-icons" aria-hidden="true">logout</span>
+                              <span>Logout</span>
+                          </button>
+                      </form>
+                  </div>
+              </div>
+            </nav>
+
+            {% if can_switch_roles %}
+              <details class="role-switcher">
+                <summary class="role-switcher__btn" aria-haspopup="true" aria-expanded="false">
+                  <span class="material-icons" aria-hidden="true">{{ role_icons.get(current_role, 'person') }}</span>
+                  {{ role_labels.get(current_role, current_role|replace('_',' ')|title) }}
+                  <span class="material-icons role-switcher__chevron" aria-hidden="true">expand_more</span>
+                </summary>
+                <div class="role-switcher__menu" role="menu">
+                  {% for role in role_options %}
+                    {% set is_active = role == current_role %}
+                    <form method="POST" action="{{ url_for('switch_role') }}" role="none">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="new_role" value="{{ role }}">
+                      <button type="submit"
+                              class="role-switcher__option{% if is_active %} role-switcher__option--active{% endif %}"
+                              {% if is_active %}disabled aria-disabled="true"{% endif %}
+                              role="menuitemradio"
+                              aria-checked="{{ 'true' if is_active else 'false' }}">
+                        <span class="material-icons" aria-hidden="true">{{ role_icons.get(role, 'person') }}</span>
+                        <div>
+                          <div class="role-switcher__label">{{ role_labels.get(role, role|replace('_',' ')|title) }}</div>
+                          <div class="role-switcher__hint">{{ role_hints.get(role, '') }}</div>
+                        </div>
+                        {% if is_active %}
+                          <span class="role-switcher__status">Active</span>
+                        {% endif %}
+                      </button>
                     </form>
+                  {% endfor %}
                 </div>
-            </div>
-        </nav>
+              </details>
+            {% else %}
+              <span class="role-switcher__btn" style="cursor: default;">
+                <span class="material-icons" aria-hidden="true">{{ role_icons.get(current_role, 'person') }}</span>
+                {{ role_labels.get(current_role, current_role|replace('_',' ')|title) }}
+              </span>
+            {% endif %}
+        </div>
     </div>
 </header>
 
@@ -730,6 +915,32 @@
     function refreshPage() {
         window.location.reload();
     }
+
+    function syncRoleSwitcherState(dropdown) {
+      if (!dropdown) return;
+      const trigger = dropdown.querySelector('.role-switcher__btn');
+      if (trigger) {
+        trigger.setAttribute('aria-expanded', dropdown.open ? 'true' : 'false');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('details.role-switcher').forEach(function(dropdown) {
+        syncRoleSwitcherState(dropdown);
+        dropdown.addEventListener('toggle', function() {
+          syncRoleSwitcherState(dropdown);
+        });
+      });
+    });
+
+    document.addEventListener('click', function(event) {
+      document.querySelectorAll('details.role-switcher[open]').forEach(function(dropdown) {
+        if (!dropdown.contains(event.target)) {
+          dropdown.removeAttribute('open');
+          syncRoleSwitcherState(dropdown);
+        }
+      });
+    });
 </script>
 
 <!-- Request Swap Modal -->
