@@ -658,6 +658,7 @@ input[name="bulk_filter_type"]:focus {
 .upload-status { margin-top: 10px; font-size: 14px; border-radius: 8px; padding: 10px 12px; border: 1px solid transparent; }
 .upload-status.success { background: #ecfdf5; border-color: #10b981; color: #065f46; }
 .upload-status.error { background: #fef2f2; border-color: var(--c-danger); color: #7f1d1d; }
+.upload-status.info { background: #eff6ff; border-color: #3b82f6; color: #1e40af; }
 
 /* =========================================
    Step 3B: Calendar + Inspector

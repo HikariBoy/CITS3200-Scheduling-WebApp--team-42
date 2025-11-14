@@ -483,6 +483,13 @@ function setStep(n) {
     if (wrapUpload) {
       wrapUpload.classList.remove('hidden');
     }
+    
+    // Check if we're in edit mode and show existing sessions info
+    const modal = document.getElementById('createUnitModal');
+    const isEditMode = modal?.getAttribute('data-edit-mode') === 'true';
+    if (isEditMode) {
+      checkAndShowExistingSessionsInEditMode();
+    }
   }
   document.querySelectorAll('.modal-steps .step').forEach((el, idx) => {
     el.classList.toggle('active', idx + 1 === currentStep);
@@ -1115,7 +1122,130 @@ async function checkAndShowClearButton() {
   }
 }
 
-// Clear CSV sessions
+// Check and show existing sessions in edit mode
+async function checkAndShowExistingSessionsInEditMode() {
+  const unitId = document.getElementById('unit_id')?.value;
+  const casStatus = document.getElementById('cas_upload_status');
+  
+  if (!unitId || !casStatus) return;
+  
+  try {
+    // Fetch all sessions for this unit to get accurate count
+    const res = await fetch(`${withUnitId(CAL_WEEK_TEMPLATE, unitId)}?week_start=2000-01-01`, {
+      headers: { 'X-CSRFToken': CSRF_TOKEN }
+    });
+    const data = await res.json();
+    
+    if (res.ok && data.ok && data.sessions && data.sessions.length > 0) {
+      const sessionCount = data.sessions.length;
+      
+      // Get unique modules/activities
+      const modules = new Set();
+      data.sessions.forEach(s => {
+        if (s.extendedProps?.session_name) {
+          modules.add(s.extendedProps.session_name);
+        }
+      });
+      
+      casStatus.className = 'upload-status info';
+      casStatus.classList.remove('hidden');
+      casStatus.innerHTML = `
+        <div class="font-semibold">Current Unit Sessions</div>
+        <div class="text-sm mt-1">
+          ${sessionCount} session(s) uploaded
+          ${modules.size > 0 ? `<br>${modules.size} unique activity/module(s)` : ''}
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button type="button" id="clearAndReuploadBtn" class="cal-btn danger" style="font-size: 0.875rem; padding: 0.5rem 1rem;">
+            <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">delete</span>
+            Clear Sessions & Re-upload
+          </button>
+        </div>`;
+      
+      // Add event listener for clear and re-upload
+      const clearBtn = document.getElementById('clearAndReuploadBtn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', clearSessionsForReupload);
+      }
+    } else {
+      // No sessions exist - show normal upload interface
+      casStatus.classList.add('hidden');
+    }
+  } catch (err) {
+    console.log('Could not check for existing sessions in edit mode:', err);
+  }
+}
+
+// Clear sessions for re-upload (edit mode)
+async function clearSessionsForReupload() {
+  const unitId = document.getElementById('unit_id').value;
+  if (!unitId) {
+    alert('No unit selected');
+    return;
+  }
+  
+  // Confirm deletion with clear messaging for re-upload scenario
+  if (!confirm('Are you sure you want to clear all current sessions? This will allow you to upload a new CSV file with corrected data. This action cannot be undone.')) {
+    return;
+  }
+  
+  const casStatus = document.getElementById('cas_upload_status');
+  casStatus.className = 'upload-status';
+  casStatus.classList.remove('hidden');
+  casStatus.textContent = 'Clearing sessions...';
+  
+  const url = withUnitId(CLEAR_CSV_SESSIONS_TEMPLATE, unitId);
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 
+        'X-CSRFToken': CSRF_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await res.json();
+    
+    if (!res.ok || !data.ok) {
+      casStatus.className = 'upload-status error';
+      casStatus.textContent = data.error || 'Failed to delete sessions';
+      return;
+    }
+    
+    // Show success and allow re-upload
+    casStatus.className = 'upload-status success';
+    casStatus.innerHTML = `
+      <div class="font-semibold">Sessions cleared successfully</div>
+      <div class="text-sm mt-1">
+        Deleted: ${data.deleted_sessions || 0} sessions, ${data.deleted_assignments || 0} assignments
+      </div>
+      <div class="text-sm mt-2">You can now upload a new CSV file.</div>`;
+    
+    // Refresh calendar and list view
+    if (window.calendar) {
+      window.calendar.refetchEvents?.();
+    }
+    loadListSessionData();
+    
+    // Clear file input and reset its display
+    const casInput = document.getElementById('cas_csv');
+    if (casInput) {
+      casInput.value = '';
+      const fileName = document.getElementById('cas_file_name');
+      if (fileName) fileName.textContent = 'No file selected';
+    }
+    
+    // Hide the status message after a longer delay to give user time to read
+    setTimeout(() => {
+      casStatus.classList.add('hidden');
+    }, 8000);
+    
+  } catch (err) {
+    casStatus.className = 'upload-status error';
+    casStatus.textContent = String(err.message || 'Unexpected error during deletion.');
+  }
+}
+
+// Clear CSV sessions (for create mode)
 async function clearCsvSessions() {
   const unitId = document.getElementById('unit_id').value;
   if (!unitId) {
@@ -2063,10 +2193,51 @@ function handleCloseUnitModal() {
 
 // Add this new function to show the popup
 function showCloseConfirmationPopup() {
+  const modal = document.getElementById('createUnitModal');
+  const isEditMode = modal?.getAttribute('data-edit-mode') === 'true';
   const unitId = document.getElementById('unit_id')?.value;
   const hasUnitData = unitId && unitId.trim() !== '';
   
-  // Create popup HTML
+  // In edit mode, just ask for confirmation without threatening to delete
+  if (isEditMode) {
+    const popup = document.createElement('div');
+    popup.className = 'simple-popup';
+    popup.innerHTML = `
+      <div class="popup-content">
+        <div class="popup-title">Close Edit Unit Wizard</div>
+        <div class="popup-message">
+          Are you sure you want to close? Any unsaved changes will be lost.
+        </div>
+        <div class="popup-buttons">
+          <button class="popup-btn popup-btn-cancel" onclick="closeConfirmationPopup()">
+            Keep Editing
+          </button>
+          <button class="popup-btn popup-btn-confirm-close" onclick="confirmCloseEditMode()">
+            Close Without Saving
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(popup);
+    
+    popup.addEventListener('click', (e) => {
+      if (e.target === popup) {
+        closeConfirmationPopup();
+      }
+    });
+    
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape') {
+        closeConfirmationPopup();
+        document.removeEventListener('keydown', handleEscKey);
+      }
+    };
+    document.addEventListener('keydown', handleEscKey);
+    return;
+  }
+  
+  // Create mode: warn about draft deletion
   const popup = document.createElement('div');
   popup.className = 'simple-popup';
   popup.innerHTML = `
@@ -2116,6 +2287,18 @@ function closeConfirmationPopup() {
   }
 }
 
+// Close edit mode without deleting the unit
+function confirmCloseEditMode() {
+  closeConfirmationPopup();
+  console.log('Closing edit mode without deleting unit');
+  
+  // Just close the modal, don't delete anything
+  closeCreateUnitModal();
+  
+  // No need to reload since we didn't delete anything
+}
+
+// Close create mode and delete draft unit
 async function confirmCloseModal() {
   closeConfirmationPopup();
   
