@@ -699,3 +699,38 @@ async function adminResetPassword() {
     }
   }
 }
+
+// Resend Setup Email function for Admin Dashboard
+async function resendSetupEmailAdmin(userId, email) {
+  if (!confirm(`Resend account setup email to ${email}?`)) {
+    return;
+  }
+  
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    
+    const response = await fetch(`/admin/resend-setup-email/${userId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      alert(`✅ Setup email sent to ${email}!`);
+      // Close the dropdown
+      const dropdown = document.getElementById(`dropdown-${userId}`);
+      if (dropdown) {
+        dropdown.style.display = 'none';
+      }
+    } else {
+      alert(`❌ Error: ${result.error || 'Failed to send email'}`);
+    }
+  } catch (error) {
+    console.error('Error resending setup email:', error);
+    alert('❌ An error occurred while sending the email. Please try again.');
+  }
+}

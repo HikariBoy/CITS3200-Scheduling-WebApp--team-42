@@ -71,6 +71,19 @@ def send_welcome_email(recipient_email, recipient_name=None, base_url=None, user
         print(f"Invalid email address: {recipient_email}")
         return False
 
+    # Clean up old unused tokens for this email (optional cleanup)
+    try:
+        old_tokens = EmailToken.query.filter_by(
+            email=recipient_email,
+            token_type='account_setup',
+            used=False
+        ).all()
+        for old_token in old_tokens:
+            db.session.delete(old_token)
+    except Exception as e:
+        print(f"Warning: Could not clean up old tokens: {e}")
+        # Continue anyway - not critical
+    
     # Generate and store token
     token = generate_token()
     expires_at = datetime.utcnow() + timedelta(days=7)  # Token expires in 7 days

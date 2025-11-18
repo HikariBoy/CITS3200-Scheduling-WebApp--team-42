@@ -696,6 +696,37 @@ def create_employee():
         print(traceback.format_exc())
         return jsonify({'success': False, 'error': f'An error occurred while creating the user: {str(e)}'}), 500
 
+@admin_bp.route('/resend-setup-email/<int:user_id>', methods=['POST'])
+@admin_required
+def resend_setup_email(user_id):
+    """Resend account setup email to a user who hasn't completed setup"""
+    try:
+        # Get the user
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        
+        # Check if account setup is already complete
+        if user.first_name and user.last_name and user.password_hash:
+            return jsonify({'success': False, 'error': 'This user has already completed account setup'}), 400
+        
+        # Send the setup email
+        from email_service import send_welcome_email
+        try:
+            send_welcome_email(user.email, user_role=user.role)
+            print(f"✅ Admin resent setup email to {user.email}")
+            return jsonify({
+                'success': True,
+                'message': f'Setup email resent to {user.email}'
+            }), 200
+        except Exception as e:
+            print(f"❌ Failed to resend setup email to {user.email}: {e}")
+            return jsonify({'success': False, 'error': f'Failed to send email: {str(e)}'}), 500
+            
+    except Exception as e:
+        print(f"Error in resend_setup_email: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @admin_bp.route('/create-facilitator-modal', methods=['POST'])
 @admin_required
 def create_facilitator_modal():
