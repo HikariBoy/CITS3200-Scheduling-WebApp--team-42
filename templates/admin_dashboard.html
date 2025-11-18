@@ -871,6 +871,12 @@
                   <span class="material-icons">more_vert</span>
                 </button>
                 <div class="dropdown-menu" id="dropdown-{{ facilitator.id }}" style="display: none;">
+                  {% if not facilitator.first_name or not facilitator.last_name or not facilitator.password_hash %}
+                    <button class="dropdown-item" onclick="resendSetupEmailAdmin({{ facilitator.id }}, '{{ facilitator.email }}')">
+                      <span class="material-icons">email</span>
+                      Resend Setup Email
+                    </button>
+                  {% endif %}
                   {% if facilitator.role.value == 'admin' and admin_count <= 1 %}
                     <button class="dropdown-item delete disabled" disabled title="Cannot delete the last admin account">
                       <span class="material-icons">delete</span>

@@ -1285,7 +1285,13 @@
                         <a href="{{ url_for('unitcoordinator.facilitator_profile', facilitator_id=f.id) }}" class="inline-flex items-center gap-1 px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">
                           <span class="material-icons text-base">visibility</span> View Profile
                         </a>
-                        {% if not f.is_ready %}
+                        {% if not f.has_profile %}
+                          <button type="button" 
+                                  onclick="resendSetupEmail({{ f.id }}, '{{ f.email }}')"
+                                  class="inline-flex items-center gap-1 px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50 text-blue-600 border-blue-300 hover:bg-blue-50">
+                            <span class="material-icons text-base">email</span> Resend Setup Email
+                          </button>
+                        {% elif not f.is_ready %}
                           <button type="button" class="inline-flex items-center gap-1 px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">
                             <span class="material-icons text-base">notifications_active</span> Remind Setup
                           </button>

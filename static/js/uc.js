@@ -6579,3 +6579,37 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('facilitator-modal-cancel').addEventListener('click', closeFacilitatorModal);
   document.getElementById('facilitator-modal-select').addEventListener('click', selectMultipleFacilitators);
 });
+
+// ===== Resend Setup Email =====
+async function resendSetupEmail(facilitatorId, email) {
+  const unitId = getUnitId();
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  if (!confirm(`Resend account setup email to ${email}?`)) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/unitcoordinator/units/${unitId}/facilitators/${facilitatorId}/resend-setup-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (data.ok) {
+      showSimpleNotification(`Setup email sent to ${email}!`, 'success');
+    } else {
+      showSimpleNotification(data.error || 'Failed to send email', 'error');
+    }
+  } catch (error) {
+    console.error('Error resending setup email:', error);
+    showSimpleNotification('Failed to send email', 'error');
+  }
+}

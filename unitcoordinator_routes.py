@@ -2054,6 +2054,46 @@ def confirm_facilitators():
         return jsonify({"ok": False, "error": f"Failed to create facilitators: {e}"}), 500
 
 
+@unitcoordinator_bp.post("/units/<int:unit_id>/facilitators/<int:facilitator_id>/resend-setup-email")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def resend_setup_email(unit_id: int, facilitator_id: int):
+    """
+    Resend the account setup email to a facilitator who hasn't completed setup.
+    """
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found"}), 403
+    
+    # Get the facilitator user
+    facilitator = User.query.get(facilitator_id)
+    if not facilitator:
+        return jsonify({"ok": False, "error": "Facilitator not found"}), 404
+    
+    # Check if facilitator is linked to this unit
+    unit_fac = UnitFacilitator.query.filter_by(unit_id=unit.id, user_id=facilitator_id).first()
+    if not unit_fac:
+        return jsonify({"ok": False, "error": "Facilitator not linked to this unit"}), 403
+    
+    # Check if account setup is already complete
+    if facilitator.first_name and facilitator.last_name and facilitator.password_hash:
+        return jsonify({"ok": False, "error": "This facilitator has already completed account setup"}), 400
+    
+    # Send the setup email
+    from email_service import send_welcome_email
+    try:
+        send_welcome_email(facilitator.email, user_role=facilitator.role)
+        print(f"✅ Resent setup email to {facilitator.email}")
+        return jsonify({
+            "ok": True,
+            "message": f"Setup email resent to {facilitator.email}"
+        }), 200
+    except Exception as e:
+        print(f"❌ Failed to resend setup email to {facilitator.email}: {e}")
+        return jsonify({"ok": False, "error": f"Failed to send email: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.delete("/units/<int:unit_id>/facilitators")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
