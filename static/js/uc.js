@@ -390,10 +390,11 @@ const startPicker = flatpickr("#start_calendar", {
   inline: true,
   dateFormat: DATE_FMT,
   defaultDate: today,
-  minDate: "today",
   onChange: (selectedDates, dateStr) => {
     startInput.value = dateStr;
+    // Set end date minimum to start date (but allow any past/future start date)
     endPicker.set("minDate", selectedDates[0] || null);
+    // If end date is before new start date, update it
     if (endPicker.selectedDates[0] && selectedDates[0] && endPicker.selectedDates[0] < selectedDates[0]) {
       endPicker.setDate(selectedDates[0], true);
     }
@@ -405,9 +406,9 @@ const endPicker = flatpickr("#end_calendar", {
   inline: true,
   dateFormat: DATE_FMT,
   defaultDate: today,
-  minDate: "today",
   onChange: (selectedDates, dateStr) => {
     endInput.value = dateStr;
+    // Set start date maximum to end date (but allow any past/future end date)
     startPicker.set("maxDate", selectedDates[0] || null);
     updateDateSummary();
   }
