@@ -2602,6 +2602,14 @@ function saveUnavailability() {
         // Reload unavailability data
         loadUnavailabilityData();
         
+        // Remove red highlight from Unavailability tab
+        const unavailabilityTab = document.getElementById('unavailability-nav');
+        if (unavailabilityTab) {
+            unavailabilityTab.classList.remove('pending-action');
+            const badge = unavailabilityTab.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+        
         // Close modal
         modal.style.display = 'none';
         
@@ -2846,6 +2854,14 @@ function clearAllUnavailability() {
         loadUnavailabilityData();
         generateCalendar();
         updateRecentUnavailabilityList();
+        
+        // Remove red highlight from Unavailability tab
+        const unavailabilityTab = document.getElementById('unavailability-nav');
+        if (unavailabilityTab) {
+            unavailabilityTab.classList.remove('pending-action');
+            const badge = unavailabilityTab.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
         
         // Show success message
         alert(`Successfully cleared ${result.deleted_count} unavailability entries. You are now available for all days in this unit.`);
@@ -3695,6 +3711,14 @@ async function saveSkills() {
 
         const data = await response.json();
         showNotification(data.message || 'Skills saved successfully!', 'success');
+        
+        // Remove red highlight from Skills tab
+        const skillsTab = document.getElementById('skills-nav');
+        if (skillsTab) {
+            skillsTab.classList.remove('pending-action');
+            const badge = skillsTab.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
         
         // Reload skills to reflect changes
         loadSkills();
