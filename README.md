@@ -1,27 +1,26 @@
-# ScheduleME
+# ScheduleME 📅
 
 A modern web application for managing university course schedules, facilitator assignments, and administrative workflows.
 
-## Features
+## ✨ Features
 
-- Role-based access control (Admin, Unit Coordinators, Facilitators)
-- Smart scheduling with conflict detection
-- Facilitator availability and skills management
-- Email notifications via AWS SES
-- CSV import/export for bulk operations
-- Real-time session tracking and swap requests
-- Responsive design for desktop and mobile
+- 👥 Role-based access control (Admin, Unit Coordinators, Facilitators)
+- 🧠 Smart scheduling with conflict detection
+- 📊 Facilitator availability and skills management
+- 📧 Email notifications via AWS SES
+- 📁 CSV import/export for bulk operations
+- 🔄 Real-time session tracking and swap requests
+- 📱 Responsive design for desktop and mobile
 
-## Tech Stack
+## 🛠️ Tech Stack
 
 - **Backend:** Python Flask
-- **Database:** SQLite / PostgreSQL
-- **Frontend:** HTML5, CSS3, JavaScript, Tailwind CSS
-- **Authentication:** Google OAuth 2.0
+- **Database:** SQLite
+- **Frontend:** HTML5, CSS3, JavaScript
 - **Email:** AWS SES
 - **Deployment:** AWS EC2
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.8+
@@ -39,36 +38,26 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Configuration
+## ⚙️ Configuration
 
-### Environment Variables
-
-Create a `.env` file:
+Create a `.env` file in the project root:
 
 ```
-GOOGLE_CLIENT_ID=your_client_id
-GOOGLE_CLIENT_SECRET=your_client_secret
+# AWS SES Email
 AWS_ACCESS_KEY_ID=your_aws_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret
 SES_REGION=ap-southeast-1
 SES_SENDER_EMAIL=noreply@yourdomain.com
+
+# App Settings
 SECRET_KEY=your_secret_key
 BASE_URL=http://localhost:5000
 PORT=5000
 ```
 
-### Google OAuth Setup
+For AWS SES setup, see `docs/EMAIL_SETUP.md`
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Enable Google+ API
-4. Create OAuth 2.0 Client ID (Web application)
-5. Add redirect URIs:
-   - `http://localhost:5000/auth/google/callback`
-   - `http://127.0.0.1:5000/auth/google/callback`
-6. Copy credentials to `.env`
-
-## Running the Application
+## ▶️ Running the Application
 
 ```bash
 # Development
@@ -80,7 +69,7 @@ gunicorn -w 4 -b 0.0.0.0:7321 application:app
 
 Access the app at `http://localhost:5000`
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 ├── templates/          # HTML templates
@@ -98,7 +87,7 @@ Access the app at `http://localhost:5000`
 └── requirements.txt   # Python dependencies
 ```
 
-## Documentation
+## 📚 Documentation
 
 See the `docs/` folder for detailed guides on:
 - System architecture and role hierarchy
@@ -106,10 +95,10 @@ See the `docs/` folder for detailed guides on:
 - Scheduling algorithm and optimization
 - CSV import/export workflows
 
-## Support
+## 💬 Support
 
 For issues or questions, please create an issue on GitHub.
 
 ---
 
-**Built by Team 42 for CITS3200**
+**Built by Team 42 for CITS3200** ✨
