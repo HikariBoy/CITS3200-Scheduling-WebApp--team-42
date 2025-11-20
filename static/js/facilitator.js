@@ -2386,6 +2386,11 @@ function resetUnavailabilityForm() {
     // Clear time ranges
     const container = document.getElementById('time-ranges-container');
     container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
+    
+    // Always show time range section and button when resetting (since full-day is unchecked)
+    const addTimeRangeBtn = document.getElementById('add-time-range');
+    container.style.display = 'block';
+    if (addTimeRangeBtn) addTimeRangeBtn.style.display = 'block';
 }
 
 function initUnavailabilityModal() {
