@@ -2243,8 +2243,16 @@ function generateCalendar() {
     const calendarDays = document.getElementById('unavailability-calendar-days');
     if (!calendarDays) return;
     
-    // Get current calendar state
-    const currentDate = window.calendarCurrentDate || new Date();
+    // Get current calendar state - use unit start date if not set
+    if (!window.calendarCurrentDate) {
+        if (window.currentUnit && window.currentUnit.start_date) {
+            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
+        } else {
+            window.calendarCurrentDate = new Date();
+        }
+    }
+    
+    const currentDate = window.calendarCurrentDate;
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
@@ -2750,7 +2758,12 @@ function navigateCalendar(direction) {
     
     // Initialize calendar current date if not set
     if (!window.calendarCurrentDate) {
-        window.calendarCurrentDate = new Date();
+        // Try to use unit start date if available
+        if (window.currentUnit && window.currentUnit.start_date) {
+            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
+        } else {
+            window.calendarCurrentDate = new Date();
+        }
     }
     
     // Navigate to previous/next month
