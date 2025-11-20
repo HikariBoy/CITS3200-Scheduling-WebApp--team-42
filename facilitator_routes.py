@@ -423,6 +423,8 @@ def dashboard():
     
     # Check if facilitator has configured availability for current unit
     availability_configured = False
+    skills_configured = False
+    
     if current_unit:
         unit_facilitator = UnitFacilitator.query.filter_by(
             user_id=user.id,
@@ -431,6 +433,18 @@ def dashboard():
         
         if unit_facilitator:
             availability_configured = unit_facilitator.availability_configured
+        
+        # Check if facilitator has set skills for any modules in this unit
+        skills_count = (
+            db.session.query(FacilitatorSkill)
+            .join(Module, FacilitatorSkill.module_id == Module.id)
+            .filter(
+                FacilitatorSkill.facilitator_id == user.id,
+                Module.unit_id == current_unit.id
+            )
+            .count()
+        )
+        skills_configured = skills_count > 0
     
     return render_template("facilitator_dashboard.html", 
                          user=user, 
@@ -441,7 +455,8 @@ def dashboard():
                          units_data=units_data,
                          has_no_units=has_no_units,
                          today_sessions_count=today_sessions_count,
-                         availability_configured=availability_configured)
+                         availability_configured=availability_configured,
+                         skills_configured=skills_configured)
 
 
 @facilitator_bp.route("/")

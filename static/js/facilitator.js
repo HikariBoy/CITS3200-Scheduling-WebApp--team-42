@@ -2243,8 +2243,16 @@ function generateCalendar() {
     const calendarDays = document.getElementById('unavailability-calendar-days');
     if (!calendarDays) return;
     
-    // Get current calendar state
-    const currentDate = window.calendarCurrentDate || new Date();
+    // Get current calendar state - use unit start date if not set
+    if (!window.calendarCurrentDate) {
+        if (window.currentUnit && window.currentUnit.start_date) {
+            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
+        } else {
+            window.calendarCurrentDate = new Date();
+        }
+    }
+    
+    const currentDate = window.calendarCurrentDate;
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
@@ -2386,6 +2394,11 @@ function resetUnavailabilityForm() {
     // Clear time ranges
     const container = document.getElementById('time-ranges-container');
     container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
+    
+    // Always show time range section and button when resetting (since full-day is unchecked)
+    const addTimeRangeBtn = document.getElementById('add-time-range');
+    container.style.display = 'block';
+    if (addTimeRangeBtn) addTimeRangeBtn.style.display = 'block';
 }
 
 function initUnavailabilityModal() {
@@ -2745,7 +2758,12 @@ function navigateCalendar(direction) {
     
     // Initialize calendar current date if not set
     if (!window.calendarCurrentDate) {
-        window.calendarCurrentDate = new Date();
+        // Try to use unit start date if available
+        if (window.currentUnit && window.currentUnit.start_date) {
+            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
+        } else {
+            window.calendarCurrentDate = new Date();
+        }
     }
     
     // Navigate to previous/next month

@@ -250,13 +250,15 @@
             <span class="material-icons" aria-hidden="true">dashboard</span>
             <span>Dashboard</span>
         </a>
-        <a href="#unavailability" class="dashboard-nav-item" id="unavailability-nav">
+        <a href="#unavailability" class="dashboard-nav-item{% if current_unit and not availability_configured %} pending-action{% endif %}" id="unavailability-nav">
             <span class="material-icons" aria-hidden="true">event_busy</span>
             <span>Unavailability</span>
+            {% if current_unit and not availability_configured %}<span class="pending-badge">!</span>{% endif %}
         </a>
-        <a href="#skills" class="dashboard-nav-item" id="skills-nav">
+        <a href="#skills" class="dashboard-nav-item{% if current_unit and not skills_configured %} pending-action{% endif %}" id="skills-nav">
             <span class="material-icons" aria-hidden="true">psychology</span>
             <span>Skills</span>
+            {% if current_unit and not skills_configured %}<span class="pending-badge">!</span>{% endif %}
         </a>
         <a href="#schedule" class="dashboard-nav-item" id="schedule-nav">
             <span class="material-icons" aria-hidden="true">calendar_today</span>

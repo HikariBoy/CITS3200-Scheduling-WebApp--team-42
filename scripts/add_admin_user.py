@@ -6,8 +6,9 @@ import os
 import sys
 from werkzeug.security import generate_password_hash
 
-# Add the project directory to the Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the project root directory to the Python path (go up one level from scripts/)
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 from models import db, User, UserRole
 from flask import Flask
