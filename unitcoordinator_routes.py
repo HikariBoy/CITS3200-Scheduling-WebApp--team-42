@@ -1632,11 +1632,9 @@ def facilitator_profile(facilitator_id):
     # Get facilitator user by ID (facilitator_id is actually a User ID)
     facilitator_user = User.query.get_or_404(facilitator_id)
     
-    # Verify the user is actually a facilitator
-    if facilitator_user.role != UserRole.FACILITATOR:
-        return "User is not a facilitator", 404
-    
     # Get all units this facilitator is assigned to
+    # (Check if they have UnitFacilitator records instead of checking role,
+    # since users can have dual roles like ADMIN+facilitator or UC+facilitator)
     unit_facilitator_records = (
         db.session.query(Unit, UnitFacilitator)
         .join(UnitFacilitator, UnitFacilitator.unit_id == Unit.id)
@@ -1749,9 +1747,10 @@ def edit_facilitator_profile(facilitator_id):
     # Get facilitator user by ID (facilitator_id is actually a User ID)
     facilitator_user = User.query.get_or_404(facilitator_id)
     
-    # Verify the user is actually a facilitator
-    if facilitator_user.role != UserRole.FACILITATOR:
-        flash('User is not a facilitator', 'error')
+    # Verify the user has facilitator assignments (supports dual roles)
+    has_facilitator_assignments = UnitFacilitator.query.filter_by(user_id=facilitator_id).first() is not None
+    if not has_facilitator_assignments:
+        flash('User is not assigned as a facilitator to any units', 'error')
         return redirect(url_for('unitcoordinator.dashboard'))
     
     if request.method == 'POST':
