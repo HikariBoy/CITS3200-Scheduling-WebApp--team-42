@@ -1124,6 +1124,38 @@ input:checked + .toggle-slider:before {
     background-color: #e5e7eb;
 }
 
+/* Pending action highlight */
+.dashboard-nav-item.pending-action {
+    position: relative;
+    border: 2px solid #ef4444;
+    background-color: #fef2f2;
+}
+
+.dashboard-nav-item.pending-action:not(.active) {
+    color: #dc2626;
+}
+
+.dashboard-nav-item.pending-action:hover {
+    background-color: #fee2e2;
+}
+
+.pending-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background-color: #ef4444;
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
 /* Notification badge */
 .notification-badge {
     background-color: #dc2626; 
