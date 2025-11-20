@@ -692,3 +692,321 @@ Your Scheduling Team
     except Exception as e:
         print(f"Unexpected error sending password reset email: {str(e)}")
         return False
+
+
+def send_reminder_email(recipient_email, recipient_name, unit_code, unit_name, base_url=None, use_mock=False):
+    """
+    Send a reminder email to facilitator to complete their availability and skills for a unit.
+    
+    Args:
+        recipient_email: Email address of the facilitator
+        recipient_name: First name of the facilitator
+        unit_code: Unit code (e.g., "CITS3200")
+        unit_name: Full unit name
+        base_url: Base URL for the application (optional)
+        use_mock: If True, print email instead of sending (for testing)
+    
+    Returns:
+        bool: True if email sent successfully, False otherwise
+    """
+    if not valid_email(recipient_email):
+        print(f"Invalid email address: {recipient_email}")
+        return False
+    
+    # Get configuration
+    sender_email = os.environ.get('SES_SENDER_EMAIL', 'noreply@example.com')
+    if not base_url:
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    
+    # Remove trailing slash from base_url if present
+    base_url = base_url.rstrip('/')
+    
+    # Create login link
+    login_link = f"{base_url}/auth/login"
+    
+    # Email subject
+    subject = f"Reminder: Complete Your Profile for {unit_code}"
+    
+    # Plain text body
+    body_text = f"""
+    Hi {recipient_name},
+
+    This is a friendly reminder to complete your profile for {unit_code} - {unit_name}.
+
+    We need you to:
+    1. Set your availability for the unit
+    2. Update your skills and experience
+
+    Please log in to complete your profile:
+    {login_link}
+
+    If you have any questions, please contact your Unit Coordinator.
+
+    Best regards,
+    The ScheduleME Team
+    """
+    
+    # HTML body
+    body_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">⏰ Profile Reminder</h1>
+        </div>
+        
+        <div style="background-color: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+            <p style="font-size: 16px; margin-bottom: 20px;">Hi {recipient_name},</p>
+            
+            <p style="font-size: 16px; margin-bottom: 20px;">
+                This is a friendly reminder to complete your profile for <strong>{unit_code} - {unit_name}</strong>.
+            </p>
+            
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 0; font-size: 16px;"><strong>We need you to:</strong></p>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>Set your availability for the unit</li>
+                    <li>Update your skills and experience</li>
+                </ul>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{login_link}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
+                          font-weight: bold; font-size: 16px;">
+                    Log In to Complete Profile
+                </a>
+            </div>
+            
+            <p style="font-size: 14px; color: #666; margin-top: 30px;">
+                If you have any questions, please contact your Unit Coordinator.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+            
+            <p style="font-size: 12px; color: #999; text-align: center;">
+                This is an automated reminder from ScheduleME<br>
+                Please do not reply to this email
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Check if we should mock emails
+    if use_mock:
+        print(f"Mock reminder email sent to {recipient_email}")
+        print(f"Subject: {subject}")
+        print(f"Login link: {login_link}")
+        return True
+    
+    # Send via AWS SES
+    try:
+        aws_key = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY')
+        aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY')
+        
+        ses_client = boto3.client(
+            'ses',
+            region_name=os.environ.get('SES_REGION', 'ap-southeast-1'),
+            aws_access_key_id=aws_key,
+            aws_secret_access_key=aws_secret
+        )
+        
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [recipient_email]},
+            Message={
+                'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                'Body': {
+                    'Text': {'Data': body_text, 'Charset': 'UTF-8'},
+                    'Html': {'Data': body_html, 'Charset': 'UTF-8'}
+                }
+            }
+        )
+        
+        print(f"Reminder email sent to {recipient_email} for {unit_code}")
+        print(f"Message ID: {response['MessageId']}")
+        return True
+        
+    except ClientError as e:
+        print(f"Error sending reminder email: {e.response['Error']['Message']}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error sending reminder email: {str(e)}")
+        return False
+
+
+def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_name, base_url=None, use_mock=False):
+    """
+    Send an email to a facilitator when they're added to a new unit.
+    
+    Args:
+        recipient_email: Email address of the facilitator
+        recipient_name: First name of the facilitator
+        unit_code: Unit code (e.g., "CITS3200")
+        unit_name: Full unit name
+        base_url: Base URL for the application (optional)
+        use_mock: If True, print email instead of sending (for testing)
+    
+    Returns:
+        bool: True if email sent successfully, False otherwise
+    """
+    if not valid_email(recipient_email):
+        print(f"Invalid email address: {recipient_email}")
+        return False
+    
+    # Get configuration
+    sender_email = os.environ.get('SES_SENDER_EMAIL', 'noreply@example.com')
+    if not base_url:
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    
+    # Remove trailing slash from base_url if present
+    base_url = base_url.rstrip('/')
+    
+    # Create login link
+    login_link = f"{base_url}/auth/login"
+    setup_link = f"{base_url}/auth/setup"
+    
+    # Email subject
+    subject = f"You've Been Added to {unit_code}"
+    
+    # Plain text body
+    body_text = f"""
+    Hi {recipient_name},
+
+    Great news! You've been added as a facilitator for {unit_code} - {unit_name}.
+
+    To get started, please:
+    
+    1. Set up your account (if you haven't already - you only need to do this once):
+       {setup_link}
+    
+    2. Configure your availability for {unit_code}
+    3. Set your skills and experience for the unit's modules
+
+    Once you've completed these steps, the Unit Coordinator will be able to assign you to sessions.
+
+    Log in here: {login_link}
+
+    If you have any questions, please contact your Unit Coordinator.
+
+    Best regards,
+    The ScheduleME Team
+    """
+    
+    # HTML body
+    body_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🎉 You're In!</h1>
+        </div>
+        
+        <div style="background-color: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+            <p style="font-size: 16px; margin-bottom: 20px;">Hi {recipient_name},</p>
+            
+            <p style="font-size: 16px; margin-bottom: 20px;">
+                Great news! You've been added as a facilitator for <strong>{unit_code} - {unit_name}</strong>.
+            </p>
+            
+            <div style="background-color: #e0f2fe; border-left: 4px solid #0284c7; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>To get started:</strong></p>
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li style="margin-bottom: 8px;">
+                        <strong>Set up your account</strong> (if you haven't already - you only need to do this once)
+                    </li>
+                    <li style="margin-bottom: 8px;">
+                        <strong>Configure your availability</strong> for {unit_code}
+                    </li>
+                    <li style="margin-bottom: 8px;">
+                        <strong>Set your skills and experience</strong> for the unit's modules
+                    </li>
+                </ol>
+            </div>
+            
+            <p style="font-size: 14px; color: #666; margin: 20px 0;">
+                Once you've completed these steps, the Unit Coordinator will be able to assign you to sessions.
+            </p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{login_link}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
+                          font-weight: bold; font-size: 16px; margin-right: 10px;">
+                    Log In
+                </a>
+                <a href="{setup_link}" 
+                   style="display: inline-block; background: #10b981; 
+                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
+                          font-weight: bold; font-size: 16px;">
+                    Set Up Account
+                </a>
+            </div>
+            
+            <p style="font-size: 14px; color: #666; margin-top: 30px;">
+                If you have any questions, please contact your Unit Coordinator.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+            
+            <p style="font-size: 12px; color: #999; text-align: center;">
+                This is an automated notification from ScheduleME<br>
+                Please do not reply to this email
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Check if we should mock emails
+    if use_mock:
+        print(f"Mock unit addition email sent to {recipient_email}")
+        print(f"Subject: {subject}")
+        print(f"Login link: {login_link}")
+        print(f"Setup link: {setup_link}")
+        return True
+    
+    # Send via AWS SES
+    try:
+        aws_key = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY')
+        aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY')
+        
+        ses_client = boto3.client(
+            'ses',
+            region_name=os.environ.get('SES_REGION', 'ap-southeast-1'),
+            aws_access_key_id=aws_key,
+            aws_secret_access_key=aws_secret
+        )
+        
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [recipient_email]},
+            Message={
+                'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                'Body': {
+                    'Text': {'Data': body_text, 'Charset': 'UTF-8'},
+                    'Html': {'Data': body_html, 'Charset': 'UTF-8'}
+                }
+            }
+        )
+        
+        print(f"Unit addition email sent to {recipient_email} for {unit_code}")
+        print(f"Message ID: {response['MessageId']}")
+        return True
+        
+    except ClientError as e:
+        print(f"Error sending unit addition email: {e.response['Error']['Message']}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error sending unit addition email: {str(e)}")
+        return False
