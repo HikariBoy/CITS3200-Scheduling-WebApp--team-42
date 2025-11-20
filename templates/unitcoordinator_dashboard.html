@@ -1084,9 +1084,15 @@
             {% set ready_pct = (fp.ready * 100 // total) if total else 0 %}
 
             <div class="mt-6 bg-gray-50 border rounded-2xl p-5">
-              <header class="flex items-center gap-2 mb-2">
-                <span class="material-icons text-gray-700">group</span>
-                <h3 class="font-semibold text-gray-900">Facilitator Setup Progress</h3>
+              <header class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="material-icons text-gray-700">group</span>
+                  <h3 class="font-semibold text-gray-900">Facilitator Setup Progress</h3>
+                </div>
+                <button type="button" onclick="openAddFacilitatorModal()" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white hover:opacity-90" style="background-color: #7c3aed;">
+                  <span class="material-icons" style="font-size: 16px;">person_add</span>
+                  Add Facilitator
+                </button>
               </header>
               <p class="text-sm text-gray-600 mb-5">
                 Track how many facilitators have completed their account setup, availability configuration, and skills setup.
@@ -1155,10 +1161,6 @@
 
                 <!-- search/filter placeholders -->
                 <div class="flex items-center gap-2">
-                  <button type="button" onclick="openAddFacilitatorModal()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 font-medium">
-                    <span class="material-icons text-base">person_add</span>
-                    Add Facilitator
-                  </button>
                   <label class="relative">
                     <span class="material-icons absolute left-1 top-1.5 -translate-y-1/2 text-gray-400 text-base">search</span>
                     <input type="search" class="pl-8 pr-3 py-1.5 border rounded-lg text-sm focus:outline-none"
@@ -2257,7 +2259,11 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
     .then(response => response.json())
     .then(data => {
       if (data.ok) {
-        alert(`✅ ${data.message || 'Facilitator added successfully'}`);
+        let message = `✅ ${data.message || 'Facilitator added successfully'}`;
+        if (data.warning) {
+          message += `\n\n⚠️ ${data.warning}`;
+        }
+        alert(message);
         closeAddFacilitatorModal();
         // Reload the page to show the new facilitator
         window.location.reload();

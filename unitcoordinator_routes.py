@@ -2156,9 +2156,15 @@ def add_single_facilitator(unit_id: int):
         if is_new_user:
             message += " (new account created)"
         
+        # Warn if schedule is already published
+        warning = None
+        if hasattr(unit, 'schedule_status') and unit.schedule_status and unit.schedule_status.value == 'published':
+            warning = "Note: This unit's schedule is already published. You may need to manually assign this facilitator to sessions."
+        
         return jsonify({
             "ok": True,
             "message": message,
+            "warning": warning,
             "is_new_user": is_new_user
         }), 201
         
