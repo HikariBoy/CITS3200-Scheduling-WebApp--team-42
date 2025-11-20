@@ -1050,6 +1050,15 @@ def clear_all_unavailability():
         preferences['availability_status'][str(unit_id)] = 'available_all_days'
         user.preferences = json.dumps(preferences)
         
+        # Mark availability as configured in UnitFacilitator
+        unit_facilitator = UnitFacilitator.query.filter_by(
+            user_id=user.id,
+            unit_id=unit_id
+        ).first()
+        
+        if unit_facilitator:
+            unit_facilitator.availability_configured = True
+        
         db.session.commit()
         
         return jsonify({
