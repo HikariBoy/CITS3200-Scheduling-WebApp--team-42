@@ -2118,11 +2118,7 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
   
   // Experience Modal Functions
   function openExperienceModal(element) {
-    console.log('openExperienceModal called', element);
-    alert('Click detected! Opening modal...'); // Temporary test
-    
     const modal = document.getElementById('experienceModal');
-    console.log('Modal element:', modal);
     
     if (!modal) {
       console.error('Modal not found!');
@@ -2133,8 +2129,6 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
     const level = element.getAttribute('data-level');
     const experienceFull = element.getAttribute('data-experience-full');
     
-    console.log('Data:', { module, level, experienceFull });
-    
     // Update modal content
     document.getElementById('modal-skill-module').textContent = module;
     document.getElementById('modal-skill-level').textContent = level.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -2143,7 +2137,6 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
     // Show modal
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-    console.log('Modal should be visible now');
   }
   
   function closeExperienceModal() {
