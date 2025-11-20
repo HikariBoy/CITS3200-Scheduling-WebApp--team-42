@@ -2084,6 +2084,89 @@ def confirm_facilitators():
         return jsonify({"ok": False, "error": f"Failed to create facilitators: {e}"}), 500
 
 
+@unitcoordinator_bp.post("/units/<int:unit_id>/add-facilitator")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def add_single_facilitator(unit_id: int):
+    """
+    Add a single facilitator to a unit by email address.
+    """
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found"}), 403
+    
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+    
+    if not email or not _valid_email(email):
+        return jsonify({"ok": False, "error": "Invalid email address"}), 400
+    
+    # Check if facilitator user exists
+    facilitator = User.query.filter_by(email=email).first()
+    is_new_user = False
+    
+    if not facilitator:
+        # Create new facilitator user
+        facilitator = User(email=email, role=UserRole.FACILITATOR)
+        db.session.add(facilitator)
+        db.session.flush()
+        is_new_user = True
+    
+    # Check if already linked to this unit
+    existing_link = UnitFacilitator.query.filter_by(
+        unit_id=unit.id,
+        user_id=facilitator.id
+    ).first()
+    
+    if existing_link:
+        return jsonify({"ok": False, "error": "This facilitator is already added to this unit"}), 400
+    
+    # Create link
+    link = UnitFacilitator(unit_id=unit.id, user_id=facilitator.id)
+    db.session.add(link)
+    
+    try:
+        db.session.commit()
+        
+        # Send appropriate email
+        from email_service import send_welcome_email, send_unit_addition_email
+        
+        if is_new_user:
+            # Send welcome email to new user
+            try:
+                send_welcome_email(email, user_role=UserRole.FACILITATOR)
+                print(f"✅ Welcome email sent to {email}")
+            except Exception as e:
+                print(f"❌ Failed to send welcome email to {email}: {e}")
+        else:
+            # Send unit addition email to existing user
+            try:
+                send_unit_addition_email(
+                    email,
+                    facilitator.first_name or 'there',
+                    unit.unit_code,
+                    unit.unit_name
+                )
+                print(f"✅ Unit addition email sent to {email}")
+            except Exception as e:
+                print(f"❌ Failed to send unit addition email to {email}: {e}")
+        
+        message = f"Facilitator {email} added successfully"
+        if is_new_user:
+            message += " (new account created)"
+        
+        return jsonify({
+            "ok": True,
+            "message": message,
+            "is_new_user": is_new_user
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Failed to add facilitator: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.post("/units/<int:unit_id>/facilitators/<int:facilitator_id>/resend-setup-email")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])

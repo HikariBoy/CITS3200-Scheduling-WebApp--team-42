@@ -1292,7 +1292,9 @@
                             <span class="material-icons text-base">email</span> Resend Setup Email
                           </button>
                         {% elif not f.is_ready %}
-                          <button type="button" class="inline-flex items-center gap-1 px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">
+                          <button type="button" 
+                                  onclick="remindSetup({{ unit.id }}, {{ f.id }}, '{{ f.email }}', '{{ unit.unit_code }}')"
+                                  class="inline-flex items-center gap-1 px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50 text-orange-600 border-orange-300 hover:bg-orange-50">
                             <span class="material-icons text-base">notifications_active</span> Remind Setup
                           </button>
                         {% endif %}
@@ -1994,7 +1996,13 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
 
             <!-- Facilitators -->
             <div>
-              <h3 class="text-base font-semibold mb-3">Facilitators (<span id="rv_fac_count">0</span>)</h3>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 class="text-base font-semibold mb-0">Facilitators (<span id="rv_fac_count">0</span>)</h3>
+                <button type="button" onclick="openAddFacilitatorModal()" class="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                  <span class="material-icons text-base">person_add</span>
+                  Add Facilitator
+                </button>
+              </div>
               <ul id="rv_facilitators" class="space-y-2"></ul>
             </div>
 
@@ -2154,6 +2162,117 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
       closeExperienceModal();
     }
   });
+
+  // Resend Setup Email function
+  function resendSetupEmail(facilitatorId, email) {
+    if (!confirm(`Resend setup email to ${email}?`)) return;
+    
+    fetch(`/unitcoordinator/units/{{ unit.id if unit else 0 }}/facilitators/${facilitatorId}/resend-setup-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.ok) {
+        alert(`✅ Setup email sent to ${email}`);
+      } else {
+        alert(`❌ Error: ${data.error || 'Failed to send email'}`);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('❌ Failed to send email. Please try again.');
+    });
+  }
+
+  // Remind Setup function
+  function remindSetup(unitId, facilitatorId, email, unitCode) {
+    if (!confirm(`Send reminder to ${email} to complete their profile for ${unitCode}?`)) return;
+    
+    fetch(`/unitcoordinator/units/${unitId}/facilitators/${facilitatorId}/remind-setup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.ok) {
+        alert(`✅ Reminder sent to ${email}`);
+      } else {
+        alert(`❌ Error: ${data.error || 'Failed to send reminder'}`);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('❌ Failed to send reminder. Please try again.');
+    });
+  }
+
+  // Add Facilitator Modal functions
+  function openAddFacilitatorModal() {
+    const modal = document.getElementById('add-facilitator-modal');
+    const emailInput = document.getElementById('new-facilitator-email');
+    emailInput.value = '';
+    modal.style.display = 'flex';
+  }
+
+  function closeAddFacilitatorModal() {
+    const modal = document.getElementById('add-facilitator-modal');
+    modal.style.display = 'none';
+  }
+
+  function addFacilitatorByEmail() {
+    const emailInput = document.getElementById('new-facilitator-email');
+    const email = emailInput.value.trim().toLowerCase();
+    
+    if (!email) {
+      alert('Please enter an email address');
+      return;
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert('Please enter a valid email address');
+      return;
+    }
+    
+    const unitId = {{ unit.id if unit else 0 }};
+    if (!unitId) {
+      alert('No unit selected');
+      return;
+    }
+    
+    // Send request to add facilitator
+    fetch(`/unitcoordinator/units/${unitId}/add-facilitator`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN
+      },
+      body: JSON.stringify({ email: email })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.ok) {
+        alert(`✅ ${data.message || 'Facilitator added successfully'}`);
+        closeAddFacilitatorModal();
+        // Reload the page to show the new facilitator
+        window.location.reload();
+      } else {
+        alert(`❌ Error: ${data.error || 'Failed to add facilitator'}`);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('❌ Failed to add facilitator. Please try again.');
+    });
+  }
 </script>
 
 
@@ -2379,6 +2498,34 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
     <div class="publish-modal-footer">
       <button class="publish-btn-secondary" id="publish-cancel" onclick="closePublishConfirmation()">Cancel</button>
       <button class="publish-btn-primary" id="publish-confirm" onclick="confirmPublish()">Publish Schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Facilitator Modal -->
+<div id="add-facilitator-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-content" style="max-width: 500px;">
+    <div class="modal-header">
+      <h3>Add Facilitator by Email</h3>
+      <button class="modal-close" onclick="closeAddFacilitatorModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-gray-600 mb-4">Enter the email address of the facilitator you want to add to this unit.</p>
+      
+      <div class="form-group">
+        <label for="new-facilitator-email">Email Address</label>
+        <input type="email" id="new-facilitator-email" placeholder="facilitator@example.com" class="form-control">
+        <p class="text-xs text-gray-500 mt-1">The facilitator will receive an email notification</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeAddFacilitatorModal()">Cancel</button>
+      <button class="btn-primary" onclick="addFacilitatorByEmail()">
+        <span class="material-icons text-base">person_add</span>
+        Add Facilitator
+      </button>
     </div>
   </div>
 </div>
