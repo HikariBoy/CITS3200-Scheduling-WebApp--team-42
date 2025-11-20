@@ -6,8 +6,9 @@ This will drop the existing database and recreate it with the updated models.
 import os
 import sys
 
-# Add the project directory to the Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the project root directory to the Python path (go up one level from scripts/)
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 # Set up Flask app and database
 from flask import Flask

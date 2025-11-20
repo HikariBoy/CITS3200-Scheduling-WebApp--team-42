@@ -1,8 +1,13 @@
 # add_uc.py
 import sys
+import os
 import argparse
 from getpass import getpass
 from werkzeug.security import generate_password_hash
+
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 # --- Imports: adjust to your project structure if needed ---
 # If your app exposes `app` and `db` from `application`, this works as-is.

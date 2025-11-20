@@ -1,3 +1,10 @@
+import os
+import sys
+
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 from application import app, db
 from models import User, UserRole
 from werkzeug.security import generate_password_hash

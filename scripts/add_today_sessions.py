@@ -1,3 +1,10 @@
+import os
+import sys
+
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 from application import app
 from models import db, Session, Module, Unit, User, UserRole, Assignment
 from datetime import datetime, timedelta, time
