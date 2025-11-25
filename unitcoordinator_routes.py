@@ -2299,22 +2299,62 @@ def remove_individual_facilitator(unit_id: int, email: str):
         return jsonify({"ok": False, "error": "Unit not found"}), 404
 
     try:
-        # Find the user by email
-        facilitator_user = User.query.filter_by(email=email, role=UserRole.FACILITATOR).first()
+        # Find the user by email (support dual roles)
+        facilitator_user = User.query.filter_by(email=email).first()
         if not facilitator_user:
             return jsonify({"ok": False, "error": "Facilitator not found"}), 404
 
-        # Find and remove the specific facilitator link
+        # Find the facilitator link
         link = UnitFacilitator.query.filter_by(unit_id=unit.id, user_id=facilitator_user.id).first()
         if not link:
             return jsonify({"ok": False, "error": "Facilitator not linked to this unit"}), 404
 
+        # Clean up all related data for this facilitator in this unit
+        
+        # 1. Delete session assignments
+        from models import SessionAssignment
+        SessionAssignment.query.filter_by(
+            unit_id=unit.id,
+            user_id=facilitator_user.id
+        ).delete()
+        
+        # 2. Delete notifications
+        from models import Notification
+        Notification.query.filter_by(
+            user_id=facilitator_user.id,
+            unit_id=unit.id
+        ).delete()
+        
+        # 3. Delete unavailability records
+        from models import Unavailability
+        Unavailability.query.filter_by(
+            user_id=facilitator_user.id,
+            unit_id=unit.id
+        ).delete()
+        
+        # 4. Delete skills
+        from models import FacilitatorSkill
+        FacilitatorSkill.query.filter_by(
+            user_id=facilitator_user.id,
+            unit_id=unit.id
+        ).delete()
+        
+        # 5. Delete swap requests (both as requester and target)
+        from models import SwapRequest
+        SwapRequest.query.filter(
+            db.or_(
+                SwapRequest.requester_id == facilitator_user.id,
+                SwapRequest.target_id == facilitator_user.id
+            )
+        ).filter(SwapRequest.unit_id == unit.id).delete(synchronize_session='fetch')
+        
+        # 6. Finally, delete the facilitator link
         db.session.delete(link)
         db.session.commit()
         
         return jsonify({
             "ok": True,
-            "message": f"Removed {email} from unit",
+            "message": f"Removed {email} from unit (including all assignments and data)",
             "removed_email": email
         }), 200
         
