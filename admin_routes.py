@@ -322,6 +322,24 @@ def delete_employee(employee_id):
         employee_name = employee.full_name if employee else 'Unknown'
         print(f"Deleting user: {employee_name} (Role: {employee.role})")
         
+        # CRITICAL: Delete unavailability records FIRST using raw SQL to avoid ORM cascade issues
+        from models import Unavailability, Notification, FacilitatorSkill
+        db.session.execute(
+            db.text("DELETE FROM unavailability WHERE user_id = :user_id"),
+            {"user_id": employee.id}
+        )
+        
+        # Also delete notifications and skills
+        db.session.execute(
+            db.text("DELETE FROM notification WHERE user_id = :user_id"),
+            {"user_id": employee.id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM facilitator_skill WHERE facilitator_id = :user_id"),
+            {"user_id": employee.id}
+        )
+        
+        # Now safe to delete the user
         db.session.delete(employee)
         db.session.commit()
         print("User deleted successfully")
