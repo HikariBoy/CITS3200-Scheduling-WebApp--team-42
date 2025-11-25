@@ -1,3 +1,20 @@
+// Helper function to add user_id to request data when UC is editing
+function addUserIdIfNeeded(data) {
+    if (window.IS_UC_EDITING && window.TARGET_USER_ID) {
+        return { ...data, user_id: window.TARGET_USER_ID };
+    }
+    return data;
+}
+
+// Helper function to add user_id to URL params when UC is editing
+function addUserIdToUrl(url) {
+    if (window.IS_UC_EDITING && window.TARGET_USER_ID) {
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}user_id=${window.TARGET_USER_ID}`;
+    }
+    return url;
+}
+
 // Navigation between dashboard, calendar, and notifications
 document.addEventListener('DOMContentLoaded', function() {
     const dashboardSections = document.querySelectorAll('#welcome, #alert, #stats, #details');
@@ -340,7 +357,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const currentUnitId = window.currentUnitId;
         
         if (currentUnitId) {
-            fetch(`/facilitator/unavailability?unit_id=${currentUnitId}`)
+            const url = addUserIdToUrl(`/facilitator/unavailability?unit_id=${currentUnitId}`);
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2833,15 +2851,17 @@ function deleteUnavailability(unavailabilityId) {
 }
 
 function clearAllUnavailability() {
+    const requestData = addUserIdIfNeeded({
+        unit_id: currentUnitId
+    });
+    
     fetch('/facilitator/unavailability/clear-all', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': window.csrfToken
         },
-        body: JSON.stringify({
-            unit_id: currentUnitId
-        })
+        body: JSON.stringify(requestData)
     })
     .then(response => response.json())
     .then(result => {
@@ -3515,7 +3535,8 @@ async function loadSkills() {
         return;
     }
 
-        const response = await fetch(`/facilitator/skills?unit_id=${currentUnitId}`, {
+        const url = addUserIdToUrl(`/facilitator/skills?unit_id=${currentUnitId}`);
+        const response = await fetch(url, {
             headers: {
                 'X-CSRFToken': window.csrfToken
             }
@@ -3691,17 +3712,19 @@ async function saveSkills() {
             saveBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Saving...';
         }
 
+        const requestData = addUserIdIfNeeded({
+            unit_id: currentUnitId,
+            skills: skillSelections,
+            experience_descriptions: experienceDescriptions
+        });
+        
         const response = await fetch('/facilitator/skills', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': window.csrfToken
             },
-            body: JSON.stringify({
-                unit_id: currentUnitId,
-                skills: skillSelections,
-                experience_descriptions: experienceDescriptions
-            })
+            body: JSON.stringify(requestData)
         });
 
         if (!response.ok) {
