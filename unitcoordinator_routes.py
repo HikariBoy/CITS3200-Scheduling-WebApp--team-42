@@ -2403,20 +2403,38 @@ def remove_individual_facilitator(unit_id: int, email: str):
         
         # 5. Delete swap requests (both as requester and target)
         # Note: This will cancel any pending swaps involving this facilitator
+        # SwapRequest doesn't have unit_id, need to join through assignments
         from models import SwapRequest
-        swap_count = SwapRequest.query.filter(
-            db.or_(
-                SwapRequest.requester_id == facilitator_user.id,
-                SwapRequest.target_id == facilitator_user.id
-            )
-        ).filter(SwapRequest.unit_id == unit.id).count()
         
-        SwapRequest.query.filter(
+        # Get swap request IDs for this facilitator in this unit
+        swap_ids = []
+        for swap in db.session.query(SwapRequest).filter(
             db.or_(
                 SwapRequest.requester_id == facilitator_user.id,
                 SwapRequest.target_id == facilitator_user.id
             )
-        ).filter(SwapRequest.unit_id == unit.id).delete(synchronize_session='fetch')
+        ).all():
+            # Check if either assignment belongs to this unit
+            req_assignment = Assignment.query.get(swap.requester_assignment_id)
+            if req_assignment:
+                req_session = Session.query.get(req_assignment.session_id)
+                if req_session:
+                    req_module = Module.query.get(req_session.module_id)
+                    if req_module and req_module.unit_id == unit.id:
+                        swap_ids.append(swap.id)
+                        continue
+            
+            tgt_assignment = Assignment.query.get(swap.target_assignment_id)
+            if tgt_assignment:
+                tgt_session = Session.query.get(tgt_assignment.session_id)
+                if tgt_session:
+                    tgt_module = Module.query.get(tgt_session.module_id)
+                    if tgt_module and tgt_module.unit_id == unit.id:
+                        swap_ids.append(swap.id)
+        
+        swap_count = len(swap_ids)
+        if swap_ids:
+            SwapRequest.query.filter(SwapRequest.id.in_(swap_ids)).delete(synchronize_session='fetch')
         
         # 6. Finally, delete the facilitator link
         db.session.delete(link)
