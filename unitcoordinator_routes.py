@@ -2427,15 +2427,12 @@ def remove_individual_facilitator(unit_id: int, email: str):
         
         # 5. Delete unavailability records
         from models import Unavailability
-        unavailability_ids = [
-            u.id for u in Unavailability.query.filter_by(
-                user_id=facilitator_user.id,
-                unit_id=unit.id
-            ).all()
-        ]
-        
-        if unavailability_ids:
-            Unavailability.query.filter(Unavailability.id.in_(unavailability_ids)).delete(synchronize_session='fetch')
+        # Use raw SQL to avoid ORM relationship issues
+        if unavailability_ids or True:  # Always try to delete
+            db.session.execute(
+                db.text("DELETE FROM unavailability WHERE user_id = :user_id AND unit_id = :unit_id"),
+                {"user_id": facilitator_user.id, "unit_id": unit.id}
+            )
         
         # 6. Delete skills
         from models import FacilitatorSkill
