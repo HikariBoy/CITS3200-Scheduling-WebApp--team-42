@@ -279,12 +279,24 @@ def delete_employee(employee_id):
         
         warning_message = None
         
-        # Clean up facilitator relationships
+        # Delete the user from database
+        employee_name = employee.full_name if employee else 'Unknown'
+        print(f"Deleting user: {employee_name} (Role: {employee.role})")
+        
+        # CRITICAL: Delete all related records in CORRECT ORDER using raw SQL to avoid ORM cascade issues
+        from models import Unavailability, Notification, FacilitatorSkill, SwapRequest
+        
+        # STEP 1: Delete swap requests FIRST (they reference assignments)
+        db.session.execute(
+            db.text("DELETE FROM swap_request WHERE requester_id = :user_id OR target_id = :user_id OR reviewed_by = :user_id"),
+            {"user_id": employee.id}
+        )
+        
+        # STEP 2: Collect warning messages for facilitators
+        warning_message = None
         if employee.role == UserRole.FACILITATOR:
-            # Check if they have assignments
             assignments = Assignment.query.filter_by(facilitator_id=employee.id).all()
             if assignments:
-                # Get details of assigned sessions for warning message
                 assigned_units = set()
                 for assignment in assignments:
                     session = Session.query.get(assignment.session_id)
@@ -300,12 +312,18 @@ def delete_employee(employee_id):
                     if len(assigned_units) > 3:
                         units_list += f" and {len(assigned_units) - 3} more"
                     warning_message = f"Removed {len(assignments)} session assignment(s) from units: {units_list}"
-            
-            # Remove all facilitator relationships
-            UnitFacilitator.query.filter_by(user_id=employee.id).delete()
-            Assignment.query.filter_by(facilitator_id=employee.id).delete()
         
-        # Clean up UC relationships
+        # STEP 3: Delete assignments and unit_facilitator links
+        db.session.execute(
+            db.text("DELETE FROM assignment WHERE facilitator_id = :user_id"),
+            {"user_id": employee.id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM unit_facilitator WHERE user_id = :user_id"),
+            {"user_id": employee.id}
+        )
+        
+        # STEP 4: Handle UC units (must be done before deleting user)
         if employee.role == UserRole.UNIT_COORDINATOR:
             units = Unit.query.filter_by(created_by=employee.id).all()
             if units:
@@ -318,18 +336,7 @@ def delete_employee(employee_id):
                 for unit in units:
                     db.session.delete(unit)
         
-        # Delete the user from database
-        employee_name = employee.full_name if employee else 'Unknown'
-        print(f"Deleting user: {employee_name} (Role: {employee.role})")
-        
-        # CRITICAL: Delete all related records FIRST using raw SQL to avoid ORM cascade issues
-        from models import Unavailability, Notification, FacilitatorSkill, SwapRequest
-        
-        # Delete swap requests (as requester, target, or reviewer)
-        db.session.execute(
-            db.text("DELETE FROM swap_request WHERE requester_id = :user_id OR target_id = :user_id OR reviewed_by = :user_id"),
-            {"user_id": employee.id}
-        )
+        # STEP 5: Delete other user-related records
         
         # Delete unavailability records
         db.session.execute(
