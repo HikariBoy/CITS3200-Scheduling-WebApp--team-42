@@ -1782,31 +1782,29 @@ def edit_facilitator_view(unit_id: int, email: str):
     skills_count = len(skills)
     availability_configured = link.availability_configured
     
-    # Build units_data for the template (only this unit for UC editing)
+    # Build units_data for the template with KPIs (only this unit for UC editing)
     units_data = [{
         'id': unit.id,
         'code': unit.unit_code,
         'name': unit.unit_name,
         'semester': unit.semester,
-        'year': unit.year
-    }]
-    
-    # Build current_unit_data with KPIs (simplified for UC editing mode)
-    current_unit_data = {
-        'id': unit.id,
-        'code': unit.unit_code,
-        'name': unit.unit_name,
-        'semester': unit.semester,
         'year': unit.year,
+        'schedule_status': unit.schedule_status.value if unit.schedule_status else 'draft',
         'kpis': {
             'this_week_hours': 0,
+            'active_sessions': 0,
+            'remaining_hours': 0,
+            'total_hours': 0,
             'upcoming_sessions': 0,
             'total_sessions': 0,
             'completed_sessions': 0
         },
         'upcoming_sessions': [],
         'past_sessions': []
-    }
+    }]
+    
+    # Use the same data for current_unit_dict
+    current_unit_data = units_data[0]
     
     # Render the facilitator dashboard template with UC editing context
     return render_template('facilitator_dashboard.html',
