@@ -43,7 +43,7 @@
                     {% if current_user.role.value in ['Unit_Coordinator', 'admin'] and facilitator_info.current_units %}
                     <!-- UC can edit facilitator's availability and skills for their units -->
                     {% set first_unit = facilitator_info.current_units[0] %}
-                    <a href="{{ url_for('unitcoordinator.edit_facilitator_view', unit_id=first_unit.id, email=user.email) }}" class="edit-profile-btn" style="background-color: #2196F3;">
+                    <a href="{{ url_for('unitcoordinator.edit_facilitator_view', unit_id=first_unit['id'], email=user.email) }}" class="edit-profile-btn" style="background-color: #2196F3;">
                         <span class="material-icons">calendar_today</span>
                         Edit Availability & Skills
                     </a>

@@ -1680,6 +1680,7 @@ def facilitator_profile(facilitator_id):
             avg_hours_per_week = round(unit_total_hours / weeks, 1) if weeks > 0 else 0.0
         
         unit_data = {
+            'id': unit.id,
             'code': unit.unit_code,
             'name': unit.unit_name,
             'start_date': unit.start_date,
