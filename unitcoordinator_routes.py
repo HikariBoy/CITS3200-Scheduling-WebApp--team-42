@@ -1791,6 +1791,23 @@ def edit_facilitator_view(unit_id: int, email: str):
         'year': unit.year
     }]
     
+    # Build current_unit_data with KPIs (simplified for UC editing mode)
+    current_unit_data = {
+        'id': unit.id,
+        'code': unit.unit_code,
+        'name': unit.unit_name,
+        'semester': unit.semester,
+        'year': unit.year,
+        'kpis': {
+            'this_week_hours': 0,
+            'upcoming_sessions': 0,
+            'total_sessions': 0,
+            'completed_sessions': 0
+        },
+        'upcoming_sessions': [],
+        'past_sessions': []
+    }
+    
     # Render the facilitator dashboard template with UC editing context
     return render_template('facilitator_dashboard.html',
                          unit=unit,
@@ -1798,12 +1815,14 @@ def edit_facilitator_view(unit_id: int, email: str):
                          units=[unit],  # List of units (just this one)
                          units_data=units_data,  # For JavaScript
                          current_unit=unit,  # The current unit being edited
+                         current_unit_dict=current_unit_data,  # For template KPIs
                          availability_configured=availability_configured,
                          skills_configured=skills_count > 0,
                          is_uc_editing=True,  # Flag to show "Back to UC View" button
                          uc_user=current_user,  # The actual UC user
                          uc_unit_id=unit_id,  # For back navigation
-                         has_no_units=False)  # UC is editing, so there's at least one unit
+                         has_no_units=False,  # UC is editing, so there's at least one unit
+                         today_sessions_count=0)  # No sessions to show in UC editing mode
 
 @unitcoordinator_bp.route('/facilitators/<int:facilitator_id>/edit', methods=['GET', 'POST'])
 @login_required
