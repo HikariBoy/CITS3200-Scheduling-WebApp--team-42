@@ -2359,28 +2359,28 @@ def remove_individual_facilitator(unit_id: int, email: str):
         SessionAssignment.query.filter_by(
             unit_id=unit.id,
             user_id=facilitator_user.id
-        ).delete()
+        ).delete(synchronize_session='fetch')
         
         # 2. Delete notifications
         from models import Notification
         Notification.query.filter_by(
             user_id=facilitator_user.id,
             unit_id=unit.id
-        ).delete()
+        ).delete(synchronize_session='fetch')
         
         # 3. Delete unavailability records
         from models import Unavailability
         Unavailability.query.filter_by(
             user_id=facilitator_user.id,
             unit_id=unit.id
-        ).delete()
+        ).delete(synchronize_session='fetch')
         
         # 4. Delete skills
         from models import FacilitatorSkill
         FacilitatorSkill.query.filter_by(
             user_id=facilitator_user.id,
             unit_id=unit.id
-        ).delete()
+        ).delete(synchronize_session='fetch')
         
         # 5. Delete swap requests (both as requester and target)
         # Note: This will cancel any pending swaps involving this facilitator
