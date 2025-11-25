@@ -2320,16 +2320,36 @@ def remove_individual_facilitator(unit_id: int, email: str):
             
             if unit_is_active:
                 # Check if facilitator has any assignments
-                from models import SessionAssignment
-                assignment_count = SessionAssignment.query.filter_by(
-                    unit_id=unit.id,
-                    user_id=facilitator_user.id
-                ).count()
+                from models import SessionAssignment, Session, Module
+                assignments = (
+                    db.session.query(SessionAssignment, Session, Module)
+                    .join(Session, SessionAssignment.session_id == Session.id)
+                    .join(Module, Session.module_id == Module.id)
+                    .filter(
+                        SessionAssignment.unit_id == unit.id,
+                        SessionAssignment.user_id == facilitator_user.id,
+                        Session.date >= today  # Only future/today sessions
+                    )
+                    .order_by(Session.date, Session.start_time)
+                    .all()
+                )
                 
-                if assignment_count > 0:
+                if assignments:
+                    # Build list of remaining sessions
+                    remaining_sessions = []
+                    for assignment, session, module in assignments[:5]:  # Show first 5
+                        session_info = f"{module.code} - {session.date.strftime('%d/%m/%Y')} {session.start_time.strftime('%H:%M')}"
+                        remaining_sessions.append(session_info)
+                    
+                    more_count = len(assignments) - 5
+                    sessions_list = "\n".join(remaining_sessions)
+                    if more_count > 0:
+                        sessions_list += f"\n... and {more_count} more"
+                    
                     return jsonify({
                         "ok": False, 
-                        "error": f"Cannot remove facilitator: Schedule is published and unit is still active. They have {assignment_count} session(s) assigned. You can only remove facilitators after the unit has ended (after {unit.end_date.strftime('%d/%m/%Y') if unit.end_date else 'N/A'})."
+                        "error": f"Cannot remove facilitator: Schedule is published and unit is still active.\n\nThey have {len(assignments)} upcoming session(s):\n{sessions_list}\n\nYou can only remove facilitators after all their sessions have finished (after {unit.end_date.strftime('%d/%m/%Y') if unit.end_date else 'the unit ends'}).",
+                        "remaining_sessions": len(assignments)
                     }), 400
 
         # Clean up all related data for this facilitator in this unit
