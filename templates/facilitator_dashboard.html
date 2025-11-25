@@ -141,8 +141,8 @@
   <script>
     // Pass context to JavaScript
     window.IS_UC_EDITING = {{ 'true' if is_uc_editing else 'false' }};
-    window.TARGET_USER_ID = {{ user.id }};
-    window.UNIT_ID = {{ unit.id if unit else 'null' }};
+    window.TARGET_USER_ID = {{ user.id if user else 'null' }};
+    window.UNIT_ID = {{ unit.id if unit and unit.id else 'null' }};
   </script>
   <script src="{{ url_for('static', filename='js/facilitator.js') }}" defer></script>
 </head>
