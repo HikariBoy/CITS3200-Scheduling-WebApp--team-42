@@ -2353,10 +2353,10 @@ def remove_individual_facilitator(unit_id: int, email: str):
                     }), 400
 
         # Clean up all related data for this facilitator in this unit
+        # IMPORTANT: Delete in correct order to avoid foreign key constraint errors
         
-        # 1. Delete session assignments (Assignment model uses facilitator_id, not user_id)
+        # 1. First, get assignment IDs (we'll need these for swap requests)
         from models import Assignment, Session, Module
-        # Get all assignment IDs for this facilitator in this unit
         assignment_ids = [
             a.id for a in db.session.query(Assignment)
             .join(Session, Assignment.session_id == Session.id)
@@ -2368,26 +2368,67 @@ def remove_individual_facilitator(unit_id: int, email: str):
             .all()
         ]
         
+        # 2. Delete swap requests FIRST (they reference assignments)
+        from models import SwapRequest
+        # Note: This will cancel any pending swaps involving this facilitator
+        # Use a more efficient join query to find swap requests for this unit
+        swap_ids_requester = [
+            sr.id for sr in db.session.query(SwapRequest)
+            .join(Assignment, SwapRequest.requester_assignment_id == Assignment.id)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                db.or_(
+                    SwapRequest.requester_id == facilitator_user.id,
+                    SwapRequest.target_id == facilitator_user.id
+                )
+            )
+            .all()
+        ]
+        
+        swap_ids_target = [
+            sr.id for sr in db.session.query(SwapRequest)
+            .join(Assignment, SwapRequest.target_assignment_id == Assignment.id)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                db.or_(
+                    SwapRequest.requester_id == facilitator_user.id,
+                    SwapRequest.target_id == facilitator_user.id
+                )
+            )
+            .all()
+        ]
+        
+        # Combine and deduplicate
+        swap_ids = list(set(swap_ids_requester + swap_ids_target))
+        swap_count = len(swap_ids)
+        
+        if swap_ids:
+            SwapRequest.query.filter(SwapRequest.id.in_(swap_ids)).delete(synchronize_session='fetch')
+        
+        # 3. Now delete session assignments (safe now that swap requests are gone)
         if assignment_ids:
             Assignment.query.filter(Assignment.id.in_(assignment_ids)).delete(synchronize_session='fetch')
         
-        # 2. Delete notifications
+        # 4. Delete notifications
         from models import Notification
         Notification.query.filter_by(
             user_id=facilitator_user.id,
             unit_id=unit.id
         ).delete(synchronize_session='fetch')
         
-        # 3. Delete unavailability records
+        # 5. Delete unavailability records
         from models import Unavailability
         Unavailability.query.filter_by(
             user_id=facilitator_user.id,
             unit_id=unit.id
         ).delete(synchronize_session='fetch')
         
-        # 4. Delete skills (FacilitatorSkill uses facilitator_id and links through module)
+        # 6. Delete skills
         from models import FacilitatorSkill
-        # Get all skill IDs for this facilitator's modules in this unit
         skill_ids = [
             s.id for s in db.session.query(FacilitatorSkill)
             .join(Module, FacilitatorSkill.module_id == Module.id)
@@ -2401,42 +2442,7 @@ def remove_individual_facilitator(unit_id: int, email: str):
         if skill_ids:
             FacilitatorSkill.query.filter(FacilitatorSkill.id.in_(skill_ids)).delete(synchronize_session='fetch')
         
-        # 5. Delete swap requests (both as requester and target)
-        # Note: This will cancel any pending swaps involving this facilitator
-        # SwapRequest doesn't have unit_id, need to join through assignments
-        from models import SwapRequest
-        
-        # Get swap request IDs for this facilitator in this unit
-        swap_ids = []
-        for swap in db.session.query(SwapRequest).filter(
-            db.or_(
-                SwapRequest.requester_id == facilitator_user.id,
-                SwapRequest.target_id == facilitator_user.id
-            )
-        ).all():
-            # Check if either assignment belongs to this unit
-            req_assignment = Assignment.query.get(swap.requester_assignment_id)
-            if req_assignment:
-                req_session = Session.query.get(req_assignment.session_id)
-                if req_session:
-                    req_module = Module.query.get(req_session.module_id)
-                    if req_module and req_module.unit_id == unit.id:
-                        swap_ids.append(swap.id)
-                        continue
-            
-            tgt_assignment = Assignment.query.get(swap.target_assignment_id)
-            if tgt_assignment:
-                tgt_session = Session.query.get(tgt_assignment.session_id)
-                if tgt_session:
-                    tgt_module = Module.query.get(tgt_session.module_id)
-                    if tgt_module and tgt_module.unit_id == unit.id:
-                        swap_ids.append(swap.id)
-        
-        swap_count = len(swap_ids)
-        if swap_ids:
-            SwapRequest.query.filter(SwapRequest.id.in_(swap_ids)).delete(synchronize_session='fetch')
-        
-        # 6. Finally, delete the facilitator link
+        # 7. Finally, delete the facilitator link
         db.session.delete(link)
         db.session.commit()
         
