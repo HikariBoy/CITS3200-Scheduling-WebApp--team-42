@@ -2320,14 +2320,14 @@ def remove_individual_facilitator(unit_id: int, email: str):
             
             if unit_is_active:
                 # Check if facilitator has any assignments
-                from models import SessionAssignment, Session, Module
+                from models import Assignment, Session, Module
                 assignments = (
-                    db.session.query(SessionAssignment, Session, Module)
-                    .join(Session, SessionAssignment.session_id == Session.id)
+                    db.session.query(Assignment, Session, Module)
+                    .join(Session, Assignment.session_id == Session.id)
                     .join(Module, Session.module_id == Module.id)
                     .filter(
-                        SessionAssignment.unit_id == unit.id,
-                        SessionAssignment.user_id == facilitator_user.id,
+                        Module.unit_id == unit.id,
+                        Assignment.facilitator_id == facilitator_user.id,
                         Session.date >= today  # Only future/today sessions
                     )
                     .order_by(Session.date, Session.start_time)
@@ -2354,12 +2354,22 @@ def remove_individual_facilitator(unit_id: int, email: str):
 
         # Clean up all related data for this facilitator in this unit
         
-        # 1. Delete session assignments
-        from models import SessionAssignment
-        SessionAssignment.query.filter_by(
-            unit_id=unit.id,
-            user_id=facilitator_user.id
-        ).delete(synchronize_session='fetch')
+        # 1. Delete session assignments (Assignment model uses facilitator_id, not user_id)
+        from models import Assignment, Session, Module
+        # Get all assignment IDs for this facilitator in this unit
+        assignment_ids = [
+            a.id for a in db.session.query(Assignment)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                Assignment.facilitator_id == facilitator_user.id
+            )
+            .all()
+        ]
+        
+        if assignment_ids:
+            Assignment.query.filter(Assignment.id.in_(assignment_ids)).delete(synchronize_session='fetch')
         
         # 2. Delete notifications
         from models import Notification
@@ -2375,12 +2385,21 @@ def remove_individual_facilitator(unit_id: int, email: str):
             unit_id=unit.id
         ).delete(synchronize_session='fetch')
         
-        # 4. Delete skills
+        # 4. Delete skills (FacilitatorSkill uses facilitator_id and links through module)
         from models import FacilitatorSkill
-        FacilitatorSkill.query.filter_by(
-            user_id=facilitator_user.id,
-            unit_id=unit.id
-        ).delete(synchronize_session='fetch')
+        # Get all skill IDs for this facilitator's modules in this unit
+        skill_ids = [
+            s.id for s in db.session.query(FacilitatorSkill)
+            .join(Module, FacilitatorSkill.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                FacilitatorSkill.facilitator_id == facilitator_user.id
+            )
+            .all()
+        ]
+        
+        if skill_ids:
+            FacilitatorSkill.query.filter(FacilitatorSkill.id.in_(skill_ids)).delete(synchronize_session='fetch')
         
         # 5. Delete swap requests (both as requester and target)
         # Note: This will cancel any pending swaps involving this facilitator
