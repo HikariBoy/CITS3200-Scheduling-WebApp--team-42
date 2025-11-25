@@ -153,8 +153,8 @@
             {% if is_uc_editing %}
             <!-- Back button for UC editing mode -->
             {% if uc_user.role.value == 'admin' %}
-                {# Admin viewing as UC - take them back to admin dashboard with UC role selected #}
-                <a href="{{ url_for('unitcoordinator.dashboard', unit=uc_unit_id, _anchor='tab-team') }}" 
+                {# Admin viewing as UC - take them back to admin dashboard #}
+                <a href="{{ url_for('admin.dashboard') }}" 
                    style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;">
                     <span class="material-icons" style="font-size: 16px;">arrow_back</span>
                     Back to Admin View
