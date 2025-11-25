@@ -2299,23 +2299,170 @@ def remove_individual_facilitator(unit_id: int, email: str):
         return jsonify({"ok": False, "error": "Unit not found"}), 404
 
     try:
-        # Find the user by email
-        facilitator_user = User.query.filter_by(email=email, role=UserRole.FACILITATOR).first()
+        # Find the user by email (support dual roles)
+        facilitator_user = User.query.filter_by(email=email).first()
         if not facilitator_user:
             return jsonify({"ok": False, "error": "Facilitator not found"}), 404
 
-        # Find and remove the specific facilitator link
+        # Find the facilitator link
         link = UnitFacilitator.query.filter_by(unit_id=unit.id, user_id=facilitator_user.id).first()
         if not link:
             return jsonify({"ok": False, "error": "Facilitator not linked to this unit"}), 404
 
+        # SAFETY CHECK: Prevent removal if schedule is published and unit is still active
+        from models import ScheduleStatus
+        from datetime import date
+        
+        if unit.schedule_status == ScheduleStatus.PUBLISHED:
+            # Check if unit is still ongoing (not finished yet)
+            today = date.today()
+            unit_is_active = unit.end_date is None or unit.end_date >= today
+            
+            if unit_is_active:
+                # Check if facilitator has any assignments
+                from models import Assignment, Session, Module
+                assignments = (
+                    db.session.query(Assignment, Session, Module)
+                    .join(Session, Assignment.session_id == Session.id)
+                    .join(Module, Session.module_id == Module.id)
+                    .filter(
+                        Module.unit_id == unit.id,
+                        Assignment.facilitator_id == facilitator_user.id,
+                        Session.date >= today  # Only future/today sessions
+                    )
+                    .order_by(Session.date, Session.start_time)
+                    .all()
+                )
+                
+                if assignments:
+                    # Build list of remaining sessions
+                    remaining_sessions = []
+                    for assignment, session, module in assignments[:5]:  # Show first 5
+                        session_info = f"{module.code} - {session.date.strftime('%d/%m/%Y')} {session.start_time.strftime('%H:%M')}"
+                        remaining_sessions.append(session_info)
+                    
+                    more_count = len(assignments) - 5
+                    sessions_list = "\n".join(remaining_sessions)
+                    if more_count > 0:
+                        sessions_list += f"\n... and {more_count} more"
+                    
+                    return jsonify({
+                        "ok": False, 
+                        "error": f"Cannot remove facilitator: Schedule is published and unit is still active.\n\nThey have {len(assignments)} upcoming session(s):\n{sessions_list}\n\nYou can only remove facilitators after all their sessions have finished (after {unit.end_date.strftime('%d/%m/%Y') if unit.end_date else 'the unit ends'}).",
+                        "remaining_sessions": len(assignments)
+                    }), 400
+
+        # Clean up all related data for this facilitator in this unit
+        # IMPORTANT: Delete in correct order to avoid foreign key constraint errors
+        
+        # 1. First, get assignment IDs (we'll need these for swap requests)
+        from models import Assignment, Session, Module
+        assignment_ids = [
+            a.id for a in db.session.query(Assignment)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                Assignment.facilitator_id == facilitator_user.id
+            )
+            .all()
+        ]
+        
+        # 2. Delete swap requests FIRST (they reference assignments)
+        from models import SwapRequest
+        # Note: This will cancel any pending swaps involving this facilitator
+        # Use a more efficient join query to find swap requests for this unit
+        swap_ids_requester = [
+            sr.id for sr in db.session.query(SwapRequest)
+            .join(Assignment, SwapRequest.requester_assignment_id == Assignment.id)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                db.or_(
+                    SwapRequest.requester_id == facilitator_user.id,
+                    SwapRequest.target_id == facilitator_user.id
+                )
+            )
+            .all()
+        ]
+        
+        swap_ids_target = [
+            sr.id for sr in db.session.query(SwapRequest)
+            .join(Assignment, SwapRequest.target_assignment_id == Assignment.id)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                db.or_(
+                    SwapRequest.requester_id == facilitator_user.id,
+                    SwapRequest.target_id == facilitator_user.id
+                )
+            )
+            .all()
+        ]
+        
+        # Combine and deduplicate
+        swap_ids = list(set(swap_ids_requester + swap_ids_target))
+        swap_count = len(swap_ids)
+        
+        if swap_ids:
+            SwapRequest.query.filter(SwapRequest.id.in_(swap_ids)).delete(synchronize_session='fetch')
+        
+        # 3. Now delete session assignments (safe now that swap requests are gone)
+        if assignment_ids:
+            Assignment.query.filter(Assignment.id.in_(assignment_ids)).delete(synchronize_session='fetch')
+        
+        # 4. Delete notifications
+        from models import Notification
+        notification_ids = [
+            n.id for n in Notification.query.filter_by(
+                user_id=facilitator_user.id,
+                unit_id=unit.id
+            ).all()
+        ]
+        
+        if notification_ids:
+            Notification.query.filter(Notification.id.in_(notification_ids)).delete(synchronize_session='fetch')
+        
+        # 5. Delete unavailability records
+        from models import Unavailability
+        # Use raw SQL to avoid ORM relationship issues
+        if unavailability_ids or True:  # Always try to delete
+            db.session.execute(
+                db.text("DELETE FROM unavailability WHERE user_id = :user_id AND unit_id = :unit_id"),
+                {"user_id": facilitator_user.id, "unit_id": unit.id}
+            )
+        
+        # 6. Delete skills
+        from models import FacilitatorSkill
+        skill_ids = [
+            s.id for s in db.session.query(FacilitatorSkill)
+            .join(Module, FacilitatorSkill.module_id == Module.id)
+            .filter(
+                Module.unit_id == unit.id,
+                FacilitatorSkill.facilitator_id == facilitator_user.id
+            )
+            .all()
+        ]
+        
+        if skill_ids:
+            FacilitatorSkill.query.filter(FacilitatorSkill.id.in_(skill_ids)).delete(synchronize_session='fetch')
+        
+        # 7. Finally, delete the facilitator link
         db.session.delete(link)
         db.session.commit()
         
+        # Build informative message
+        message_parts = [f"Removed {email} from unit"]
+        if swap_count > 0:
+            message_parts.append(f"cancelled {swap_count} swap request(s)")
+        
         return jsonify({
             "ok": True,
-            "message": f"Removed {email} from unit",
-            "removed_email": email
+            "message": ". ".join(message_parts).capitalize(),
+            "removed_email": email,
+            "warning": "All assignments, skills, unavailability, and notifications for this facilitator in this unit have been deleted." if swap_count > 0 else None
         }), 200
         
     except Exception as e:
