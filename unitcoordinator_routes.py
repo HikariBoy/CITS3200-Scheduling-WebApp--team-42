@@ -1737,6 +1737,60 @@ def facilitator_profile(facilitator_id):
                          facilitator_info=facilitator_info,
                          current_user=current_user)
 
+@unitcoordinator_bp.route('/units/<int:unit_id>/facilitators/<email>/edit-view')
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def edit_facilitator_view(unit_id: int, email: str):
+    """
+    UC can edit facilitator's availability and skills using the facilitator's own interface.
+    This renders the facilitator dashboard but with UC context.
+    """
+    current_user = get_current_user()
+    unit = _get_user_unit_or_404(current_user, unit_id)
+    
+    if not unit:
+        flash('Unit not found or unauthorized', 'error')
+        return redirect(url_for('unitcoordinator.dashboard'))
+    
+    # Find the facilitator by email
+    facilitator_user = User.query.filter_by(email=email).first()
+    if not facilitator_user:
+        flash('Facilitator not found', 'error')
+        return redirect(url_for('unitcoordinator.manage_facilitators', unit_id=unit_id))
+    
+    # Verify facilitator is linked to this unit
+    link = UnitFacilitator.query.filter_by(unit_id=unit.id, user_id=facilitator_user.id).first()
+    if not link:
+        flash('Facilitator not linked to this unit', 'error')
+        return redirect(url_for('unitcoordinator.manage_facilitators', unit_id=unit_id))
+    
+    # Get facilitator's data for this specific unit
+    from models import FacilitatorSkill, Unavailability
+    
+    # Get skills for this unit's modules
+    skills = (
+        db.session.query(FacilitatorSkill, Module)
+        .join(Module, FacilitatorSkill.module_id == Module.id)
+        .filter(
+            Module.unit_id == unit.id,
+            FacilitatorSkill.facilitator_id == facilitator_user.id
+        )
+        .all()
+    )
+    
+    skills_count = len(skills)
+    availability_configured = link.availability_configured
+    
+    # Render the facilitator dashboard template with UC editing context
+    return render_template('facilitator_dashboard.html',
+                         unit=unit,
+                         user=facilitator_user,  # The facilitator being edited
+                         availability_configured=availability_configured,
+                         skills_configured=skills_count > 0,
+                         is_uc_editing=True,  # Flag to show "Back to UC View" button
+                         uc_user=current_user,  # The actual UC user
+                         uc_unit_id=unit_id)  # For back navigation
+
 @unitcoordinator_bp.route('/facilitators/<int:facilitator_id>/edit', methods=['GET', 'POST'])
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])

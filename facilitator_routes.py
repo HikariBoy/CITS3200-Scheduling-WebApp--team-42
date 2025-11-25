@@ -796,25 +796,33 @@ def get_unavailability():
     })
 
 @facilitator_bp.route('/unavailability', methods=['POST'])
-@facilitator_required
+@login_required
 def create_unavailability():
     """Create or update unavailability for a specific unit"""
-    user = get_current_user()
+    current_user = get_current_user()
     data = request.get_json()
     
     unit_id = data.get('unit_id')
     if not unit_id:
         return jsonify({"error": "unit_id is required"}), 400
     
-    # Verify user has access to this unit
+    # Get the target user (facilitator being edited)
+    # If 'user_id' is provided, UC is editing on behalf of facilitator
+    target_user_id = data.get('user_id', current_user.id)
+    
+    # Check permission: either editing own data or UC editing facilitator's data
+    if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
+        return jsonify({"error": "forbidden"}), 403
+    
+    # Verify target user has access to this unit
     access = (
         db.session.query(Unit)
         .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == user.id)
+        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
         .first()
     )
     if not access:
-        return jsonify({"error": "forbidden"}), 403
+        return jsonify({"error": "facilitator not linked to this unit"}), 403
     
     # Validate date format and range
     try:
@@ -882,7 +890,7 @@ def create_unavailability():
     
     # Check for existing unavailability on the same date and time
     existing = Unavailability.query.filter_by(
-        user_id=user.id,
+        user_id=target_user_id,
         unit_id=unit_id,
         date=unavailability_date,
         start_time=start_time,
@@ -894,7 +902,7 @@ def create_unavailability():
     
     # Create unavailability record
     unavailability = Unavailability(
-        user_id=user.id,
+        user_id=target_user_id,
         unit_id=unit_id,
         date=unavailability_date,
         start_time=start_time,
@@ -909,23 +917,26 @@ def create_unavailability():
     try:
         db.session.add(unavailability)
         
+        # Get target user object for preferences
+        target_user = User.query.get(target_user_id)
+        
         # Clear "Available All Days" status when unavailability is added
         import json
         preferences = {}
-        if user.preferences:
+        if target_user.preferences:
             try:
-                preferences = json.loads(user.preferences)
+                preferences = json.loads(target_user.preferences)
             except:
                 preferences = {}
         
         # Remove availability status for this unit since user is now setting specific unavailability
         if 'availability_status' in preferences and str(unit_id) in preferences['availability_status']:
             del preferences['availability_status'][str(unit_id)]
-            user.preferences = json.dumps(preferences)
+            target_user.preferences = json.dumps(preferences)
         
         # Mark availability as configured in UnitFacilitator
         unit_facilitator = UnitFacilitator.query.filter_by(
-            user_id=user.id,
+            user_id=target_user_id,
             unit_id=unit_id
         ).first()
         
@@ -996,19 +1007,20 @@ def update_unavailability(unavailability_id):
     return jsonify({"message": "Unavailability updated successfully"})
 
 @facilitator_bp.route('/unavailability/<int:unavailability_id>', methods=['DELETE'])
-@facilitator_required
+@login_required
 def delete_unavailability(unavailability_id):
     """Delete an unavailability record"""
-    user = get_current_user()
+    current_user = get_current_user()
     
     # Get the unavailability record
-    unavailability = Unavailability.query.filter_by(
-        id=unavailability_id, 
-        user_id=user.id
-    ).first()
+    unavailability = Unavailability.query.get(unavailability_id)
     
     if not unavailability:
         return jsonify({"error": "Unavailability not found"}), 404
+    
+    # Check permission
+    if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
+        return jsonify({"error": "forbidden"}), 403
     
     db.session.delete(unavailability)
     db.session.commit()
@@ -1016,39 +1028,49 @@ def delete_unavailability(unavailability_id):
     return jsonify({"message": "Unavailability deleted successfully"})
 
 @facilitator_bp.route('/unavailability/clear-all', methods=['POST'])
-@facilitator_required
+@login_required
 def clear_all_unavailability():
     """Clear all unavailability for a specific unit"""
-    user = get_current_user()
+    current_user = get_current_user()
     data = request.get_json()
     
     unit_id = data.get('unit_id')
     if not unit_id:
         return jsonify({"error": "unit_id is required"}), 400
     
-    # Verify user has access to this unit
+    # Get the target user (facilitator being edited)
+    target_user_id = data.get('user_id', current_user.id)
+    
+    # Check permission
+    if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
+        return jsonify({"error": "forbidden"}), 403
+    
+    # Verify target user has access to this unit
     access = (
         db.session.query(Unit)
         .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == user.id)
+        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
         .first()
     )
     if not access:
-        return jsonify({"error": "forbidden"}), 403
+        return jsonify({"error": "facilitator not linked to this unit"}), 403
     
     try:
         # Delete all unavailability records for this user and unit
         deleted_count = Unavailability.query.filter_by(
-            user_id=user.id,
+            user_id=target_user_id,
             unit_id=unit_id
         ).delete()
+        
+        # Get target user object
+        target_user = User.query.get(target_user_id)
         
         # Mark user as "Available All Days" for this unit in preferences
         import json
         preferences = {}
-        if user.preferences:
+        if target_user.preferences:
             try:
-                preferences = json.loads(user.preferences)
+                preferences = json.loads(target_user.preferences)
             except:
                 preferences = {}
         
@@ -1057,11 +1079,11 @@ def clear_all_unavailability():
             preferences['availability_status'] = {}
         
         preferences['availability_status'][str(unit_id)] = 'available_all_days'
-        user.preferences = json.dumps(preferences)
+        target_user.preferences = json.dumps(preferences)
         
         # Mark availability as configured in UnitFacilitator
         unit_facilitator = UnitFacilitator.query.filter_by(
-            user_id=user.id,
+            user_id=target_user_id,
             unit_id=unit_id
         ).first()
         
@@ -1196,13 +1218,18 @@ def generate_recurring_unavailability():
     return jsonify(response_data)
 
 @facilitator_bp.route('/skills', methods=['GET', 'POST'])
-@facilitator_required
+@login_required
 def manage_skills():
-    user = get_current_user()
+    current_user = get_current_user()
     
     # Handle JSON API requests (for dashboard)
     if request.method == 'GET' and request.args.get('unit_id'):
         unit_id = request.args.get('unit_id')
+        target_user_id = request.args.get('user_id', current_user.id)
+        
+        # Check permission
+        if not can_edit_facilitator_data(current_user, int(target_user_id), int(unit_id)):
+            return jsonify({"error": "forbidden"}), 403
         
         # Get ALL modules for the unit, excluding "General" module
         all_modules = Module.query.filter_by(unit_id=unit_id).filter(Module.module_name != 'General').all()
@@ -1211,7 +1238,7 @@ def manage_skills():
         facilitator_skills = db.session.query(FacilitatorSkill, Module).join(
             Module, FacilitatorSkill.module_id == Module.id
         ).filter(
-            FacilitatorSkill.facilitator_id == user.id,
+            FacilitatorSkill.facilitator_id == target_user_id,
             Module.unit_id == unit_id
         ).all()
         
@@ -1252,11 +1279,16 @@ def manage_skills():
         if request.is_json:
             data = request.get_json()
             unit_id = data.get('unit_id')
+            target_user_id = data.get('user_id', current_user.id)
             skills = data.get('skills', {})
             experience_descriptions = data.get('experience_descriptions', {})
             
             if not unit_id:
                 return jsonify({"error": "Unit ID is required"}), 400
+            
+            # Check permission
+            if not can_edit_facilitator_data(current_user, int(target_user_id), int(unit_id)):
+                return jsonify({"error": "forbidden"}), 403
             
             # Use upsert logic: update existing skills or create new ones
             for module_id, skill_level in skills.items():
@@ -1265,7 +1297,7 @@ def manage_skills():
                     
                     # Check if skill already exists for this facilitator and module
                     existing_skill = FacilitatorSkill.query.filter_by(
-                        facilitator_id=user.id,
+                        facilitator_id=target_user_id,
                         module_id=int(module_id)
                     ).first()
                     
@@ -1277,7 +1309,7 @@ def manage_skills():
                     else:
                         # Create new skill
                         facilitator_skill = FacilitatorSkill(
-                            facilitator_id=user.id,
+                            facilitator_id=target_user_id,
                             module_id=int(module_id),
                             skill_level=SkillLevel(skill_level),
                             experience_description=experience_description
@@ -1291,7 +1323,7 @@ def manage_skills():
             existing_skills = db.session.query(FacilitatorSkill).join(
                 Module, FacilitatorSkill.module_id == Module.id
             ).filter(
-                FacilitatorSkill.facilitator_id == user.id,
+                FacilitatorSkill.facilitator_id == target_user_id,
                 Module.unit_id == unit_id
             ).all()
             
@@ -1885,6 +1917,30 @@ def _parse_hhmm(val: str):
         return time(hh, mm)
     except Exception:
         return None
+
+
+def can_edit_facilitator_data(current_user, target_user_id, unit_id):
+    """
+    Check if current_user can edit data for target_user_id in the given unit.
+    Returns True if:
+    - current_user IS the target user (facilitator editing their own data), OR
+    - current_user is a UC/ADMIN for the unit
+    """
+    # Case 1: User editing their own data
+    if current_user.id == target_user_id:
+        return True
+    
+    # Case 2: UC or Admin editing facilitator's data
+    if current_user.role in [UserRole.UNIT_COORDINATOR, UserRole.ADMIN]:
+        # Verify the UC has access to this unit
+        from models import Unit
+        unit = Unit.query.get(unit_id)
+        if unit and (current_user.role == UserRole.ADMIN or unit.created_by == current_user.id):
+            # Verify target user is a facilitator in this unit
+            link = UnitFacilitator.query.filter_by(unit_id=unit_id, user_id=target_user_id).first()
+            return link is not None
+    
+    return False
 
 
 @facilitator_bp.route('/swap-requests/<int:request_id>/coordinator-response', methods=['POST'])
