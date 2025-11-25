@@ -2309,6 +2309,22 @@ def remove_individual_facilitator(unit_id: int, email: str):
         if not link:
             return jsonify({"ok": False, "error": "Facilitator not linked to this unit"}), 404
 
+        # SAFETY CHECK: Prevent removal if schedule is published
+        from models import ScheduleStatus
+        if unit.schedule_status == ScheduleStatus.PUBLISHED:
+            # Check if facilitator has any assignments
+            from models import SessionAssignment
+            assignment_count = SessionAssignment.query.filter_by(
+                unit_id=unit.id,
+                user_id=facilitator_user.id
+            ).count()
+            
+            if assignment_count > 0:
+                return jsonify({
+                    "ok": False, 
+                    "error": f"Cannot remove facilitator: Schedule is published and they have {assignment_count} session(s) assigned. Please unpublish the schedule first or manually reassign their sessions."
+                }), 400
+
         # Clean up all related data for this facilitator in this unit
         
         # 1. Delete session assignments
@@ -2340,7 +2356,15 @@ def remove_individual_facilitator(unit_id: int, email: str):
         ).delete()
         
         # 5. Delete swap requests (both as requester and target)
+        # Note: This will cancel any pending swaps involving this facilitator
         from models import SwapRequest
+        swap_count = SwapRequest.query.filter(
+            db.or_(
+                SwapRequest.requester_id == facilitator_user.id,
+                SwapRequest.target_id == facilitator_user.id
+            )
+        ).filter(SwapRequest.unit_id == unit.id).count()
+        
         SwapRequest.query.filter(
             db.or_(
                 SwapRequest.requester_id == facilitator_user.id,
@@ -2352,10 +2376,16 @@ def remove_individual_facilitator(unit_id: int, email: str):
         db.session.delete(link)
         db.session.commit()
         
+        # Build informative message
+        message_parts = [f"Removed {email} from unit"]
+        if swap_count > 0:
+            message_parts.append(f"cancelled {swap_count} swap request(s)")
+        
         return jsonify({
             "ok": True,
-            "message": f"Removed {email} from unit (including all assignments and data)",
-            "removed_email": email
+            "message": ". ".join(message_parts).capitalize(),
+            "removed_email": email,
+            "warning": "All assignments, skills, unavailability, and notifications for this facilitator in this unit have been deleted." if swap_count > 0 else None
         }), 200
         
     except Exception as e:
