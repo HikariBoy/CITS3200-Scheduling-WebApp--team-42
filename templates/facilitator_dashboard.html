@@ -153,12 +153,12 @@
             {% if is_uc_editing %}
             <!-- Back button for UC editing mode -->
             <a href="{{ url_for('unitcoordinator.dashboard', unit=uc_unit_id, _anchor='tab-team') }}" 
-               style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #4CAF50; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
-                <span class="material-icons" style="font-size: 18px;">arrow_back</span>
+               style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;">
+                <span class="material-icons" style="font-size: 16px;">arrow_back</span>
                 Back to UC View
             </a>
-            <span style="color: #64748b; font-size: 14px; margin: 0 8px;">|</span>
-            <span style="color: #64748b; font-size: 14px;">Editing: <strong>{{ user.first_name }} {{ user.last_name }}</strong></span>
+            <span style="color: #64748b; font-size: 13px; margin: 0 8px;">|</span>
+            <span style="color: #64748b; font-size: 13px;">Editing: <strong>{{ user.first_name }} {{ user.last_name }}</strong></span>
             {% else %}
             <span class="material-icons uc-icon" aria-hidden="true">person</span>
             <h1 class="uc-title">Facilitator Portal</h1>
