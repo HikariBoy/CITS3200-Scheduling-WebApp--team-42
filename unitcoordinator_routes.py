@@ -2415,17 +2415,27 @@ def remove_individual_facilitator(unit_id: int, email: str):
         
         # 4. Delete notifications
         from models import Notification
-        Notification.query.filter_by(
-            user_id=facilitator_user.id,
-            unit_id=unit.id
-        ).delete(synchronize_session='fetch')
+        notification_ids = [
+            n.id for n in Notification.query.filter_by(
+                user_id=facilitator_user.id,
+                unit_id=unit.id
+            ).all()
+        ]
+        
+        if notification_ids:
+            Notification.query.filter(Notification.id.in_(notification_ids)).delete(synchronize_session='fetch')
         
         # 5. Delete unavailability records
         from models import Unavailability
-        Unavailability.query.filter_by(
-            user_id=facilitator_user.id,
-            unit_id=unit.id
-        ).delete(synchronize_session='fetch')
+        unavailability_ids = [
+            u.id for u in Unavailability.query.filter_by(
+                user_id=facilitator_user.id,
+                unit_id=unit.id
+            ).all()
+        ]
+        
+        if unavailability_ids:
+            Unavailability.query.filter(Unavailability.id.in_(unavailability_ids)).delete(synchronize_session='fetch')
         
         # 6. Delete skills
         from models import FacilitatorSkill
