@@ -138,14 +138,31 @@
       gap: 10px;
     }
   </style>
+  <script>
+    // Pass context to JavaScript
+    window.IS_UC_EDITING = {{ 'true' if is_uc_editing else 'false' }};
+    window.TARGET_USER_ID = {{ user.id }};
+    window.UNIT_ID = {{ unit.id if unit else 'null' }};
+  </script>
   <script src="{{ url_for('static', filename='js/facilitator.js') }}" defer></script>
 </head>
 <body>
 <header class="uc-header">
     <div class="uc-container">
         <div class="uc-left">
+            {% if is_uc_editing %}
+            <!-- Back button for UC editing mode -->
+            <a href="{{ url_for('unitcoordinator.manage_facilitators', unit_id=uc_unit_id) }}" 
+               style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #4CAF50; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                <span class="material-icons" style="font-size: 18px;">arrow_back</span>
+                Back to UC View
+            </a>
+            <span style="color: #64748b; font-size: 14px; margin: 0 8px;">|</span>
+            <span style="color: #64748b; font-size: 14px;">Editing: <strong>{{ user.first_name }} {{ user.last_name }}</strong></span>
+            {% else %}
             <span class="material-icons uc-icon" aria-hidden="true">person</span>
             <h1 class="uc-title">Facilitator Portal</h1>
+            {% endif %}
         </div>
         <div class="uc-right">
             {% set role_labels = {
