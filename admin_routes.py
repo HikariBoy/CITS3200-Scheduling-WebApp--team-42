@@ -322,20 +322,36 @@ def delete_employee(employee_id):
         employee_name = employee.full_name if employee else 'Unknown'
         print(f"Deleting user: {employee_name} (Role: {employee.role})")
         
-        # CRITICAL: Delete unavailability records FIRST using raw SQL to avoid ORM cascade issues
-        from models import Unavailability, Notification, FacilitatorSkill
+        # CRITICAL: Delete all related records FIRST using raw SQL to avoid ORM cascade issues
+        from models import Unavailability, Notification, FacilitatorSkill, SwapRequest
+        
+        # Delete swap requests (as requester, target, or reviewer)
+        db.session.execute(
+            db.text("DELETE FROM swap_request WHERE requester_id = :user_id OR target_id = :user_id OR reviewed_by = :user_id"),
+            {"user_id": employee.id}
+        )
+        
+        # Delete unavailability records
         db.session.execute(
             db.text("DELETE FROM unavailability WHERE user_id = :user_id"),
             {"user_id": employee.id}
         )
         
-        # Also delete notifications and skills
+        # Delete notifications
         db.session.execute(
             db.text("DELETE FROM notification WHERE user_id = :user_id"),
             {"user_id": employee.id}
         )
+        
+        # Delete facilitator skills
         db.session.execute(
             db.text("DELETE FROM facilitator_skill WHERE facilitator_id = :user_id"),
+            {"user_id": employee.id}
+        )
+        
+        # Set unpublished_by to NULL for any units they unpublished
+        db.session.execute(
+            db.text("UPDATE unit SET unpublished_by = NULL WHERE unpublished_by = :user_id"),
             {"user_id": employee.id}
         )
         
