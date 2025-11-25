@@ -2309,21 +2309,28 @@ def remove_individual_facilitator(unit_id: int, email: str):
         if not link:
             return jsonify({"ok": False, "error": "Facilitator not linked to this unit"}), 404
 
-        # SAFETY CHECK: Prevent removal if schedule is published
+        # SAFETY CHECK: Prevent removal if schedule is published and unit is still active
         from models import ScheduleStatus
+        from datetime import date
+        
         if unit.schedule_status == ScheduleStatus.PUBLISHED:
-            # Check if facilitator has any assignments
-            from models import SessionAssignment
-            assignment_count = SessionAssignment.query.filter_by(
-                unit_id=unit.id,
-                user_id=facilitator_user.id
-            ).count()
+            # Check if unit is still ongoing (not finished yet)
+            today = date.today()
+            unit_is_active = unit.end_date is None or unit.end_date >= today
             
-            if assignment_count > 0:
-                return jsonify({
-                    "ok": False, 
-                    "error": f"Cannot remove facilitator: Schedule is published and they have {assignment_count} session(s) assigned. Please unpublish the schedule first or manually reassign their sessions."
-                }), 400
+            if unit_is_active:
+                # Check if facilitator has any assignments
+                from models import SessionAssignment
+                assignment_count = SessionAssignment.query.filter_by(
+                    unit_id=unit.id,
+                    user_id=facilitator_user.id
+                ).count()
+                
+                if assignment_count > 0:
+                    return jsonify({
+                        "ok": False, 
+                        "error": f"Cannot remove facilitator: Schedule is published and unit is still active. They have {assignment_count} session(s) assigned. You can only remove facilitators after the unit has ended (after {unit.end_date.strftime('%d/%m/%Y') if unit.end_date else 'N/A'})."
+                    }), 400
 
         # Clean up all related data for this facilitator in this unit
         
