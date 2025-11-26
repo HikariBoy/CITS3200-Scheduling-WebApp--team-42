@@ -1248,7 +1248,7 @@ def manage_skills():
         # Build skills data with all modules, showing skill level if assigned
         skills_data = []
         for module in all_modules:
-            skill_level = skill_lookup.get(module.id, 'unassigned')
+            skill_level = skill_lookup.get(module.id, 'no_interest')  # Default to 'no_interest' instead of 'unassigned'
             experience_description = ''
             
             # Get experience description if skill exists

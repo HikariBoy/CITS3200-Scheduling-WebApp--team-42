@@ -3591,12 +3591,8 @@ function displaySkills(skills) {
                     <label for="skill_${skill.module_id}_have_some_skill">Have some skill and would like to facilitate</label>
             </div>
                 <div class="skill-option">
-                    <input type="radio" id="skill_${skill.module_id}_no_interest" name="skill_${skill.module_id}" value="no_interest" ${skill.skill_level === 'no_interest' ? 'checked' : ''}>
+                    <input type="radio" id="skill_${skill.module_id}_no_interest" name="skill_${skill.module_id}" value="no_interest" ${skill.skill_level === 'no_interest' || skill.skill_level === 'unassigned' || !skill.skill_level ? 'checked' : ''}>
                     <label for="skill_${skill.module_id}_no_interest">No interest</label>
-                </div>
-                <div class="skill-option">
-                    <input type="radio" id="skill_${skill.module_id}_unassigned" name="skill_${skill.module_id}" value="unassigned" ${skill.skill_level === 'unassigned' ? 'checked' : ''}>
-                    <label for="skill_${skill.module_id}_unassigned">Not set</label>
                 </div>
             </div>
             <div class="experience-section" id="experience_${skill.module_id}" style="display: none;">
@@ -3680,19 +3676,22 @@ async function saveSkills() {
     // Collect all skill selections and experience descriptions
     const skillSelections = {};
     const experienceDescriptions = {};
-    const radioButtons = document.querySelectorAll('input[name^="skill_"]:checked');
     
-    radioButtons.forEach(radio => {
-        const moduleId = radio.name.replace('skill_', '');
-        const skillLevel = radio.value;
-        if (skillLevel !== 'unassigned') {
-            skillSelections[moduleId] = skillLevel;
-            
-            // Collect experience description if it exists
-            const experienceTextarea = document.getElementById(`experience_text_${moduleId}`);
-            if (experienceTextarea && experienceTextarea.value.trim()) {
-                experienceDescriptions[moduleId] = experienceTextarea.value.trim();
-            }
+    // Get all modules from the skills grid
+    const skillCards = document.querySelectorAll('.skill-card');
+    skillCards.forEach(card => {
+        const moduleId = card.querySelector('input[name^="skill_"]')?.name.replace('skill_', '');
+        if (!moduleId) return;
+        
+        const checkedRadio = card.querySelector(`input[name="skill_${moduleId}"]:checked`);
+        const skillLevel = checkedRadio ? checkedRadio.value : 'no_interest'; // Default to 'no_interest' if nothing selected
+        
+        skillSelections[moduleId] = skillLevel;
+        
+        // Collect experience description if it exists
+        const experienceTextarea = document.getElementById(`experience_text_${moduleId}`);
+        if (experienceTextarea && experienceTextarea.value.trim()) {
+            experienceDescriptions[moduleId] = experienceTextarea.value.trim();
         }
     });
     
