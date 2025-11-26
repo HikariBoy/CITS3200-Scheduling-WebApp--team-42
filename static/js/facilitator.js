@@ -1162,6 +1162,21 @@ document.addEventListener('DOMContentLoaded', function() {
         currentUnitId = unitId;
         window.currentUnitId = unitId; // Ensure window.currentUnitId is also set
         
+        // Update window.currentUnit with the selected unit's data
+        window.currentUnit = {
+            id: unit.id,
+            code: unit.code,
+            name: unit.name,
+            year: unit.year,
+            semester: unit.semester,
+            start_date: unit.start_date,
+            end_date: unit.end_date,
+            schedule_status: unit.schedule_status || 'draft'
+        };
+        
+        // Update isSchedulePublished based on the CURRENT unit's schedule status
+        window.isSchedulePublished = (unit.schedule_status === 'published');
+        
         // Show navigation tabs and unavailability alert for individual unit views
         showElementsForUnitView();
         
@@ -1190,7 +1205,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update sessions section
         updateSessionsSection(unit);
-
+        
         // Update unavailability view if it's currently visible
         updateUnavailabilityViewForUnit(unit);
         
@@ -1225,6 +1240,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelector(`[data-unit-id="${unitId}"]`).classList.add('active');
 
         console.log(`Switched to unit: ${unit.code} - ${unit.name}`);
+        console.log(`Schedule status for this unit: ${unit.schedule_status}, isSchedulePublished: ${window.isSchedulePublished}`);
     }
 
     function showAllUnitsView() {
@@ -2087,13 +2103,32 @@ let currentUnitId = null;
 let currentUnit = null;
 let unavailabilityData = [];
 
+// Helper function to check if current unit's schedule is published
+function isCurrentUnitSchedulePublished() {
+    const currentUnitId = window.currentUnitId;
+    if (!currentUnitId || !window.unitsData) return false;
+    
+    const unitData = window.unitsData.find(u => u.id === currentUnitId);
+    return unitData && unitData.schedule_status === 'published';
+}
+
 function initUnavailabilityView() {
     console.log('Initializing unavailability view');
     
     // Get current unit from window data
     if (window.currentUnit) {
         currentUnitId = window.currentUnit.id;
+        window.currentUnitId = window.currentUnit.id;
         currentUnit = window.currentUnit;
+        
+        // Ensure isSchedulePublished is set based on current unit
+        if (window.unitsData) {
+            const unitData = window.unitsData.find(u => u.id === currentUnitId);
+            if (unitData) {
+                window.isSchedulePublished = (unitData.schedule_status === 'published');
+                console.log(`Initialized isSchedulePublished: ${window.isSchedulePublished} for unit ${unitData.code}`);
+            }
+        }
     } else {
         console.error('No current unit found');
         return;
@@ -2145,6 +2180,7 @@ function updateUnavailabilityViewForUnit(unit) {
     
     // Update current unit information
     currentUnitId = unit.id;
+    window.currentUnitId = unit.id;
     currentUnit = {
         id: unit.id,
         code: unit.code,
@@ -2153,7 +2189,23 @@ function updateUnavailabilityViewForUnit(unit) {
         end_date: unit.end_date
     };
     
+    // Update window.currentUnit with full unit data
+    window.currentUnit = {
+        id: unit.id,
+        code: unit.code,
+        name: unit.name,
+        year: unit.year,
+        semester: unit.semester,
+        start_date: unit.start_date,
+        end_date: unit.end_date,
+        schedule_status: unit.schedule_status || 'draft'
+    };
+    
+    // Update isSchedulePublished based on the CURRENT unit's schedule status
+    window.isSchedulePublished = (unit.schedule_status === 'published');
+    
     console.log('Updated currentUnit:', currentUnit);
+    console.log(`Schedule status for this unit: ${unit.schedule_status}, isSchedulePublished: ${window.isSchedulePublished}`);
     
     // Update unit information display in unavailability view
     updateUnitInfo();
@@ -2375,6 +2427,12 @@ function updateCalendarDisplay() {
 }
 
 function openUnavailabilityModal(date) {
+    // Check if current unit's schedule is published - block editing if so
+    if (isCurrentUnitSchedulePublished()) {
+        showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
+        return;
+    }
+    
     const modal = document.getElementById('unavailability-modal');
     const subtitle = document.getElementById('modal-date-subtitle');
     
@@ -2553,7 +2611,7 @@ function saveUnavailability() {
     const date = modal.dataset.currentDate;
     
     if (!date || !currentUnitId) return;
-    if (window.isSchedulePublished) {
+    if (isCurrentUnitSchedulePublished()) {
         showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
         return;
     }
@@ -2572,8 +2630,24 @@ function saveUnavailability() {
             const firstRange = timeRanges[0];
             const startInput = firstRange.querySelector('input[type="time"]');
             const endInput = firstRange.querySelectorAll('input[type="time"]')[1];
-            startTime = startInput.value;
-            endTime = endInput.value;
+            
+            if (!startInput || !endInput) {
+                alert('Please fill in both start and end times');
+                return;
+            }
+            
+            startTime = startInput.value.trim();
+            endTime = endInput.value.trim();
+            
+            // Validate time format (should be HH:MM)
+            const timeFormat = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+            if (!timeFormat.test(startTime) || !timeFormat.test(endTime)) {
+                alert('Invalid time format. Please use 24-hour format (HH:MM, e.g., 10:00 or 14:30)');
+                return;
+            }
+        } else {
+            alert('Please add at least one time range');
+            return;
         }
     }
     
@@ -2667,7 +2741,7 @@ function initUnavailabilityControls() {
                 return;
             }
             
-            if (window.isSchedulePublished) {
+            if (isCurrentUnitSchedulePublished()) {
                 showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
                 return;
             }
@@ -3532,8 +3606,27 @@ async function loadSkills() {
         console.log('Loading skills for unit ID:', currentUnitId);
         if (!currentUnitId) {
             console.error('No unit selected');
-        return;
-    }
+            return;
+        }
+
+        // Update schedule status based on current unit
+        if (window.unitsData) {
+            const unitData = window.unitsData.find(u => u.id === currentUnitId);
+            if (unitData) {
+                window.isSchedulePublished = (unitData.schedule_status === 'published');
+                window.currentUnit = {
+                    id: unitData.id,
+                    code: unitData.code,
+                    name: unitData.name,
+                    year: unitData.year,
+                    semester: unitData.semester,
+                    start_date: unitData.start_date,
+                    end_date: unitData.end_date,
+                    schedule_status: unitData.schedule_status || 'draft'
+                };
+                console.log(`Updated schedule status for skills view: ${unitData.schedule_status}, isSchedulePublished: ${window.isSchedulePublished}`);
+            }
+        }
 
         const url = addUserIdToUrl(`/facilitator/skills?unit_id=${currentUnitId}`);
         const response = await fetch(url, {
@@ -3668,7 +3761,7 @@ async function saveSkills() {
         console.error('No unit selected');
         return;
     }
-    if (window.isSchedulePublished) {
+    if (isCurrentUnitSchedulePublished()) {
         showNotification("This unit's schedule has been published. Editing skills is disabled.", 'warning');
         return;
     }

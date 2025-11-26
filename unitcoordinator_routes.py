@@ -891,9 +891,14 @@ def dashboard():
             
             has_avail = has_unavailability or has_available_all_days
 
+            # Check if facilitator has skills configured for THIS UNIT specifically
             has_skills = (
                 db.session.query(FacilitatorSkill.id)
-                .filter(FacilitatorSkill.facilitator_id == f.id)
+                .join(Module, FacilitatorSkill.module_id == Module.id)
+                .filter(
+                    FacilitatorSkill.facilitator_id == f.id,
+                    Module.unit_id == current_unit.id
+                )
                 .limit(1)
                 .first()
                 is not None
@@ -905,11 +910,14 @@ def dashboard():
             fac_progress["skills"] += 1 if has_skills else 0
             fac_progress["ready"] += 1 if is_ready else 0
 
-            # Get facilitator skills
+            # Get facilitator skills for THIS UNIT specifically
             facilitator_skills = (
                 db.session.query(FacilitatorSkill, Module)
                 .join(Module, FacilitatorSkill.module_id == Module.id)
-                .filter(FacilitatorSkill.facilitator_id == f.id)
+                .filter(
+                    FacilitatorSkill.facilitator_id == f.id,
+                    Module.unit_id == current_unit.id
+                )
                 .all()
             )
             
@@ -1235,9 +1243,14 @@ def admin_dashboard():
             
             has_avail = has_unavailability or has_available_all_days
 
+            # Check if facilitator has skills configured for THIS UNIT specifically
             has_skills = (
                 db.session.query(FacilitatorSkill.id)
-                .filter(FacilitatorSkill.facilitator_id == f.id)
+                .join(Module, FacilitatorSkill.module_id == Module.id)
+                .filter(
+                    FacilitatorSkill.facilitator_id == f.id,
+                    Module.unit_id == current_unit.id
+                )
                 .limit(1)
                 .first()
                 is not None
@@ -1249,11 +1262,14 @@ def admin_dashboard():
             fac_progress["skills"] += 1 if has_skills else 0
             fac_progress["ready"] += 1 if is_ready else 0
 
-            # Get facilitator skills
+            # Get facilitator skills for THIS UNIT specifically
             facilitator_skills = (
                 db.session.query(FacilitatorSkill, Module)
                 .join(Module, FacilitatorSkill.module_id == Module.id)
-                .filter(FacilitatorSkill.facilitator_id == f.id)
+                .filter(
+                    FacilitatorSkill.facilitator_id == f.id,
+                    Module.unit_id == current_unit.id
+                )
                 .all()
             )
             
