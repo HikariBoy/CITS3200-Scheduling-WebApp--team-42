@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
-from models import db, User, Session, Assignment, SwapRequest, Unavailability, SwapStatus, FacilitatorSkill, SkillLevel, Unit, Module, UnitFacilitator, RecurringPattern
+from models import db, User, Session, Assignment, SwapRequest, Unavailability, SwapStatus, FacilitatorSkill, SkillLevel, Unit, Module, UnitFacilitator, RecurringPattern, ScheduleStatus
 from auth import facilitator_required, get_current_user, login_required
 from datetime import datetime, time, date, timedelta
 from utils import role_required
@@ -824,6 +824,10 @@ def create_unavailability():
     if not access:
         return jsonify({"error": "facilitator not linked to this unit"}), 403
     
+    # Check if schedule is published - block editing if so
+    if access.schedule_status and access.schedule_status == ScheduleStatus.PUBLISHED:
+        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    
     # Validate date format and range
     try:
         unavailability_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
@@ -847,11 +851,22 @@ def create_unavailability():
         if not start_time_str or not end_time_str:
             return jsonify({"error": "Start time and end time are required for partial day unavailability"}), 400
         
+        # Strip whitespace and validate format
+        start_time_str = str(start_time_str).strip()
+        end_time_str = str(end_time_str).strip()
+        
+        # Validate format is HH:MM (24-hour format)
+        import re
+        time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$')
+        
+        if not time_pattern.match(start_time_str) or not time_pattern.match(end_time_str):
+            return jsonify({"error": f"Invalid time format. Use HH:MM (24-hour format). Received: start={start_time_str}, end={end_time_str}"}), 400
+        
         try:
             start_time = datetime.strptime(start_time_str, '%H:%M').time()
             end_time = datetime.strptime(end_time_str, '%H:%M').time()
-        except ValueError:
-            return jsonify({"error": "Invalid time format. Use HH:MM"}), 400
+        except ValueError as e:
+            return jsonify({"error": f"Invalid time format. Use HH:MM. Error: {str(e)}"}), 400
         
         if start_time >= end_time:
             return jsonify({"error": "End time must be after start time"}), 400
@@ -977,15 +992,38 @@ def update_unavailability(unavailability_id):
     if not unavailability:
         return jsonify({"error": "Unavailability not found"}), 404
     
+    # Get the unit to check schedule status
+    unit = Unit.query.get(unavailability.unit_id)
+    if unit and unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
+        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    
     # Update fields
     if 'date' in data:
         unavailability.date = datetime.strptime(data['date'], '%Y-%m-%d').date()
     
     if 'start_time' in data:
-        unavailability.start_time = datetime.strptime(data['start_time'], '%H:%M').time() if data['start_time'] else None
+        start_time_str = data['start_time']
+        if start_time_str:
+            start_time_str = str(start_time_str).strip()
+            import re
+            time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$')
+            if not time_pattern.match(start_time_str):
+                return jsonify({"error": f"Invalid start time format. Use HH:MM (24-hour format). Received: {start_time_str}"}), 400
+            unavailability.start_time = datetime.strptime(start_time_str, '%H:%M').time()
+        else:
+            unavailability.start_time = None
     
     if 'end_time' in data:
-        unavailability.end_time = datetime.strptime(data['end_time'], '%H:%M').time() if data['end_time'] else None
+        end_time_str = data['end_time']
+        if end_time_str:
+            end_time_str = str(end_time_str).strip()
+            import re
+            time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$')
+            if not time_pattern.match(end_time_str):
+                return jsonify({"error": f"Invalid end time format. Use HH:MM (24-hour format). Received: {end_time_str}"}), 400
+            unavailability.end_time = datetime.strptime(end_time_str, '%H:%M').time()
+        else:
+            unavailability.end_time = None
     
     if 'is_full_day' in data:
         unavailability.is_full_day = data['is_full_day']
@@ -1022,6 +1060,11 @@ def delete_unavailability(unavailability_id):
     if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
         return jsonify({"error": "forbidden"}), 403
     
+    # Get the unit to check schedule status
+    unit = Unit.query.get(unavailability.unit_id)
+    if unit and unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
+        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    
     db.session.delete(unavailability)
     db.session.commit()
     
@@ -1054,6 +1097,10 @@ def clear_all_unavailability():
     )
     if not access:
         return jsonify({"error": "facilitator not linked to this unit"}), 403
+    
+    # Check if schedule is published - block editing if so
+    if access.schedule_status and access.schedule_status == ScheduleStatus.PUBLISHED:
+        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
     
     try:
         # Delete all unavailability records for this user and unit
@@ -1121,6 +1168,10 @@ def generate_recurring_unavailability():
     if not access:
         return jsonify({"error": "forbidden"}), 403
     
+    # Check if schedule is published - block editing if so
+    if access.schedule_status and access.schedule_status == ScheduleStatus.PUBLISHED:
+        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    
     # Parse the base unavailability data
     base_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
     recurring_pattern = RecurringPattern(data.get('recurring_pattern'))
@@ -1166,8 +1217,28 @@ def generate_recurring_unavailability():
         start_time = None
         end_time = None
         if not data.get('is_full_day', False):
-            start_time = datetime.strptime(data.get('start_time'), '%H:%M').time() if data.get('start_time') else None
-            end_time = datetime.strptime(data.get('end_time'), '%H:%M').time() if data.get('end_time') else None
+            start_time_str = data.get('start_time')
+            end_time_str = data.get('end_time')
+            
+            if start_time_str:
+                start_time_str = str(start_time_str).strip()
+                import re
+                time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$')
+                if not time_pattern.match(start_time_str):
+                    return jsonify({"error": f"Invalid start time format. Use HH:MM (24-hour format). Received: {start_time_str}"}), 400
+                start_time = datetime.strptime(start_time_str, '%H:%M').time()
+            else:
+                start_time = None
+                
+            if end_time_str:
+                end_time_str = str(end_time_str).strip()
+                import re
+                time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$')
+                if not time_pattern.match(end_time_str):
+                    return jsonify({"error": f"Invalid end time format. Use HH:MM (24-hour format). Received: {end_time_str}"}), 400
+                end_time = datetime.strptime(end_time_str, '%H:%M').time()
+            else:
+                end_time = None
         
         # Check if unavailability already exists for this date and time combination
         existing = Unavailability.query.filter_by(
@@ -1248,7 +1319,7 @@ def manage_skills():
         # Build skills data with all modules, showing skill level if assigned
         skills_data = []
         for module in all_modules:
-            skill_level = skill_lookup.get(module.id, 'unassigned')
+            skill_level = skill_lookup.get(module.id, 'no_interest')  # Default to 'no_interest' instead of 'unassigned'
             experience_description = ''
             
             # Get experience description if skill exists
@@ -1289,6 +1360,15 @@ def manage_skills():
             # Check permission
             if not can_edit_facilitator_data(current_user, int(target_user_id), int(unit_id)):
                 return jsonify({"error": "forbidden"}), 403
+            
+            # Get the unit to check schedule status
+            unit = Unit.query.get(unit_id)
+            if not unit:
+                return jsonify({"error": "Unit not found"}), 404
+            
+            # Check if schedule is published - block editing if so
+            if unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
+                return jsonify({"error": "This unit's schedule has been published. Editing skills is disabled."}), 403
             
             # Use upsert logic: update existing skills or create new ones
             for module_id, skill_level in skills.items():
