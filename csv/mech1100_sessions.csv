@@ -1,0 +1,11 @@
+activity_group_code,day_of_week,start_time,weeks,duration,location
+Intro to Engineering Lab A,Monday,09:00,1-18,120,Engineering Lab 1.01
+Intro to Engineering Lab B,Monday,13:00,1-18,120,Engineering Lab 1.01
+Intro to Engineering Lab C,Tuesday,09:00,1-18,120,Engineering Lab 1.02
+Statics Tutorial A,Tuesday,14:00,1-18,90,Engineering 1.15
+Statics Tutorial B,Wednesday,10:00,1-18,90,Engineering 1.15
+Statics Tutorial C,Wednesday,14:00,1-18,90,Engineering 1.16
+Technical Drawing A,Thursday,09:00,1-18,120,Drawing Studio 3.05
+Technical Drawing B,Thursday,13:00,1-18,120,Drawing Studio 3.05
+Workshop Practice A,Friday,09:00,1-18,150,Workshop 1.20
+Workshop Practice B,Friday,13:00,1-18,150,Workshop 1.20

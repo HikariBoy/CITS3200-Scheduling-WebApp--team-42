@@ -1037,7 +1037,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Unit Selector Functionality
     // Use dynamic data from backend instead of hardcoded values
-    const units = {};
+    window.units = {}; // Make it global so other functions can access it
+    const units = window.units; // Keep local reference for convenience
     
     // Convert backend data to the format expected by the frontend
     if (window.unitsData) {
@@ -1046,12 +1047,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 id: unitData.id,
                 code: unitData.code,
                 name: unitData.name,
+                year: unitData.year,
                 semester: unitData.semester,
                 status: unitData.status,
                 sessions: unitData.sessions,
                 dateRange: unitData.date_range,
                 start_date: unitData.start_date,
                 end_date: unitData.end_date,
+                schedule_status: unitData.schedule_status,
+                availability_configured: unitData.availability_configured,
+                skills_configured: unitData.skills_configured,
                 kpis: {
                     thisWeekHours: unitData.kpis.this_week_hours,
                     remainingHours: unitData.kpis.remaining_hours,
@@ -1180,6 +1185,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Show navigation tabs and unavailability alert for individual unit views
         showElementsForUnitView();
         
+        // Update nav tab warnings based on unit configuration
+        updateNavTabWarnings(unit);
+        
         // Update unit display
         unitCodeEl.textContent = unit.code;
         unitNameEl.textContent = unit.name;
@@ -1242,6 +1250,8 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log(`Switched to unit: ${unit.code} - ${unit.name}`);
         console.log(`Schedule status for this unit: ${unit.schedule_status}, isSchedulePublished: ${window.isSchedulePublished}`);
     }
+
+    // updateNavTabWarnings is now defined globally (see below DOMContentLoaded)
 
     function showAllUnitsView() {
         currentView = 'all';
@@ -2098,8 +2108,75 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Global function to update nav tab warnings
+function updateNavTabWarnings(unit) {
+    // Update Unavailability tab
+    const unavailabilityNav = document.getElementById('unavailability-nav');
+    if (unavailabilityNav) {
+        if (!unit.availability_configured) {
+            unavailabilityNav.classList.add('pending-action');
+            // Add badge if not exists
+            if (!unavailabilityNav.querySelector('.pending-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'pending-badge';
+                badge.textContent = '!';
+                unavailabilityNav.appendChild(badge);
+            }
+        } else {
+            unavailabilityNav.classList.remove('pending-action');
+            // Remove badge if exists
+            const badge = unavailabilityNav.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+    }
+
+    // Update Skills tab
+    const skillsNav = document.getElementById('skills-nav');
+    if (skillsNav) {
+        if (!unit.skills_configured) {
+            skillsNav.classList.add('pending-action');
+            // Add badge if not exists
+            if (!skillsNav.querySelector('.pending-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'pending-badge';
+                badge.textContent = '!';
+                skillsNav.appendChild(badge);
+            }
+        } else {
+            skillsNav.classList.remove('pending-action');
+            // Remove badge if exists
+            const badge = skillsNav.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+    }
+
+    // Update Switch Unit button if ANY unit has missing config
+    const switchUnitBtn = document.getElementById('switch-unit-trigger');
+    if (switchUnitBtn && window.units) {
+        const hasIncompleteUnits = Object.values(window.units).some(u => 
+            !u.availability_configured || !u.skills_configured
+        );
+        
+        if (hasIncompleteUnits) {
+            switchUnitBtn.classList.add('pending-action');
+            // Add badge if not exists
+            if (!switchUnitBtn.querySelector('.pending-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'pending-badge';
+                badge.textContent = '!';
+                switchUnitBtn.appendChild(badge);
+            }
+        } else {
+            switchUnitBtn.classList.remove('pending-action');
+            // Remove badge if exists
+            const badge = switchUnitBtn.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+    }
+}
+
 // Unavailability functionality
-let currentUnitId = null;
+// Note: currentUnitId is accessed via window.currentUnitId (set globally)
 let currentUnit = null;
 let unavailabilityData = [];
 
@@ -2117,13 +2194,12 @@ function initUnavailabilityView() {
     
     // Get current unit from window data
     if (window.currentUnit) {
-        currentUnitId = window.currentUnit.id;
         window.currentUnitId = window.currentUnit.id;
         currentUnit = window.currentUnit;
         
         // Ensure isSchedulePublished is set based on current unit
         if (window.unitsData) {
-            const unitData = window.unitsData.find(u => u.id === currentUnitId);
+            const unitData = window.unitsData.find(u => u.id === window.currentUnitId);
             if (unitData) {
                 window.isSchedulePublished = (unitData.schedule_status === 'published');
                 console.log(`Initialized isSchedulePublished: ${window.isSchedulePublished} for unit ${unitData.code}`);
@@ -2179,7 +2255,6 @@ function updateUnavailabilityViewForUnit(unit) {
     console.log('Unit end_date:', unit.end_date);
     
     // Update current unit information
-    currentUnitId = unit.id;
     window.currentUnitId = unit.id;
     currentUnit = {
         id: unit.id,
@@ -2222,20 +2297,21 @@ function updateUnavailabilityViewForUnit(unit) {
 }
 
 function updateUnitInfo() {
-    if (!currentUnit) {
+    const unit = window.currentUnit || currentUnit;
+    if (!unit) {
         console.log('updateUnitInfo: No currentUnit available');
         return;
     }
     
-    console.log('updateUnitInfo: Updating with currentUnit:', currentUnit);
+    console.log('updateUnitInfo: Updating with currentUnit:', unit);
     
     // Update the date range display element
     const unitDateRangeDisplayElement = document.getElementById('unit-date-range-display');
     
     if (unitDateRangeDisplayElement) {
-        if (currentUnit.start_date && currentUnit.end_date) {
-            const startDate = new Date(currentUnit.start_date);
-            const endDate = new Date(currentUnit.end_date);
+        if (unit.start_date && unit.end_date) {
+            const startDate = new Date(unit.start_date);
+            const endDate = new Date(unit.end_date);
             const formattedStart = startDate.toLocaleDateString('en-GB');
             const formattedEnd = endDate.toLocaleDateString('en-GB');
             const dateRangeText = `${formattedStart} - ${formattedEnd}`;
@@ -2252,20 +2328,25 @@ function updateUnitInfo() {
 }
 
 function loadUnavailabilityData() {
+    const currentUnitId = window.currentUnitId;
+    console.log('[DEBUG] loadUnavailabilityData called, currentUnitId:', currentUnitId);
     if (!currentUnitId) {
         console.error('No current unit ID available');
         return;
     }
     
+    console.log('[DEBUG] Fetching unavailability for unit:', currentUnitId);
     fetch(`/facilitator/unavailability?unit_id=${currentUnitId}`)
         .then(response => response.json())
         .then(data => {
+            console.log('[DEBUG] Unavailability data received:', data);
             if (data.error) {
                 console.error('Error loading unavailability:', data.error);
                 return;
             }
             
             unavailabilityData = data.unavailabilities || [];
+            console.log('[DEBUG] Unavailability data array length:', unavailabilityData.length);
             updateCalendarDisplay();
             updateRecentUnavailabilityList();
         })
@@ -2388,12 +2469,17 @@ function generateCalendar() {
 }
 
 function isDateInUnitPeriod(dateString) {
-    if (!currentUnit || !currentUnit.start_date || !currentUnit.end_date) return false;
+    const unit = window.currentUnit || currentUnit;
+    if (!unit || !unit.start_date || !unit.end_date) {
+        console.log('[DEBUG] isDateInUnitPeriod: No unit data available', unit);
+        return false;
+    }
     
     const date = new Date(dateString);
-    const startDate = new Date(currentUnit.start_date);
-    const endDate = new Date(currentUnit.end_date);
+    const startDate = new Date(unit.start_date);
+    const endDate = new Date(unit.end_date);
     
+    console.log('[DEBUG] Checking date:', dateString, 'Range:', startDate, 'to', endDate);
     return date >= startDate && date <= endDate;
 }
 
@@ -2652,7 +2738,7 @@ function saveUnavailability() {
     }
     
     const data = {
-        unit_id: currentUnitId,
+        unit_id: window.currentUnitId,
         date: date,
         is_full_day: isFullDay,
         start_time: startTime,
@@ -2686,6 +2772,7 @@ function saveUnavailability() {
     })
     .then(response => response.json())
     .then(result => {
+        console.log('[DEBUG] Save unavailability result:', result);
         if (result.error) {
             alert('Error saving unavailability: ' + result.error);
             return;
@@ -2694,12 +2781,16 @@ function saveUnavailability() {
         // Reload unavailability data
         loadUnavailabilityData();
         
-        // Remove red highlight from Unavailability tab
-        const unavailabilityTab = document.getElementById('unavailability-nav');
-        if (unavailabilityTab) {
-            unavailabilityTab.classList.remove('pending-action');
-            const badge = unavailabilityTab.querySelector('.pending-badge');
-            if (badge) badge.remove();
+        // Update unit data to mark availability as configured (use backend response)
+        if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
+            window.units[window.currentUnitId].availability_configured = result.availability_configured || true;
+            console.log('[DEBUG] Updated availability_configured to:', window.units[window.currentUnitId].availability_configured);
+        }
+        
+        // Update all nav tab warnings (including Switch Unit button)
+        if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
+            console.log('[DEBUG] Calling updateNavTabWarnings');
+            updateNavTabWarnings(window.units[window.currentUnitId]);
         }
         
         // Close modal
@@ -2721,8 +2812,8 @@ function saveUnavailability() {
         console.log('Unavailability saved successfully');
     })
     .catch(error => {
-        console.error('Error saving unavailability:', error);
-        alert('Error saving unavailability');
+        console.error('[DEBUG] Error saving unavailability:', error);
+        alert('Error saving unavailability: ' + error.message);
     });
 }
 
@@ -3827,12 +3918,14 @@ async function saveSkills() {
         const data = await response.json();
         showNotification(data.message || 'Skills saved successfully!', 'success');
         
-        // Remove red highlight from Skills tab
-        const skillsTab = document.getElementById('skills-nav');
-        if (skillsTab) {
-            skillsTab.classList.remove('pending-action');
-            const badge = skillsTab.querySelector('.pending-badge');
-            if (badge) badge.remove();
+        // Update unit data to mark skills as configured
+        if (window.units && window.units[currentUnitId]) {
+            window.units[currentUnitId].skills_configured = true;
+        }
+        
+        // Update all nav tab warnings (including Switch Unit button)
+        if (window.units && window.units[currentUnitId]) {
+            updateNavTabWarnings(window.units[currentUnitId]);
         }
         
         // Reload skills to reflect changes

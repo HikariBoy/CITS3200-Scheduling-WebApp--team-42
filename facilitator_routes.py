@@ -962,6 +962,7 @@ def create_unavailability():
         
         return jsonify({
             "message": "Unavailability created successfully",
+            "availability_configured": True,
             "unavailability": {
                 "id": unavailability.id,
                 "date": unavailability.date.isoformat(),
@@ -1279,7 +1280,8 @@ def generate_recurring_unavailability():
     response_data = {
         "message": f"Created {created_count} recurring unavailability entries",
         "total_dates": len(dates),
-        "created_count": created_count
+        "created_count": created_count,
+        "availability_configured": True
     }
     
     # Add warning message if end date was adjusted

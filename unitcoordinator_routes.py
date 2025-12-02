@@ -1798,35 +1798,78 @@ def edit_facilitator_view(unit_id: int, email: str):
     skills_count = len(skills)
     availability_configured = link.availability_configured
     
-    # Build units_data for the template with KPIs (only this unit for UC editing)
-    units_data = [{
-        'id': unit.id,
-        'code': unit.unit_code,
-        'name': unit.unit_name,
-        'semester': unit.semester,
-        'year': unit.year,
-        'schedule_status': unit.schedule_status.value if unit.schedule_status else 'draft',
-        'kpis': {
-            'this_week_hours': 0,
-            'active_sessions': 0,
-            'remaining_hours': 0,
-            'total_hours': 0,
-            'upcoming_sessions': 0,
-            'total_sessions': 0,
-            'completed_sessions': 0
-        },
-        'upcoming_sessions': [],
-        'past_sessions': []
-    }]
+    # Get ALL units this facilitator is assigned to (for unit switcher)
+    all_facilitator_units = (
+        db.session.query(Unit)
+        .join(UnitFacilitator, UnitFacilitator.unit_id == Unit.id)
+        .filter(UnitFacilitator.user_id == facilitator_user.id)
+        .order_by(Unit.start_date.desc().nulls_last())
+        .all()
+    )
     
-    # Use the same data for current_unit_dict
-    current_unit_data = units_data[0]
+    # Build units_data for ALL facilitator's units (for unit switcher dropdown)
+    from datetime import date
+    today = date.today()
+    units_data = []
+    
+    for u in all_facilitator_units:
+        # Determine if unit is active or completed
+        is_active = False
+        if u.end_date:
+            is_active = today <= u.end_date
+        elif u.start_date:
+            is_active = u.start_date <= today
+        else:
+            is_active = True  # Default to active if no dates
+        
+        # Check availability and skills for this unit
+        unit_link = UnitFacilitator.query.filter_by(unit_id=u.id, user_id=facilitator_user.id).first()
+        unit_availability_configured = unit_link.availability_configured if unit_link else False
+        
+        unit_skills_count = (
+            db.session.query(FacilitatorSkill)
+            .join(Module, FacilitatorSkill.module_id == Module.id)
+            .filter(
+                Module.unit_id == u.id,
+                FacilitatorSkill.facilitator_id == facilitator_user.id
+            )
+            .count()
+        )
+        
+        unit_data = {
+            'id': u.id,
+            'code': u.unit_code,
+            'name': u.unit_name,
+            'semester': u.semester,
+            'year': u.year,
+            'start_date': u.start_date.isoformat() if u.start_date else None,
+            'end_date': u.end_date.isoformat() if u.end_date else None,
+            'status': 'active' if is_active else 'completed',  # Required for dropdown filter
+            'schedule_status': u.schedule_status.value if u.schedule_status else 'draft',
+            'availability_configured': unit_availability_configured,  # For nav tab warning
+            'skills_configured': unit_skills_count > 0,  # For nav tab warning
+            'kpis': {
+                'this_week_hours': 0,
+                'active_sessions': 0,
+                'remaining_hours': 0,
+                'total_hours': 0,
+                'upcoming_sessions': 0,
+                'total_sessions': 0,
+                'completed_sessions': 0
+            },
+            'upcoming_sessions': [],
+            'past_sessions': []
+        }
+        units_data.append(unit_data)
+    
+    # Find current unit in units_data or use first one
+    current_unit_data = next((u for u in units_data if u['id'] == unit.id), units_data[0] if units_data else None)
     
     # Render the facilitator dashboard template with UC editing context
     return render_template('facilitator_dashboard.html',
                          unit=unit,
                          user=facilitator_user,  # The facilitator being edited
-                         units=[unit],  # List of units (just this one)
+                         units=all_facilitator_units,  # ALL units the facilitator is in (for switcher)
                          units_data=units_data,  # For JavaScript
                          current_unit=unit,  # The current unit being edited
                          current_unit_dict=current_unit_data,  # For template KPIs
@@ -2128,9 +2171,12 @@ def confirm_facilitators():
             
             # Track existing users being added to this unit
             if not is_new_user:
+                # Check if user needs setup
+                user_needs_setup = not (user_obj.password_hash and user_obj.first_name and user_obj.last_name)
                 added_to_unit_emails.append({
                     'email': email,
-                    'name': user_obj.first_name or 'there'
+                    'name': user_obj.first_name or 'there',
+                    'needs_setup': user_needs_setup
                 })
     
     try:
@@ -2160,12 +2206,13 @@ def confirm_facilitators():
         if added_to_unit_emails:
             for user_info in added_to_unit_emails:
                 try:
-                    print(f"DEBUG: Attempting to send unit addition email to {user_info['email']}")
+                    print(f"DEBUG: Attempting to send unit addition email to {user_info['email']} (needs_setup={user_info.get('needs_setup', False)})")
                     send_unit_addition_email(
                         user_info['email'],
                         user_info['name'],
                         unit.unit_code,
-                        unit.unit_name
+                        unit.unit_name,
+                        user_needs_setup=user_info.get('needs_setup', False)
                     )
                     print(f"✅ Unit addition email sent to {user_info['email']}")
                     emails_sent += 1
@@ -2241,14 +2288,17 @@ def add_single_facilitator(unit_id: int):
                 print(f"❌ Failed to send welcome email to {email}: {e}")
         else:
             # Send unit addition email to existing user
+            # Check if user has completed setup (has password and name)
+            user_needs_setup = not (facilitator.password_hash and facilitator.first_name and facilitator.last_name)
             try:
                 send_unit_addition_email(
                     email,
                     facilitator.first_name or 'there',
                     unit.unit_code,
-                    unit.unit_name
+                    unit.unit_name,
+                    user_needs_setup=user_needs_setup
                 )
-                print(f"✅ Unit addition email sent to {email}")
+                print(f"✅ Unit addition email sent to {email} (needs_setup={user_needs_setup})")
             except Exception as e:
                 print(f"❌ Failed to send unit addition email to {email}: {e}")
         

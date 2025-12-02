@@ -1,0 +1,11 @@
+activity_group_code,day_of_week,start_time,weeks,duration,location
+Lab Session A,Monday,09:00,1-18,120,Engineering Lab 1.01
+Lab Session B,Monday,14:00,1-18,120,Engineering Lab 1.01
+Tutorial A,Tuesday,10:00,1-18,90,EZONE 2.15
+Tutorial B,Tuesday,15:00,1-18,90,EZONE 2.15
+Workshop A,Wednesday,09:00,1-18,120,Blu Room 3.10
+Workshop B,Wednesday,13:00,1-18,120,Blu Room 3.10
+Lab Session C,Thursday,11:00,1-18,120,Engineering Lab 1.02
+Tutorial C,Thursday,16:00,1-18,90,EZONE 1.24
+Lab Session D,Friday,10:00,1-18,120,Engineering Lab 1.03
+Tutorial D,Friday,14:00,1-18,90,CSSE 2.23

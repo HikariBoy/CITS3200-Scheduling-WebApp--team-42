@@ -722,7 +722,7 @@ def send_reminder_email(recipient_email, recipient_name, unit_code, unit_name, b
     base_url = base_url.rstrip('/')
     
     # Create login link
-    login_link = f"{base_url}/auth/login"
+    login_link = f"{base_url}/login"
     
     # Email subject
     subject = f"Reminder: Complete Your Profile for {unit_code}"
@@ -841,7 +841,7 @@ def send_reminder_email(recipient_email, recipient_name, unit_code, unit_name, b
         return False
 
 
-def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_name, base_url=None, use_mock=False):
+def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_name, base_url=None, use_mock=False, user_needs_setup=False):
     """
     Send an email to a facilitator when they're added to a new unit.
     
@@ -852,6 +852,7 @@ def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_na
         unit_name: Full unit name
         base_url: Base URL for the application (optional)
         use_mock: If True, print email instead of sending (for testing)
+        user_needs_setup: If True, user hasn't completed account setup yet
     
     Returns:
         bool: True if email sent successfully, False otherwise
@@ -869,25 +870,49 @@ def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_na
     base_url = base_url.rstrip('/')
     
     # Create login link
-    login_link = f"{base_url}/auth/login"
-    setup_link = f"{base_url}/auth/setup"
+    login_link = f"{base_url}/login"
+    
+    # Generate setup token if user needs setup
+    setup_link = None
+    if user_needs_setup:
+        token = generate_email_token(recipient_email)
+        setup_link = f"{base_url}/setup-account?token={token}"
     
     # Email subject
     subject = f"You've Been Added to {unit_code}"
     
-    # Plain text body
-    body_text = f"""
+    # Plain text body - conditional setup instructions
+    if user_needs_setup:
+        body_text = f"""
     Hi {recipient_name},
 
     Great news! You've been added as a facilitator for {unit_code} - {unit_name}.
 
     To get started, please:
     
-    1. Set up your account (if you haven't already - you only need to do this once):
+    1. Set up your account (first time only):
        {setup_link}
     
     2. Configure your availability for {unit_code}
     3. Set your skills and experience for the unit's modules
+
+    Once you've completed these steps, the Unit Coordinator will be able to assign you to sessions.
+
+    If you have any questions, please contact your Unit Coordinator.
+
+    Best regards,
+    The ScheduleME Team
+    """
+    else:
+        body_text = f"""
+    Hi {recipient_name},
+
+    Great news! You've been added as a facilitator for {unit_code} - {unit_name}.
+
+    To get started, please log in and:
+    
+    1. Configure your availability for {unit_code}
+    2. Set your skills and experience for the unit's modules
 
     Once you've completed these steps, the Unit Coordinator will be able to assign you to sessions.
 
@@ -899,7 +924,49 @@ def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_na
     The ScheduleME Team
     """
     
-    # HTML body
+    # HTML body - conditional based on setup status
+    if user_needs_setup:
+        steps_html = """
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li style="margin-bottom: 8px;">
+                        <strong>Set up your account</strong> (first time only)
+                    </li>
+                    <li style="margin-bottom: 8px;">
+                        <strong>Configure your availability</strong> for """ + unit_code + """
+                    </li>
+                    <li style="margin-bottom: 8px;">
+                        <strong>Set your skills and experience</strong> for the unit's modules
+                    </li>
+                </ol>
+        """
+        button_html = f"""
+                <a href="{setup_link}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
+                          font-weight: bold; font-size: 16px;">
+                    Set Up My Account
+                </a>
+        """
+    else:
+        steps_html = """
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li style="margin-bottom: 8px;">
+                        <strong>Configure your availability</strong> for """ + unit_code + """
+                    </li>
+                    <li style="margin-bottom: 8px;">
+                        <strong>Set your skills and experience</strong> for the unit's modules
+                    </li>
+                </ol>
+        """
+        button_html = f"""
+                <a href="{login_link}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
+                          font-weight: bold; font-size: 16px;">
+                    Log In to Get Started
+                </a>
+        """
+    
     body_html = f"""
     <!DOCTYPE html>
     <html>
@@ -921,17 +988,7 @@ def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_na
             
             <div style="background-color: #e0f2fe; border-left: 4px solid #0284c7; padding: 15px; margin: 20px 0; border-radius: 4px;">
                 <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>To get started:</strong></p>
-                <ol style="margin: 0; padding-left: 20px;">
-                    <li style="margin-bottom: 8px;">
-                        <strong>Set up your account</strong> (if you haven't already - you only need to do this once)
-                    </li>
-                    <li style="margin-bottom: 8px;">
-                        <strong>Configure your availability</strong> for {unit_code}
-                    </li>
-                    <li style="margin-bottom: 8px;">
-                        <strong>Set your skills and experience</strong> for the unit's modules
-                    </li>
-                </ol>
+                {steps_html}
             </div>
             
             <p style="font-size: 14px; color: #666; margin: 20px 0;">
@@ -939,18 +996,7 @@ def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_na
             </p>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="{login_link}" 
-                   style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
-                          font-weight: bold; font-size: 16px; margin-right: 10px;">
-                    Log In
-                </a>
-                <a href="{setup_link}" 
-                   style="display: inline-block; background: #10b981; 
-                          color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; 
-                          font-weight: bold; font-size: 16px;">
-                    Set Up Account
-                </a>
+                {button_html}
             </div>
             
             <p style="font-size: 14px; color: #666; margin-top: 30px;">
