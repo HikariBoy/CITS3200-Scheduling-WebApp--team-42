@@ -2765,12 +2765,14 @@ function saveUnavailability() {
         // Reload unavailability data
         loadUnavailabilityData();
         
-        // Remove red highlight from Unavailability tab
-        const unavailabilityTab = document.getElementById('unavailability-nav');
-        if (unavailabilityTab) {
-            unavailabilityTab.classList.remove('pending-action');
-            const badge = unavailabilityTab.querySelector('.pending-badge');
-            if (badge) badge.remove();
+        // Update unit data to mark availability as configured
+        if (units[currentUnitId]) {
+            units[currentUnitId].availability_configured = true;
+        }
+        
+        // Update all nav tab warnings (including Switch Unit button)
+        if (units[currentUnitId]) {
+            updateNavTabWarnings(units[currentUnitId]);
         }
         
         // Close modal
@@ -3898,12 +3900,14 @@ async function saveSkills() {
         const data = await response.json();
         showNotification(data.message || 'Skills saved successfully!', 'success');
         
-        // Remove red highlight from Skills tab
-        const skillsTab = document.getElementById('skills-nav');
-        if (skillsTab) {
-            skillsTab.classList.remove('pending-action');
-            const badge = skillsTab.querySelector('.pending-badge');
-            if (badge) badge.remove();
+        // Update unit data to mark skills as configured
+        if (units[currentUnitId]) {
+            units[currentUnitId].skills_configured = true;
+        }
+        
+        // Update all nav tab warnings (including Switch Unit button)
+        if (units[currentUnitId]) {
+            updateNavTabWarnings(units[currentUnitId]);
         }
         
         // Reload skills to reflect changes
