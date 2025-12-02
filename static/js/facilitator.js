@@ -2171,7 +2171,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Unavailability functionality
-let currentUnitId = null;
+// Note: currentUnitId is accessed via window.currentUnitId (set globally)
 let currentUnit = null;
 let unavailabilityData = [];
 
@@ -2324,6 +2324,7 @@ function updateUnitInfo() {
 }
 
 function loadUnavailabilityData() {
+    const currentUnitId = window.currentUnitId;
     if (!currentUnitId) {
         console.error('No current unit ID available');
         return;
