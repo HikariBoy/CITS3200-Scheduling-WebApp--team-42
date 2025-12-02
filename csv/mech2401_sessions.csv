@@ -1,0 +1,12 @@
+activity_group_code,day_of_week,start_time,weeks,duration,location
+Mechanics Lab 1A,Monday,09:00,1-18,120,Mech Workshop 1.05
+Mechanics Lab 1B,Monday,14:00,1-18,120,Mech Workshop 1.05
+Thermodynamics Tutorial A,Tuesday,10:00,1-18,90,Engineering 2.14
+Thermodynamics Tutorial B,Tuesday,15:30,1-18,90,Engineering 2.14
+CAD Workshop A,Wednesday,09:00,1-18,120,Computer Lab G.20
+CAD Workshop B,Wednesday,13:00,1-18,120,Computer Lab G.20
+Fluid Mechanics Lab A,Thursday,10:00,1-18,150,Hydraulics Lab 1.08
+Fluid Mechanics Lab B,Thursday,14:00,1-18,150,Hydraulics Lab 1.08
+Materials Tutorial A,Friday,09:00,1-18,90,Engineering 3.12
+Materials Tutorial B,Friday,11:00,1-18,90,Engineering 3.12
+Design Workshop,Friday,14:00,1-18,120,Design Studio 2.05

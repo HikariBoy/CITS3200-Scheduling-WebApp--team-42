@@ -92,7 +92,7 @@ def setup_account():
     
     # Check if user has already completed setup
     if user.first_name and user.last_name and user.password_hash:
-        flash("This account has already been set up. Please log in.")
+        flash("✅ Your account is already set up! Please log in to continue.", "success")
         return redirect(url_for("login"))
     
     # Get role name for display and determine which signup page to use

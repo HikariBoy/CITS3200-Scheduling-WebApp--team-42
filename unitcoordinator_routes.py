@@ -2128,9 +2128,12 @@ def confirm_facilitators():
             
             # Track existing users being added to this unit
             if not is_new_user:
+                # Check if user needs setup
+                user_needs_setup = not (user_obj.password_hash and user_obj.first_name and user_obj.last_name)
                 added_to_unit_emails.append({
                     'email': email,
-                    'name': user_obj.first_name or 'there'
+                    'name': user_obj.first_name or 'there',
+                    'needs_setup': user_needs_setup
                 })
     
     try:
@@ -2160,12 +2163,13 @@ def confirm_facilitators():
         if added_to_unit_emails:
             for user_info in added_to_unit_emails:
                 try:
-                    print(f"DEBUG: Attempting to send unit addition email to {user_info['email']}")
+                    print(f"DEBUG: Attempting to send unit addition email to {user_info['email']} (needs_setup={user_info.get('needs_setup', False)})")
                     send_unit_addition_email(
                         user_info['email'],
                         user_info['name'],
                         unit.unit_code,
-                        unit.unit_name
+                        unit.unit_name,
+                        user_needs_setup=user_info.get('needs_setup', False)
                     )
                     print(f"✅ Unit addition email sent to {user_info['email']}")
                     emails_sent += 1
@@ -2241,14 +2245,17 @@ def add_single_facilitator(unit_id: int):
                 print(f"❌ Failed to send welcome email to {email}: {e}")
         else:
             # Send unit addition email to existing user
+            # Check if user has completed setup (has password and name)
+            user_needs_setup = not (facilitator.password_hash and facilitator.first_name and facilitator.last_name)
             try:
                 send_unit_addition_email(
                     email,
                     facilitator.first_name or 'there',
                     unit.unit_code,
-                    unit.unit_name
+                    unit.unit_name,
+                    user_needs_setup=user_needs_setup
                 )
-                print(f"✅ Unit addition email sent to {email}")
+                print(f"✅ Unit addition email sent to {email} (needs_setup={user_needs_setup})")
             except Exception as e:
                 print(f"❌ Failed to send unit addition email to {email}: {e}")
         
