@@ -2189,13 +2189,12 @@ function initUnavailabilityView() {
     
     // Get current unit from window data
     if (window.currentUnit) {
-        currentUnitId = window.currentUnit.id;
         window.currentUnitId = window.currentUnit.id;
         currentUnit = window.currentUnit;
         
         // Ensure isSchedulePublished is set based on current unit
         if (window.unitsData) {
-            const unitData = window.unitsData.find(u => u.id === currentUnitId);
+            const unitData = window.unitsData.find(u => u.id === window.currentUnitId);
             if (unitData) {
                 window.isSchedulePublished = (unitData.schedule_status === 'published');
                 console.log(`Initialized isSchedulePublished: ${window.isSchedulePublished} for unit ${unitData.code}`);
@@ -2251,7 +2250,6 @@ function updateUnavailabilityViewForUnit(unit) {
     console.log('Unit end_date:', unit.end_date);
     
     // Update current unit information
-    currentUnitId = unit.id;
     window.currentUnitId = unit.id;
     currentUnit = {
         id: unit.id,
@@ -2294,20 +2292,21 @@ function updateUnavailabilityViewForUnit(unit) {
 }
 
 function updateUnitInfo() {
-    if (!currentUnit) {
+    const unit = window.currentUnit || currentUnit;
+    if (!unit) {
         console.log('updateUnitInfo: No currentUnit available');
         return;
     }
     
-    console.log('updateUnitInfo: Updating with currentUnit:', currentUnit);
+    console.log('updateUnitInfo: Updating with currentUnit:', unit);
     
     // Update the date range display element
     const unitDateRangeDisplayElement = document.getElementById('unit-date-range-display');
     
     if (unitDateRangeDisplayElement) {
-        if (currentUnit.start_date && currentUnit.end_date) {
-            const startDate = new Date(currentUnit.start_date);
-            const endDate = new Date(currentUnit.end_date);
+        if (unit.start_date && unit.end_date) {
+            const startDate = new Date(unit.start_date);
+            const endDate = new Date(unit.end_date);
             const formattedStart = startDate.toLocaleDateString('en-GB');
             const formattedEnd = endDate.toLocaleDateString('en-GB');
             const dateRangeText = `${formattedStart} - ${formattedEnd}`;
@@ -2325,20 +2324,24 @@ function updateUnitInfo() {
 
 function loadUnavailabilityData() {
     const currentUnitId = window.currentUnitId;
+    console.log('[DEBUG] loadUnavailabilityData called, currentUnitId:', currentUnitId);
     if (!currentUnitId) {
         console.error('No current unit ID available');
         return;
     }
     
+    console.log('[DEBUG] Fetching unavailability for unit:', currentUnitId);
     fetch(`/facilitator/unavailability?unit_id=${currentUnitId}`)
         .then(response => response.json())
         .then(data => {
+            console.log('[DEBUG] Unavailability data received:', data);
             if (data.error) {
                 console.error('Error loading unavailability:', data.error);
                 return;
             }
             
             unavailabilityData = data.unavailabilities || [];
+            console.log('[DEBUG] Unavailability data array length:', unavailabilityData.length);
             updateCalendarDisplay();
             updateRecentUnavailabilityList();
         })
@@ -2461,12 +2464,17 @@ function generateCalendar() {
 }
 
 function isDateInUnitPeriod(dateString) {
-    if (!currentUnit || !currentUnit.start_date || !currentUnit.end_date) return false;
+    const unit = window.currentUnit || currentUnit;
+    if (!unit || !unit.start_date || !unit.end_date) {
+        console.log('[DEBUG] isDateInUnitPeriod: No unit data available', unit);
+        return false;
+    }
     
     const date = new Date(dateString);
-    const startDate = new Date(currentUnit.start_date);
-    const endDate = new Date(currentUnit.end_date);
+    const startDate = new Date(unit.start_date);
+    const endDate = new Date(unit.end_date);
     
+    console.log('[DEBUG] Checking date:', dateString, 'Range:', startDate, 'to', endDate);
     return date >= startDate && date <= endDate;
 }
 

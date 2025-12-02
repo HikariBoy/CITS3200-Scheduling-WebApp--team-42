@@ -1842,6 +1842,8 @@ def edit_facilitator_view(unit_id: int, email: str):
             'name': u.unit_name,
             'semester': u.semester,
             'year': u.year,
+            'start_date': u.start_date.isoformat() if u.start_date else None,
+            'end_date': u.end_date.isoformat() if u.end_date else None,
             'status': 'active' if is_active else 'completed',  # Required for dropdown filter
             'schedule_status': u.schedule_status.value if u.schedule_status else 'draft',
             'availability_configured': unit_availability_configured,  # For nav tab warning
