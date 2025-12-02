@@ -1288,6 +1288,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (badge) badge.remove();
             }
         }
+
+        // Update Switch Unit button if ANY unit has missing config
+        const switchUnitBtn = document.getElementById('switch-unit-trigger');
+        if (switchUnitBtn) {
+            const hasIncompleteUnits = Object.values(units).some(u => 
+                !u.availability_configured || !u.skills_configured
+            );
+            
+            if (hasIncompleteUnits) {
+                switchUnitBtn.classList.add('pending-action');
+                // Add badge if not exists
+                if (!switchUnitBtn.querySelector('.pending-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'pending-badge';
+                    badge.textContent = '!';
+                    switchUnitBtn.appendChild(badge);
+                }
+            } else {
+                switchUnitBtn.classList.remove('pending-action');
+                // Remove badge if exists
+                const badge = switchUnitBtn.querySelector('.pending-badge');
+                if (badge) badge.remove();
+            }
+        }
     }
 
     function showAllUnitsView() {
