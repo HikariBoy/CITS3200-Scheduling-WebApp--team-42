@@ -1251,71 +1251,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log(`Schedule status for this unit: ${unit.schedule_status}, isSchedulePublished: ${window.isSchedulePublished}`);
     }
 
-    function updateNavTabWarnings(unit) {
-        // Update Unavailability tab
-        const unavailabilityNav = document.getElementById('unavailability-nav');
-        if (unavailabilityNav) {
-            if (!unit.availability_configured) {
-                unavailabilityNav.classList.add('pending-action');
-                // Add badge if not exists
-                if (!unavailabilityNav.querySelector('.pending-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'pending-badge';
-                    badge.textContent = '!';
-                    unavailabilityNav.appendChild(badge);
-                }
-            } else {
-                unavailabilityNav.classList.remove('pending-action');
-                // Remove badge if exists
-                const badge = unavailabilityNav.querySelector('.pending-badge');
-                if (badge) badge.remove();
-            }
-        }
-
-        // Update Skills tab
-        const skillsNav = document.getElementById('skills-nav');
-        if (skillsNav) {
-            if (!unit.skills_configured) {
-                skillsNav.classList.add('pending-action');
-                // Add badge if not exists
-                if (!skillsNav.querySelector('.pending-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'pending-badge';
-                    badge.textContent = '!';
-                    skillsNav.appendChild(badge);
-                }
-            } else {
-                skillsNav.classList.remove('pending-action');
-                // Remove badge if exists
-                const badge = skillsNav.querySelector('.pending-badge');
-                if (badge) badge.remove();
-            }
-        }
-
-        // Update Switch Unit button if ANY unit has missing config
-        const switchUnitBtn = document.getElementById('switch-unit-trigger');
-        if (switchUnitBtn && window.units) {
-            const hasIncompleteUnits = Object.values(window.units).some(u => 
-                !u.availability_configured || !u.skills_configured
-            );
-            
-            if (hasIncompleteUnits) {
-                switchUnitBtn.classList.add('pending-action');
-                // Add badge if not exists
-                if (!switchUnitBtn.querySelector('.pending-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'pending-badge';
-                    badge.textContent = '!';
-                    switchUnitBtn.appendChild(badge);
-                }
-            } else {
-                switchUnitBtn.classList.remove('pending-action');
-                // Remove badge if exists
-                const badge = switchUnitBtn.querySelector('.pending-badge');
-                if (badge) badge.remove();
-            }
-        }
-    }
+    // updateNavTabWarnings is now defined globally (see below DOMContentLoaded)
 
     function showAllUnitsView() {
         currentView = 'all';
@@ -2171,6 +2107,73 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Global function to update nav tab warnings
+function updateNavTabWarnings(unit) {
+    // Update Unavailability tab
+    const unavailabilityNav = document.getElementById('unavailability-nav');
+    if (unavailabilityNav) {
+        if (!unit.availability_configured) {
+            unavailabilityNav.classList.add('pending-action');
+            // Add badge if not exists
+            if (!unavailabilityNav.querySelector('.pending-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'pending-badge';
+                badge.textContent = '!';
+                unavailabilityNav.appendChild(badge);
+            }
+        } else {
+            unavailabilityNav.classList.remove('pending-action');
+            // Remove badge if exists
+            const badge = unavailabilityNav.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+    }
+
+    // Update Skills tab
+    const skillsNav = document.getElementById('skills-nav');
+    if (skillsNav) {
+        if (!unit.skills_configured) {
+            skillsNav.classList.add('pending-action');
+            // Add badge if not exists
+            if (!skillsNav.querySelector('.pending-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'pending-badge';
+                badge.textContent = '!';
+                skillsNav.appendChild(badge);
+            }
+        } else {
+            skillsNav.classList.remove('pending-action');
+            // Remove badge if exists
+            const badge = skillsNav.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+    }
+
+    // Update Switch Unit button if ANY unit has missing config
+    const switchUnitBtn = document.getElementById('switch-unit-trigger');
+    if (switchUnitBtn && window.units) {
+        const hasIncompleteUnits = Object.values(window.units).some(u => 
+            !u.availability_configured || !u.skills_configured
+        );
+        
+        if (hasIncompleteUnits) {
+            switchUnitBtn.classList.add('pending-action');
+            // Add badge if not exists
+            if (!switchUnitBtn.querySelector('.pending-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'pending-badge';
+                badge.textContent = '!';
+                switchUnitBtn.appendChild(badge);
+            }
+        } else {
+            switchUnitBtn.classList.remove('pending-action');
+            // Remove badge if exists
+            const badge = switchUnitBtn.querySelector('.pending-badge');
+            if (badge) badge.remove();
+        }
+    }
+}
 
 // Unavailability functionality
 // Note: currentUnitId is accessed via window.currentUnitId (set globally)
