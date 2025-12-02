@@ -1037,7 +1037,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Unit Selector Functionality
     // Use dynamic data from backend instead of hardcoded values
-    const units = {};
+    window.units = {}; // Make it global so other functions can access it
+    const units = window.units; // Keep local reference for convenience
     
     // Convert backend data to the format expected by the frontend
     if (window.unitsData) {
@@ -1291,8 +1292,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update Switch Unit button if ANY unit has missing config
         const switchUnitBtn = document.getElementById('switch-unit-trigger');
-        if (switchUnitBtn) {
-            const hasIncompleteUnits = Object.values(units).some(u => 
+        if (switchUnitBtn && window.units) {
+            const hasIncompleteUnits = Object.values(window.units).some(u => 
                 !u.availability_configured || !u.skills_configured
             );
             
@@ -2766,13 +2767,13 @@ function saveUnavailability() {
         loadUnavailabilityData();
         
         // Update unit data to mark availability as configured
-        if (units[currentUnitId]) {
-            units[currentUnitId].availability_configured = true;
+        if (window.units && window.units[currentUnitId]) {
+            window.units[currentUnitId].availability_configured = true;
         }
         
         // Update all nav tab warnings (including Switch Unit button)
-        if (units[currentUnitId]) {
-            updateNavTabWarnings(units[currentUnitId]);
+        if (window.units && window.units[currentUnitId]) {
+            updateNavTabWarnings(window.units[currentUnitId]);
         }
         
         // Close modal
@@ -3901,13 +3902,13 @@ async function saveSkills() {
         showNotification(data.message || 'Skills saved successfully!', 'success');
         
         // Update unit data to mark skills as configured
-        if (units[currentUnitId]) {
-            units[currentUnitId].skills_configured = true;
+        if (window.units && window.units[currentUnitId]) {
+            window.units[currentUnitId].skills_configured = true;
         }
         
         // Update all nav tab warnings (including Switch Unit button)
-        if (units[currentUnitId]) {
-            updateNavTabWarnings(units[currentUnitId]);
+        if (window.units && window.units[currentUnitId]) {
+            updateNavTabWarnings(window.units[currentUnitId]);
         }
         
         // Reload skills to reflect changes
