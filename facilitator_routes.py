@@ -781,7 +781,8 @@ def get_unavailability():
             'recurring_pattern': unav.recurring_pattern.value if unav.recurring_pattern else None,
             'recurring_end_date': unav.recurring_end_date.isoformat() if unav.recurring_end_date else None,
             'recurring_interval': unav.recurring_interval,
-            'reason': unav.reason
+            'reason': unav.reason,
+            'is_auto_generated': unav.source_session_id is not None
         })
     
     return jsonify({
@@ -1060,6 +1061,10 @@ def delete_unavailability(unavailability_id):
     # Check permission
     if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
         return jsonify({"error": "forbidden"}), 403
+    
+    # Prevent deletion of auto-generated unavailability
+    if unavailability.source_session_id is not None:
+        return jsonify({"error": "Cannot delete auto-generated unavailability from published schedules. Contact your unit coordinator if this needs to be changed."}), 403
     
     # Get the unit to check schedule status
     unit = Unit.query.get(unavailability.unit_id)

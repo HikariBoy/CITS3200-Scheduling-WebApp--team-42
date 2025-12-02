@@ -30,6 +30,110 @@ unitcoordinator_bp = Blueprint(
     "unitcoordinator", __name__, url_prefix="/unitcoordinator"
 )
 
+# ------------------------------------------------------------------------------
+# Helper Functions
+# ------------------------------------------------------------------------------
+
+def generate_unavailability_from_schedule(unit_id):
+    """
+    Auto-generate unavailability entries for facilitators based on their assigned sessions
+    in a published schedule. This prevents double-booking across units.
+    
+    Args:
+        unit_id: The unit whose schedule was just published
+    """
+    from models import ScheduleStatus, UnitFacilitator
+    
+    unit = Unit.query.get(unit_id)
+    if not unit or unit.schedule_status != ScheduleStatus.PUBLISHED:
+        return 0
+    
+    # Get all sessions with assigned facilitators in this unit
+    sessions = Session.query.filter_by(unit_id=unit_id).filter(Session.facilitator_id.isnot(None)).all()
+    
+    created_count = 0
+    
+    for session in sessions:
+        if not session.facilitator_id or not session.date or not session.start_time or not session.end_time:
+            continue
+        
+        # Get all OTHER units this facilitator is assigned to
+        other_unit_ids = db.session.query(UnitFacilitator.unit_id).filter(
+            UnitFacilitator.user_id == session.facilitator_id,
+            UnitFacilitator.unit_id != unit_id
+        ).all()
+        
+        # Create unavailability in each other unit
+        for (other_unit_id,) in other_unit_ids:
+            # Check if unavailability already exists
+            existing = Unavailability.query.filter_by(
+                user_id=session.facilitator_id,
+                unit_id=other_unit_id,
+                date=session.date,
+                start_time=session.start_time,
+                end_time=session.end_time,
+                source_session_id=session.id
+            ).first()
+            
+            if existing:
+                continue  # Already exists
+            
+            # Create reason text
+            module_name = session.module.module_name if session.module else "Session"
+            session_type = session.session_type or "Session"
+            reason = f"Scheduled: {unit.unit_code} - {module_name} ({session_type})"
+            
+            # Create unavailability
+            unavail = Unavailability(
+                user_id=session.facilitator_id,
+                unit_id=other_unit_id,
+                date=session.date,
+                start_time=session.start_time,
+                end_time=session.end_time,
+                is_full_day=False,
+                reason=reason,
+                source_session_id=session.id
+            )
+            
+            db.session.add(unavail)
+            created_count += 1
+    
+    try:
+        db.session.commit()
+        logger.info(f"Created {created_count} auto-generated unavailability entries for unit {unit.unit_code}")
+        return created_count
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creating auto-generated unavailability: {e}")
+        return 0
+
+def remove_unavailability_from_schedule(unit_id):
+    """
+    Remove auto-generated unavailability entries when a schedule is unpublished.
+    
+    Args:
+        unit_id: The unit whose schedule was unpublished
+    """
+    # Find all sessions from this unit
+    session_ids = db.session.query(Session.id).filter_by(unit_id=unit_id).all()
+    session_ids = [sid[0] for sid in session_ids]
+    
+    if not session_ids:
+        return 0
+    
+    # Delete unavailability entries that were generated from these sessions
+    deleted = Unavailability.query.filter(Unavailability.source_session_id.in_(session_ids)).delete(synchronize_session=False)
+    
+    try:
+        db.session.commit()
+        logger.info(f"Removed {deleted} auto-generated unavailability entries for unit {unit_id}")
+        return deleted
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error removing auto-generated unavailability: {e}")
+        return 0
+
+
 # CSV columns for the combined facilitators/venues file
 CSV_HEADERS = [
     "facilitator_email",   # optional per row
@@ -3879,12 +3983,16 @@ def publish_schedule(unit_id: int):
         
         db.session.commit()
         
+        # Generate auto-unavailability for facilitators in other units
+        auto_unavail_count = generate_unavailability_from_schedule(unit_id)
+        
         return jsonify({
             "ok": True,
             "message": f"Schedule published successfully. {notifications_created} facilitators notified via email.",
             "sessions_published": len(sessions),
             "facilitators_notified": notifications_created,
-            "emails_sent": emails_sent
+            "emails_sent": emails_sent,
+            "auto_unavailability_created": auto_unavail_count
         })
         
     except Exception as e:
