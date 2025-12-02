@@ -1052,6 +1052,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 dateRange: unitData.date_range,
                 start_date: unitData.start_date,
                 end_date: unitData.end_date,
+                availability_configured: unitData.availability_configured,
+                skills_configured: unitData.skills_configured,
                 kpis: {
                     thisWeekHours: unitData.kpis.this_week_hours,
                     remainingHours: unitData.kpis.remaining_hours,
@@ -1180,6 +1182,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Show navigation tabs and unavailability alert for individual unit views
         showElementsForUnitView();
         
+        // Update nav tab warnings based on unit configuration
+        updateNavTabWarnings(unit);
+        
         // Update unit display
         unitCodeEl.textContent = unit.code;
         unitNameEl.textContent = unit.name;
@@ -1241,6 +1246,48 @@ document.addEventListener('DOMContentLoaded', function() {
 
         console.log(`Switched to unit: ${unit.code} - ${unit.name}`);
         console.log(`Schedule status for this unit: ${unit.schedule_status}, isSchedulePublished: ${window.isSchedulePublished}`);
+    }
+
+    function updateNavTabWarnings(unit) {
+        // Update Unavailability tab
+        const unavailabilityNav = document.getElementById('unavailability-nav');
+        if (unavailabilityNav) {
+            if (!unit.availability_configured) {
+                unavailabilityNav.classList.add('pending-action');
+                // Add badge if not exists
+                if (!unavailabilityNav.querySelector('.pending-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'pending-badge';
+                    badge.textContent = '!';
+                    unavailabilityNav.appendChild(badge);
+                }
+            } else {
+                unavailabilityNav.classList.remove('pending-action');
+                // Remove badge if exists
+                const badge = unavailabilityNav.querySelector('.pending-badge');
+                if (badge) badge.remove();
+            }
+        }
+
+        // Update Skills tab
+        const skillsNav = document.getElementById('skills-nav');
+        if (skillsNav) {
+            if (!unit.skills_configured) {
+                skillsNav.classList.add('pending-action');
+                // Add badge if not exists
+                if (!skillsNav.querySelector('.pending-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'pending-badge';
+                    badge.textContent = '!';
+                    skillsNav.appendChild(badge);
+                }
+            } else {
+                skillsNav.classList.remove('pending-action');
+                // Remove badge if exists
+                const badge = skillsNav.querySelector('.pending-badge');
+                if (badge) badge.remove();
+            }
+        }
     }
 
     function showAllUnitsView() {

@@ -1822,6 +1822,20 @@ def edit_facilitator_view(unit_id: int, email: str):
         else:
             is_active = True  # Default to active if no dates
         
+        # Check availability and skills for this unit
+        unit_link = UnitFacilitator.query.filter_by(unit_id=u.id, user_id=facilitator_user.id).first()
+        unit_availability_configured = unit_link.availability_configured if unit_link else False
+        
+        unit_skills_count = (
+            db.session.query(FacilitatorSkill)
+            .join(Module, FacilitatorSkill.module_id == Module.id)
+            .filter(
+                Module.unit_id == u.id,
+                FacilitatorSkill.facilitator_id == facilitator_user.id
+            )
+            .count()
+        )
+        
         unit_data = {
             'id': u.id,
             'code': u.unit_code,
@@ -1830,6 +1844,8 @@ def edit_facilitator_view(unit_id: int, email: str):
             'year': u.year,
             'status': 'active' if is_active else 'completed',  # Required for dropdown filter
             'schedule_status': u.schedule_status.value if u.schedule_status else 'draft',
+            'availability_configured': unit_availability_configured,  # For nav tab warning
+            'skills_configured': unit_skills_count > 0,  # For nav tab warning
             'kpis': {
                 'this_week_hours': 0,
                 'active_sessions': 0,
