@@ -5663,6 +5663,35 @@ textarea::placeholder {
   font-size: 18px;
 }
 
+.copy-unavailability-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  color: #1e40af;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-unavailability-btn:hover {
+  background: #bfdbfe;
+  border-color: #60a5fa;
+  transform: translateY(-1px);
+}
+
+.copy-unavailability-btn:active {
+  transform: translateY(0);
+}
+
+.copy-unavailability-btn .material-icons {
+  font-size: 18px;
+}
+
 /* Responsive adjustments for delete button */
 @media (max-width: 768px) {
   .recent-unavailability-header {

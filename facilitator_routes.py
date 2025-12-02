@@ -1290,6 +1290,132 @@ def generate_recurring_unavailability():
     
     return jsonify(response_data)
 
+@facilitator_bp.route('/unavailability/copy', methods=['POST'])
+@login_required
+def copy_unavailability():
+    """Copy unavailability from one unit to another"""
+    current_user = get_current_user()
+    data = request.get_json()
+    
+    source_unit_id = data.get('source_unit_id')
+    target_unit_id = data.get('target_unit_id')
+    
+    if not source_unit_id or not target_unit_id:
+        return jsonify({"error": "source_unit_id and target_unit_id are required"}), 400
+    
+    # Get the target user (facilitator being edited)
+    # If 'user_id' is provided, UC is editing on behalf of facilitator
+    target_user_id = data.get('user_id', current_user.id)
+    
+    # Check permission for both units
+    if not can_edit_facilitator_data(current_user, target_user_id, source_unit_id):
+        return jsonify({"error": "forbidden - no access to source unit"}), 403
+    
+    if not can_edit_facilitator_data(current_user, target_user_id, target_unit_id):
+        return jsonify({"error": "forbidden - no access to target unit"}), 403
+    
+    # Verify target user has access to both units
+    source_access = (
+        db.session.query(Unit)
+        .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
+        .filter(Unit.id == source_unit_id, UnitFacilitator.user_id == target_user_id)
+        .first()
+    )
+    
+    target_access = (
+        db.session.query(Unit)
+        .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
+        .filter(Unit.id == target_unit_id, UnitFacilitator.user_id == target_user_id)
+        .first()
+    )
+    
+    if not source_access:
+        return jsonify({"error": "facilitator not linked to source unit"}), 403
+    
+    if not target_access:
+        return jsonify({"error": "facilitator not linked to target unit"}), 403
+    
+    # Check if target schedule is published - block editing if so
+    if target_access.schedule_status and target_access.schedule_status == ScheduleStatus.PUBLISHED:
+        return jsonify({"error": "Target unit's schedule has been published. Editing unavailability is disabled."}), 403
+    
+    # Get all unavailabilities from source unit
+    source_unavailabilities = Unavailability.query.filter_by(
+        user_id=target_user_id,
+        unit_id=source_unit_id
+    ).all()
+    
+    if not source_unavailabilities:
+        return jsonify({"error": "No unavailability found in source unit"}), 400
+    
+    # Copy unavailabilities to target unit
+    copied_count = 0
+    skipped_count = 0
+    
+    for source_unav in source_unavailabilities:
+        # Check if date is within target unit's date range
+        if target_access.start_date and source_unav.date < target_access.start_date:
+            skipped_count += 1
+            continue
+        if target_access.end_date and source_unav.date > target_access.end_date:
+            skipped_count += 1
+            continue
+        
+        # Check if unavailability already exists for this date and time
+        existing = Unavailability.query.filter_by(
+            user_id=target_user_id,
+            unit_id=target_unit_id,
+            date=source_unav.date,
+            start_time=source_unav.start_time,
+            end_time=source_unav.end_time
+        ).first()
+        
+        if existing:
+            skipped_count += 1
+            continue
+        
+        # Create new unavailability for target unit
+        new_unav = Unavailability(
+            user_id=target_user_id,
+            unit_id=target_unit_id,
+            date=source_unav.date,
+            start_time=source_unav.start_time,
+            end_time=source_unav.end_time,
+            is_full_day=source_unav.is_full_day,
+            recurring_pattern=source_unav.recurring_pattern,
+            recurring_end_date=source_unav.recurring_end_date,
+            recurring_interval=source_unav.recurring_interval,
+            reason=source_unav.reason
+        )
+        db.session.add(new_unav)
+        copied_count += 1
+    
+    # Mark availability as configured in target unit
+    target_unit_facilitator = UnitFacilitator.query.filter_by(
+        user_id=target_user_id,
+        unit_id=target_unit_id
+    ).first()
+    
+    if target_unit_facilitator:
+        target_unit_facilitator.availability_configured = True
+    
+    try:
+        db.session.commit()
+        
+        message = f"Copied {copied_count} unavailability entries to target unit"
+        if skipped_count > 0:
+            message += f" ({skipped_count} skipped - outside date range or already exist)"
+        
+        return jsonify({
+            "message": message,
+            "copied_count": copied_count,
+            "skipped_count": skipped_count,
+            "availability_configured": True
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to copy unavailability"}), 500
+
 @facilitator_bp.route('/skills', methods=['GET', 'POST'])
 @login_required
 def manage_skills():

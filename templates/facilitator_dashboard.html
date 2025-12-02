@@ -604,10 +604,16 @@
           {% endif %}
           <div class="recent-unavailability-header">
             <h3>Recent Unavailability</h3>
-            <button id="delete-all-unavailabilities-btn" class="delete-all-btn" title="Delete All Unavailabilities">
-              <span class="material-icons">delete_sweep</span>
-              Delete All
-            </button>
+            <div style="display: flex; gap: 8px;">
+              <button id="copy-unavailability-btn" class="copy-unavailability-btn" title="Copy unavailability to another unit">
+                <span class="material-icons">content_copy</span>
+                Copy to Unit
+              </button>
+              <button id="delete-all-unavailabilities-btn" class="delete-all-btn" title="Delete All Unavailabilities">
+                <span class="material-icons">delete_sweep</span>
+                Delete All
+              </button>
+            </div>
           </div>
           <div id="recent-unavailability-list">
             <!-- Recent unavailability will be populated by JavaScript -->
