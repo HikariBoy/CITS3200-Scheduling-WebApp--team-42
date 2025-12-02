@@ -2248,9 +2248,11 @@ function initUnavailabilityView() {
     
     // Copy Unavailability button handler
     const copyBtn = document.getElementById('copy-unavailability-btn');
+    console.log('[DEBUG] Copy button found:', copyBtn);
     if (copyBtn) {
         copyBtn.addEventListener('click', function(e) {
             e.preventDefault();
+            console.log('[DEBUG] Copy button clicked');
             showCopyUnavailabilityModal();
         });
     }
@@ -4095,7 +4097,11 @@ function deleteAllUnavailabilities() {
 
 // Copy unavailability to another unit
 function showCopyUnavailabilityModal() {
+    console.log('[DEBUG] showCopyUnavailabilityModal called');
     const currentUnitId = window.currentUnitId;
+    console.log('[DEBUG] currentUnitId:', currentUnitId);
+    console.log('[DEBUG] window.units:', window.units);
+    console.log('[DEBUG] unavailabilityData:', unavailabilityData);
     
     if (!currentUnitId) {
         alert('No unit selected');
@@ -4110,6 +4116,7 @@ function showCopyUnavailabilityModal() {
     
     // Get all other units (exclude current unit)
     const otherUnits = Object.values(window.units || {}).filter(u => u.id !== currentUnitId);
+    console.log('[DEBUG] otherUnits:', otherUnits);
     
     if (otherUnits.length === 0) {
         alert('You are not assigned to any other units.');
@@ -4174,6 +4181,17 @@ function copyUnavailabilityToUnit(targetUnitId) {
         copyBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Copying...';
     }
     
+    // Get user_id if UC is editing
+    const requestData = {
+        source_unit_id: currentUnitId,
+        target_unit_id: targetUnitId
+    };
+    
+    // If UC is editing, include user_id
+    if (window.isUCEditing && window.facilitatorUserId) {
+        requestData.user_id = window.facilitatorUserId;
+    }
+    
     // Send request to backend
     fetch('/facilitator/unavailability/copy', {
         method: 'POST',
@@ -4181,10 +4199,7 @@ function copyUnavailabilityToUnit(targetUnitId) {
             'Content-Type': 'application/json',
             'X-CSRFToken': window.csrfToken
         },
-        body: JSON.stringify({
-            source_unit_id: currentUnitId,
-            target_unit_id: targetUnitId
-        })
+        body: JSON.stringify(requestData)
     })
     .then(response => response.json())
     .then(result => {
@@ -4218,7 +4233,7 @@ function copyUnavailabilityToUnit(targetUnitId) {
         // Reset button state
         if (copyBtn) {
             copyBtn.disabled = false;
-            copyBtn.innerHTML = '<span class="material-icons">content_copy</span> Copy to Unit';
+            copyBtn.innerHTML = '<span class="material-icons">content_copy</span> Copy Unavailability to Another Unit';
         }
     });
 }

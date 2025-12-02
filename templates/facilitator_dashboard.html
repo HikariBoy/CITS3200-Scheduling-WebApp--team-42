@@ -607,7 +607,7 @@
             <div style="display: flex; gap: 8px;">
               <button id="copy-unavailability-btn" class="copy-unavailability-btn" title="Copy unavailability to another unit">
                 <span class="material-icons">content_copy</span>
-                Copy to Unit
+                Copy Unavailability to Another Unit
               </button>
               <button id="delete-all-unavailabilities-btn" class="delete-all-btn" title="Delete All Unavailabilities">
                 <span class="material-icons">delete_sweep</span>
@@ -945,6 +945,8 @@
     window.currentUnit = {{ current_unit_dict|tojson if current_unit_dict else 'null' }};
     window.isSchedulePublished = (window.currentUnit && window.currentUnit.schedule_status === 'published');
     window.csrfToken = "{{ csrf_token() }}";
+    window.isUCEditing = {{ 'true' if is_uc_editing else 'false' }};
+    window.facilitatorUserId = {{ user.id if is_uc_editing else 'null' }};
     
     // Function to refresh the page to check for new unit assignments
     function refreshPage() {
