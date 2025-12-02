@@ -1390,7 +1390,13 @@ def copy_unavailability():
         db.session.add(new_unav)
         copied_count += 1
     
-    # Mark availability as configured in target unit
+    # Check if any entries were actually copied
+    if copied_count == 0:
+        return jsonify({
+            "error": f"No unavailability entries could be copied. All {skipped_count} entries were either outside the target unit's date range or already exist."
+        }), 400
+    
+    # Mark availability as configured in target unit (only if we copied something)
     target_unit_facilitator = UnitFacilitator.query.filter_by(
         user_id=target_user_id,
         unit_id=target_unit_id
@@ -1402,7 +1408,7 @@ def copy_unavailability():
     try:
         db.session.commit()
         
-        message = f"Copied {copied_count} unavailability entries to target unit"
+        message = f"Successfully copied {copied_count} unavailability entries to target unit"
         if skipped_count > 0:
             message += f" ({skipped_count} skipped - outside date range or already exist)"
         
