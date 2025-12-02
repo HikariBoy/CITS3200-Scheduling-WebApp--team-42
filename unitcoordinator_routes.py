@@ -1807,29 +1807,45 @@ def edit_facilitator_view(unit_id: int, email: str):
         .all()
     )
     
-    # Build units_data for the template with KPIs (only this unit for UC editing)
-    units_data = [{
-        'id': unit.id,
-        'code': unit.unit_code,
-        'name': unit.unit_name,
-        'semester': unit.semester,
-        'year': unit.year,
-        'schedule_status': unit.schedule_status.value if unit.schedule_status else 'draft',
-        'kpis': {
-            'this_week_hours': 0,
-            'active_sessions': 0,
-            'remaining_hours': 0,
-            'total_hours': 0,
-            'upcoming_sessions': 0,
-            'total_sessions': 0,
-            'completed_sessions': 0
-        },
-        'upcoming_sessions': [],
-        'past_sessions': []
-    }]
+    # Build units_data for ALL facilitator's units (for unit switcher dropdown)
+    from datetime import date
+    today = date.today()
+    units_data = []
     
-    # Use the same data for current_unit_dict
-    current_unit_data = units_data[0]
+    for u in all_facilitator_units:
+        # Determine if unit is active or completed
+        is_active = False
+        if u.end_date:
+            is_active = today <= u.end_date
+        elif u.start_date:
+            is_active = u.start_date <= today
+        else:
+            is_active = True  # Default to active if no dates
+        
+        unit_data = {
+            'id': u.id,
+            'code': u.unit_code,
+            'name': u.unit_name,
+            'semester': u.semester,
+            'year': u.year,
+            'status': 'active' if is_active else 'completed',  # Required for dropdown filter
+            'schedule_status': u.schedule_status.value if u.schedule_status else 'draft',
+            'kpis': {
+                'this_week_hours': 0,
+                'active_sessions': 0,
+                'remaining_hours': 0,
+                'total_hours': 0,
+                'upcoming_sessions': 0,
+                'total_sessions': 0,
+                'completed_sessions': 0
+            },
+            'upcoming_sessions': [],
+            'past_sessions': []
+        }
+        units_data.append(unit_data)
+    
+    # Find current unit in units_data or use first one
+    current_unit_data = next((u for u in units_data if u['id'] == unit.id), units_data[0] if units_data else None)
     
     # Render the facilitator dashboard template with UC editing context
     return render_template('facilitator_dashboard.html',
