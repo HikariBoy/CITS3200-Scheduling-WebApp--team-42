@@ -2735,7 +2735,7 @@ function saveUnavailability() {
     }
     
     const data = {
-        unit_id: currentUnitId,
+        unit_id: window.currentUnitId,
         date: date,
         is_full_day: isFullDay,
         start_time: startTime,
@@ -2769,6 +2769,7 @@ function saveUnavailability() {
     })
     .then(response => response.json())
     .then(result => {
+        console.log('[DEBUG] Save unavailability result:', result);
         if (result.error) {
             alert('Error saving unavailability: ' + result.error);
             return;
@@ -2777,13 +2778,15 @@ function saveUnavailability() {
         // Reload unavailability data
         loadUnavailabilityData();
         
-        // Update unit data to mark availability as configured
+        // Update unit data to mark availability as configured (use backend response)
         if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
-            window.units[window.currentUnitId].availability_configured = true;
+            window.units[window.currentUnitId].availability_configured = result.availability_configured || true;
+            console.log('[DEBUG] Updated availability_configured to:', window.units[window.currentUnitId].availability_configured);
         }
         
         // Update all nav tab warnings (including Switch Unit button)
         if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
+            console.log('[DEBUG] Calling updateNavTabWarnings');
             updateNavTabWarnings(window.units[window.currentUnitId]);
         }
         
