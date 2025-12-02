@@ -2778,13 +2778,13 @@ function saveUnavailability() {
         loadUnavailabilityData();
         
         // Update unit data to mark availability as configured
-        if (window.units && window.units[currentUnitId]) {
-            window.units[currentUnitId].availability_configured = true;
+        if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
+            window.units[window.currentUnitId].availability_configured = true;
         }
         
         // Update all nav tab warnings (including Switch Unit button)
-        if (window.units && window.units[currentUnitId]) {
-            updateNavTabWarnings(window.units[currentUnitId]);
+        if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
+            updateNavTabWarnings(window.units[window.currentUnitId]);
         }
         
         // Close modal
@@ -2806,8 +2806,8 @@ function saveUnavailability() {
         console.log('Unavailability saved successfully');
     })
     .catch(error => {
-        console.error('Error saving unavailability:', error);
-        alert('Error saving unavailability');
+        console.error('[DEBUG] Error saving unavailability:', error);
+        alert('Error saving unavailability: ' + error.message);
     });
 }
 
