@@ -1798,6 +1798,15 @@ def edit_facilitator_view(unit_id: int, email: str):
     skills_count = len(skills)
     availability_configured = link.availability_configured
     
+    # Get ALL units this facilitator is assigned to (for unit switcher)
+    all_facilitator_units = (
+        db.session.query(Unit)
+        .join(UnitFacilitator, UnitFacilitator.unit_id == Unit.id)
+        .filter(UnitFacilitator.user_id == facilitator_user.id)
+        .order_by(Unit.start_date.desc().nulls_last())
+        .all()
+    )
+    
     # Build units_data for the template with KPIs (only this unit for UC editing)
     units_data = [{
         'id': unit.id,
@@ -1826,7 +1835,7 @@ def edit_facilitator_view(unit_id: int, email: str):
     return render_template('facilitator_dashboard.html',
                          unit=unit,
                          user=facilitator_user,  # The facilitator being edited
-                         units=[unit],  # List of units (just this one)
+                         units=all_facilitator_units,  # ALL units the facilitator is in (for switcher)
                          units_data=units_data,  # For JavaScript
                          current_unit=unit,  # The current unit being edited
                          current_unit_dict=current_unit_data,  # For template KPIs
