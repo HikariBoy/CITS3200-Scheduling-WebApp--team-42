@@ -5251,12 +5251,8 @@ function showConflictNavigationBar(conflicts) {
         </button>
       </div>
     </div>
-    <div id="current-conflict-details" style="font-size: 0.875rem; margin-bottom: 12px; padding: 8px; background: #fef2f2; border-radius: 4px;">
+    <div id="current-conflict-details" style="font-size: 0.875rem; padding: 12px; background: #fef2f2; border-radius: 4px; border-left: 3px solid #ef4444;">
     </div>
-    <button class="btn btn-primary" id="jump-to-conflict-btn" style="width: 100%;">
-      <span class="material-icons" style="font-size: 18px; vertical-align: middle;">location_on</span>
-      Jump to Session
-    </button>
   `;
   
   document.body.appendChild(navBar);
@@ -5273,12 +5269,31 @@ function showConflictNavigationBar(conflicts) {
     // Update conflict details
     let detailsHTML = '';
     if (conflict.type === 'schedule_overlap') {
+      const date1 = new Date(conflict.session1.start_time).toLocaleDateString('en-AU', { 
+        weekday: 'short', 
+        day: 'numeric', 
+        month: 'short' 
+      });
+      const time1 = conflict.session1.start_time.substring(11, 16) + ' - ' + conflict.session1.end_time.substring(11, 16);
+      const time2 = conflict.session2.start_time.substring(11, 16) + ' - ' + conflict.session2.end_time.substring(11, 16);
+      
       detailsHTML = `
-        <strong>${conflict.facilitator_name}</strong><br>
-        <small>
-          ${conflict.session1.module}<br>
-          ${conflict.session1.start_time.substring(0, 16)} - ${conflict.session1.end_time.substring(0, 16)}
-        </small>
+        <div style="margin-bottom: 8px;">
+          <strong style="color: #ef4444;">${conflict.facilitator_name}</strong>
+        </div>
+        <div style="margin-bottom: 4px; font-weight: 500;">
+          ⚠️ Overlapping Sessions:
+        </div>
+        <div style="margin-left: 8px; line-height: 1.6;">
+          <div style="margin-bottom: 4px;">
+            <strong>1.</strong> ${conflict.session1.module}<br>
+            <span style="color: #6b7280; font-size: 0.8125rem;">${date1} • ${time1}</span>
+          </div>
+          <div>
+            <strong>2.</strong> ${conflict.session2.module}<br>
+            <span style="color: #6b7280; font-size: 0.8125rem;">${date1} • ${time2}</span>
+          </div>
+        </div>
       `;
     }
     document.getElementById('current-conflict-details').innerHTML = detailsHTML;
@@ -5301,10 +5316,6 @@ function showConflictNavigationBar(conflicts) {
       currentIndex++;
       updateDisplay();
     }
-  });
-  
-  document.getElementById('jump-to-conflict-btn').addEventListener('click', () => {
-    jumpToConflictingSession(conflicts[currentIndex]);
   });
   
   updateDisplay();
