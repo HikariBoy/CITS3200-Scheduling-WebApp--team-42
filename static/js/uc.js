@@ -5199,10 +5199,19 @@ function showConflictPopup(title, message, conflicts = null) {
   
   // Add "View on Schedule" functionality
   if (conflicts && conflicts.length > 0) {
-    document.getElementById('view-conflicts-on-schedule').addEventListener('click', () => {
-      closeConflictPopup();
-      showConflictNavigationBar(conflicts);
-    });
+    const viewButton = document.getElementById('view-conflicts-on-schedule');
+    if (viewButton) {
+      viewButton.addEventListener('click', () => {
+        closeConflictPopup();
+        // Navigate to schedule page if not already there
+        const unitId = getUnitId();
+        if (unitId && !window.location.pathname.includes('/schedule')) {
+          window.location.href = `/unitcoordinator/units/${unitId}/schedule`;
+        } else {
+          showConflictNavigationBar(conflicts);
+        }
+      });
+    }
   }
 }
 
@@ -5262,6 +5271,8 @@ function showConflictNavigationBar(conflicts) {
   
   const updateDisplay = () => {
     const conflict = conflicts[currentIndex];
+    console.log('[DEBUG] Displaying conflict:', conflict);
+    
     document.getElementById('current-conflict-num').textContent = currentIndex + 1;
     document.getElementById('prev-conflict-btn').disabled = currentIndex === 0;
     document.getElementById('next-conflict-btn').disabled = currentIndex === conflicts.length - 1;
@@ -5295,7 +5306,19 @@ function showConflictNavigationBar(conflicts) {
           </div>
         </div>
       `;
+    } else {
+      // Fallback for other conflict types
+      detailsHTML = `
+        <div style="margin-bottom: 8px;">
+          <strong style="color: #ef4444;">${conflict.facilitator_name || 'Unknown'}</strong>
+        </div>
+        <div style="color: #6b7280; font-size: 0.875rem;">
+          ${JSON.stringify(conflict)}
+        </div>
+      `;
     }
+    
+    console.log('[DEBUG] Setting HTML:', detailsHTML);
     document.getElementById('current-conflict-details').innerHTML = detailsHTML;
   };
   
