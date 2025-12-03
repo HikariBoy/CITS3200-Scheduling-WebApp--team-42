@@ -5154,13 +5154,38 @@ function getSessionFacilitator(session) {
 }
 
 // Show custom conflict popup
-function showConflictPopup(title, message) {
+function showConflictPopup(title, message, conflicts = null) {
   // Remove any existing conflict popups
   const existingPopups = document.querySelectorAll('.conflict-popup');
   existingPopups.forEach(popup => popup.remove());
   
   const popup = document.createElement('div');
   popup.className = 'conflict-popup';
+  
+  // Build navigation buttons if conflicts are provided
+  let navigationHTML = '';
+  if (conflicts && conflicts.length > 0) {
+    navigationHTML = `
+      <div class="conflict-navigation" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.875rem; color: #6b7280;">Conflict <span id="current-conflict">1</span> of ${conflicts.length}</span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="prev-conflict" style="padding: 4px 12px;">
+              <span class="material-icons" style="font-size: 18px;">chevron_left</span>
+            </button>
+            <button class="btn btn-secondary" id="next-conflict" style="padding: 4px 12px;">
+              <span class="material-icons" style="font-size: 18px;">chevron_right</span>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="jump-to-conflict" style="width: 100%;">
+          <span class="material-icons" style="font-size: 18px; vertical-align: middle;">location_on</span>
+          Jump to This Session
+        </button>
+      </div>
+    `;
+  }
+  
   popup.innerHTML = `
     <div class="conflict-popup-backdrop"></div>
     <div class="conflict-popup-content">
@@ -5170,9 +5195,10 @@ function showConflictPopup(title, message) {
       </div>
       <div class="conflict-popup-body">
         <p>${message.replace(/\n/g, '<br>')}</p>
+        ${navigationHTML}
       </div>
       <div class="conflict-popup-footer">
-        <button class="btn btn-primary" onclick="closeConflictPopup()">OK</button>
+        <button class="btn btn-primary" onclick="closeConflictPopup()">Close</button>
       </div>
     </div>
   `;
@@ -5181,6 +5207,76 @@ function showConflictPopup(title, message) {
   
   // Close popup when clicking backdrop
   popup.querySelector('.conflict-popup-backdrop').addEventListener('click', closeConflictPopup);
+  
+  // Add navigation functionality if conflicts provided
+  if (conflicts && conflicts.length > 0) {
+    let currentIndex = 0;
+    
+    const updateConflictDisplay = () => {
+      document.getElementById('current-conflict').textContent = currentIndex + 1;
+      document.getElementById('prev-conflict').disabled = currentIndex === 0;
+      document.getElementById('next-conflict').disabled = currentIndex === conflicts.length - 1;
+    };
+    
+    document.getElementById('prev-conflict').addEventListener('click', () => {
+      if (currentIndex > 0) {
+        currentIndex--;
+        updateConflictDisplay();
+      }
+    });
+    
+    document.getElementById('next-conflict').addEventListener('click', () => {
+      if (currentIndex < conflicts.length - 1) {
+        currentIndex++;
+        updateConflictDisplay();
+      }
+    });
+    
+    document.getElementById('jump-to-conflict').addEventListener('click', () => {
+      const conflict = conflicts[currentIndex];
+      jumpToConflictingSession(conflict);
+    });
+    
+    updateConflictDisplay();
+  }
+}
+
+// Jump to a conflicting session in the schedule
+function jumpToConflictingSession(conflict) {
+  // Get the session ID from the conflict
+  let sessionId = null;
+  
+  if (conflict.session1 && conflict.session1.id) {
+    sessionId = conflict.session1.id;
+  } else if (conflict.session_id) {
+    sessionId = conflict.session_id;
+  }
+  
+  if (!sessionId) {
+    console.error('No session ID found in conflict:', conflict);
+    return;
+  }
+  
+  // Find the session card in the DOM
+  const sessionCard = document.querySelector(`[data-session-id="${sessionId}"]`);
+  
+  if (sessionCard) {
+    // Close the popup
+    closeConflictPopup();
+    
+    // Scroll to the session with smooth animation
+    sessionCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Highlight the session temporarily
+    sessionCard.style.transition = 'box-shadow 0.3s ease';
+    sessionCard.style.boxShadow = '0 0 0 3px #ef4444, 0 0 20px rgba(239, 68, 68, 0.5)';
+    
+    setTimeout(() => {
+      sessionCard.style.boxShadow = '';
+    }, 2000);
+  } else {
+    alert('Session not found in current view. It may be on a different date.');
+  }
 }
 
 // Close conflict popup
@@ -5209,18 +5305,18 @@ async function showConflictsOnClick() {
       // Show conflicts in popup
       let conflictMessage = `${result.conflicts.length} scheduling conflict(s) detected:\n\n`;
       
-      result.conflicts.forEach(conflict => {
+      result.conflicts.forEach((conflict, index) => {
         if (conflict.type === 'schedule_overlap') {
-          conflictMessage += `• <strong>${conflict.facilitator_name}</strong> is assigned to overlapping sessions:\n`;
-          conflictMessage += `  - "${conflict.session1.module}" (${conflict.session1.start_time.substring(0, 16)} - ${conflict.session1.end_time.substring(0, 16)})\n`;
-          conflictMessage += `  - "${conflict.session2.module}" (${conflict.session2.start_time.substring(0, 16)} - ${conflict.session2.end_time.substring(0, 16)})\n\n`;
+          conflictMessage += `${index + 1}. <strong>${conflict.facilitator_name}</strong> is assigned to overlapping sessions:\n`;
+          conflictMessage += `   • "${conflict.session1.module}" (${conflict.session1.start_time.substring(0, 16)} - ${conflict.session1.end_time.substring(0, 16)})\n`;
+          conflictMessage += `   • "${conflict.session2.module}" (${conflict.session2.start_time.substring(0, 16)} - ${conflict.session2.end_time.substring(0, 16)})\n\n`;
         }
       });
       
-      conflictMessage += 'Please resolve these conflicts by reassigning facilitators.';
+      conflictMessage += 'Use the navigation buttons below to jump to each conflicting session.';
       
-      // Show as custom popup
-      showConflictPopup('Scheduling Conflicts Detected', conflictMessage);
+      // Show as custom popup with navigation
+      showConflictPopup('Scheduling Conflicts Detected', conflictMessage, result.conflicts);
     } else {
       // No conflicts found
       showConflictPopup('No Conflicts', 'No scheduling conflicts detected. All facilitators are properly assigned without overlapping sessions.');
@@ -5251,18 +5347,18 @@ async function loadAndDisplayConflicts() {
       // Show conflicts in a notification or banner
       let conflictMessage = `${result.conflicts.length} scheduling conflict(s) detected:\n\n`;
       
-      result.conflicts.forEach(conflict => {
+      result.conflicts.forEach((conflict, index) => {
         if (conflict.type === 'schedule_overlap') {
-          conflictMessage += `• <strong>${conflict.facilitator_name}</strong> is assigned to overlapping sessions:\n`;
-          conflictMessage += `  - "${conflict.session1.module}" (${conflict.session1.start_time.substring(0, 16)} - ${conflict.session1.end_time.substring(0, 16)})\n`;
-          conflictMessage += `  - "${conflict.session2.module}" (${conflict.session2.start_time.substring(0, 16)} - ${conflict.session2.end_time.substring(0, 16)})\n\n`;
+          conflictMessage += `${index + 1}. <strong>${conflict.facilitator_name}</strong> is assigned to overlapping sessions:\n`;
+          conflictMessage += `   • "${conflict.session1.module}" (${conflict.session1.start_time.substring(0, 16)} - ${conflict.session1.end_time.substring(0, 16)})\n`;
+          conflictMessage += `   • "${conflict.session2.module}" (${conflict.session2.start_time.substring(0, 16)} - ${conflict.session2.end_time.substring(0, 16)})\n\n`;
         }
       });
       
-      conflictMessage += 'Please resolve these conflicts by reassigning facilitators.';
+      conflictMessage += 'Use the navigation buttons below to jump to each conflicting session.';
       
-      // Show as custom popup
-      showConflictPopup('Scheduling Conflicts Detected', conflictMessage);
+      // Show as custom popup with navigation
+      showConflictPopup('Scheduling Conflicts Detected', conflictMessage, result.conflicts);
     }
   } catch (error) {
     console.error('Error loading conflicts:', error);
