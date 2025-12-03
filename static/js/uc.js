@@ -5162,25 +5162,14 @@ function showConflictPopup(title, message, conflicts = null) {
   const popup = document.createElement('div');
   popup.className = 'conflict-popup';
   
-  // Build navigation buttons if conflicts are provided
-  let navigationHTML = '';
+  // Build "View on Schedule" button if conflicts are provided
+  let actionButtonHTML = '';
   if (conflicts && conflicts.length > 0) {
-    navigationHTML = `
-      <div class="conflict-navigation" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 0.875rem; color: #6b7280;">Conflict <span id="current-conflict">1</span> of ${conflicts.length}</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-secondary" id="prev-conflict" style="padding: 4px 12px;">
-              <span class="material-icons" style="font-size: 18px;">chevron_left</span>
-            </button>
-            <button class="btn btn-secondary" id="next-conflict" style="padding: 4px 12px;">
-              <span class="material-icons" style="font-size: 18px;">chevron_right</span>
-            </button>
-          </div>
-        </div>
-        <button class="btn btn-primary" id="jump-to-conflict" style="width: 100%;">
-          <span class="material-icons" style="font-size: 18px; vertical-align: middle;">location_on</span>
-          Jump to This Session
+    actionButtonHTML = `
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+        <button class="btn btn-primary" id="view-conflicts-on-schedule" style="width: 100%;">
+          <span class="material-icons" style="font-size: 18px; vertical-align: middle;">calendar_today</span>
+          View on Schedule
         </button>
       </div>
     `;
@@ -5195,10 +5184,10 @@ function showConflictPopup(title, message, conflicts = null) {
       </div>
       <div class="conflict-popup-body">
         <p>${message.replace(/\n/g, '<br>')}</p>
-        ${navigationHTML}
+        ${actionButtonHTML}
       </div>
       <div class="conflict-popup-footer">
-        <button class="btn btn-primary" onclick="closeConflictPopup()">Close</button>
+        <button class="btn btn-secondary" onclick="closeConflictPopup()">Close</button>
       </div>
     </div>
   `;
@@ -5208,37 +5197,117 @@ function showConflictPopup(title, message, conflicts = null) {
   // Close popup when clicking backdrop
   popup.querySelector('.conflict-popup-backdrop').addEventListener('click', closeConflictPopup);
   
-  // Add navigation functionality if conflicts provided
+  // Add "View on Schedule" functionality
   if (conflicts && conflicts.length > 0) {
-    let currentIndex = 0;
-    
-    const updateConflictDisplay = () => {
-      document.getElementById('current-conflict').textContent = currentIndex + 1;
-      document.getElementById('prev-conflict').disabled = currentIndex === 0;
-      document.getElementById('next-conflict').disabled = currentIndex === conflicts.length - 1;
-    };
-    
-    document.getElementById('prev-conflict').addEventListener('click', () => {
-      if (currentIndex > 0) {
-        currentIndex--;
-        updateConflictDisplay();
-      }
+    document.getElementById('view-conflicts-on-schedule').addEventListener('click', () => {
+      closeConflictPopup();
+      showConflictNavigationBar(conflicts);
     });
-    
-    document.getElementById('next-conflict').addEventListener('click', () => {
-      if (currentIndex < conflicts.length - 1) {
-        currentIndex++;
-        updateConflictDisplay();
-      }
-    });
-    
-    document.getElementById('jump-to-conflict').addEventListener('click', () => {
-      const conflict = conflicts[currentIndex];
-      jumpToConflictingSession(conflict);
-    });
-    
-    updateConflictDisplay();
   }
+}
+
+// Show conflict navigation bar on schedule page
+function showConflictNavigationBar(conflicts) {
+  // Remove existing navigation bar
+  const existing = document.getElementById('conflict-nav-bar');
+  if (existing) existing.remove();
+  
+  // Create navigation bar
+  const navBar = document.createElement('div');
+  navBar.id = 'conflict-nav-bar';
+  navBar.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: white;
+    border: 2px solid #ef4444;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 280px;
+  `;
+  
+  navBar.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="material-icons" style="color: #ef4444;">warning</span>
+        <strong style="color: #ef4444;">Conflicts</strong>
+      </div>
+      <button id="close-conflict-nav" style="background: none; border: none; cursor: pointer; padding: 4px;">
+        <span class="material-icons" style="font-size: 20px;">close</span>
+      </button>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <span style="font-size: 0.875rem; color: #6b7280;">
+        Conflict <span id="current-conflict-num">1</span> of ${conflicts.length}
+      </span>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-secondary" id="prev-conflict-btn" style="padding: 4px 8px;">
+          <span class="material-icons" style="font-size: 18px;">chevron_left</span>
+        </button>
+        <button class="btn btn-secondary" id="next-conflict-btn" style="padding: 4px 8px;">
+          <span class="material-icons" style="font-size: 18px;">chevron_right</span>
+        </button>
+      </div>
+    </div>
+    <div id="current-conflict-details" style="font-size: 0.875rem; margin-bottom: 12px; padding: 8px; background: #fef2f2; border-radius: 4px;">
+    </div>
+    <button class="btn btn-primary" id="jump-to-conflict-btn" style="width: 100%;">
+      <span class="material-icons" style="font-size: 18px; vertical-align: middle;">location_on</span>
+      Jump to Session
+    </button>
+  `;
+  
+  document.body.appendChild(navBar);
+  
+  // Navigation state
+  let currentIndex = 0;
+  
+  const updateDisplay = () => {
+    const conflict = conflicts[currentIndex];
+    document.getElementById('current-conflict-num').textContent = currentIndex + 1;
+    document.getElementById('prev-conflict-btn').disabled = currentIndex === 0;
+    document.getElementById('next-conflict-btn').disabled = currentIndex === conflicts.length - 1;
+    
+    // Update conflict details
+    let detailsHTML = '';
+    if (conflict.type === 'schedule_overlap') {
+      detailsHTML = `
+        <strong>${conflict.facilitator_name}</strong><br>
+        <small>
+          ${conflict.session1.module}<br>
+          ${conflict.session1.start_time.substring(0, 16)} - ${conflict.session1.end_time.substring(0, 16)}
+        </small>
+      `;
+    }
+    document.getElementById('current-conflict-details').innerHTML = detailsHTML;
+  };
+  
+  // Event listeners
+  document.getElementById('close-conflict-nav').addEventListener('click', () => {
+    navBar.remove();
+  });
+  
+  document.getElementById('prev-conflict-btn').addEventListener('click', () => {
+    if (currentIndex > 0) {
+      currentIndex--;
+      updateDisplay();
+    }
+  });
+  
+  document.getElementById('next-conflict-btn').addEventListener('click', () => {
+    if (currentIndex < conflicts.length - 1) {
+      currentIndex++;
+      updateDisplay();
+    }
+  });
+  
+  document.getElementById('jump-to-conflict-btn').addEventListener('click', () => {
+    jumpToConflictingSession(conflicts[currentIndex]);
+  });
+  
+  updateDisplay();
 }
 
 // Jump to a conflicting session in the schedule
