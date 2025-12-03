@@ -5162,15 +5162,12 @@ function showConflictPopup(title, message, conflicts = null) {
   const popup = document.createElement('div');
   popup.className = 'conflict-popup';
   
-  // Build "View on Schedule" button if conflicts are provided
-  let actionButtonHTML = '';
+  // Add instruction text if conflicts are provided
+  let instructionHTML = '';
   if (conflicts && conflicts.length > 0) {
-    actionButtonHTML = `
-      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-        <button class="btn btn-primary" id="view-conflicts-on-schedule" style="width: 100%;">
-          <span class="material-icons" style="font-size: 18px; vertical-align: middle;">calendar_today</span>
-          View on Schedule
-        </button>
+    instructionHTML = `
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 0.875rem; color: #6b7280;">
+        💡 Go to the Schedule page to view and reassign these sessions.
       </div>
     `;
   }
@@ -5184,10 +5181,10 @@ function showConflictPopup(title, message, conflicts = null) {
       </div>
       <div class="conflict-popup-body">
         <p>${message.replace(/\n/g, '<br>')}</p>
-        ${actionButtonHTML}
+        ${instructionHTML}
       </div>
       <div class="conflict-popup-footer">
-        <button class="btn btn-secondary" onclick="closeConflictPopup()">Close</button>
+        <button class="btn btn-primary" onclick="closeConflictPopup()">OK</button>
       </div>
     </div>
   `;
@@ -5196,23 +5193,6 @@ function showConflictPopup(title, message, conflicts = null) {
   
   // Close popup when clicking backdrop
   popup.querySelector('.conflict-popup-backdrop').addEventListener('click', closeConflictPopup);
-  
-  // Add "View on Schedule" functionality
-  if (conflicts && conflicts.length > 0) {
-    const viewButton = document.getElementById('view-conflicts-on-schedule');
-    if (viewButton) {
-      viewButton.addEventListener('click', () => {
-        closeConflictPopup();
-        // Navigate to schedule page if not already there
-        const unitId = getUnitId();
-        if (unitId && !window.location.pathname.includes('/schedule')) {
-          window.location.href = `/unitcoordinator/units/${unitId}/schedule`;
-        } else {
-          showConflictNavigationBar(conflicts);
-        }
-      });
-    }
-  }
 }
 
 // Show conflict navigation bar on schedule page
