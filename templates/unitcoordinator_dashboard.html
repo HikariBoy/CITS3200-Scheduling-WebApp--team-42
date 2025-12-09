@@ -857,6 +857,36 @@
               </div>
             </div>
 
+            <!-- Conflicts Banner (hidden by default) -->
+            <div id="conflicts-banner" style="display: none; margin: 16px 0; padding: 16px; background: #fef2f2; border: 2px solid #ef4444; border-radius: 8px;">
+              <div style="display: flex; align-items: start; gap: 12px;">
+                <span class="material-icons" style="color: #ef4444; font-size: 24px;">warning</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h4 style="margin: 0; color: #ef4444; font-size: 1rem;">
+                      <span id="conflicts-count">0</span> Scheduling Conflict(s) Detected
+                    </h4>
+                    <button onclick="closeConflictsBanner()" style="background: none; border: none; cursor: pointer; padding: 4px;">
+                      <span class="material-icons" style="color: #6b7280;">close</span>
+                    </button>
+                  </div>
+                  <div id="conflicts-list" style="font-size: 0.875rem; line-height: 1.6; color: #991b1b;">
+                    <!-- Conflicts will be populated here -->
+                  </div>
+                  <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button onclick="showConflictsOnClick()" style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem;">
+                      <span class="material-icons" style="font-size: 16px; vertical-align: middle;">info</span>
+                      View Details
+                    </button>
+                    <button onclick="refreshConflicts()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem;">
+                      <span class="material-icons" style="font-size: 16px; vertical-align: middle;">refresh</span>
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Week Navigation -->
             <div class="week-navigation">
               <button type="button" class="nav-btn" id="prev-week">

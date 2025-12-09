@@ -222,12 +222,14 @@ class Unavailability(db.Model):
     recurring_end_date = db.Column(db.Date, nullable=True)  # When recurring pattern ends
     recurring_interval = db.Column(db.Integer, default=1)  # For custom patterns (e.g., every 2 weeks)
     reason = db.Column(db.Text, nullable=True)  # Optional reason for unavailability
+    source_session_id = db.Column(db.Integer, db.ForeignKey('session.id'), nullable=True)  # If auto-generated from published schedule
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     user = db.relationship('User', backref='unavailabilities')
     unit = db.relationship('Unit', backref='unavailabilities')
+    source_session = db.relationship('Session', backref='generated_unavailabilities', foreign_keys=[source_session_id])
     
     # Constraints
     __table_args__ = (
