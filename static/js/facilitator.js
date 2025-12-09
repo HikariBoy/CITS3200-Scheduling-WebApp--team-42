@@ -2248,11 +2248,9 @@ function initUnavailabilityView() {
     
     // Copy Unavailability button handler
     const copyBtn = document.getElementById('copy-unavailability-btn');
-    console.log('[DEBUG] Copy button found:', copyBtn);
     if (copyBtn) {
         copyBtn.addEventListener('click', function(e) {
             e.preventDefault();
-            console.log('[DEBUG] Copy button clicked');
             showCopyUnavailabilityModal();
         });
     }
@@ -4137,11 +4135,7 @@ function deleteAllUnavailabilities() {
 
 // Copy unavailability to another unit
 function showCopyUnavailabilityModal() {
-    console.log('[DEBUG] showCopyUnavailabilityModal called');
     const currentUnitId = window.currentUnitId;
-    console.log('[DEBUG] currentUnitId:', currentUnitId);
-    console.log('[DEBUG] window.units:', window.units);
-    console.log('[DEBUG] unavailabilityData:', unavailabilityData);
     
     if (!currentUnitId) {
         alert('No unit selected');
@@ -4156,7 +4150,6 @@ function showCopyUnavailabilityModal() {
     
     // Get all other units (exclude current unit)
     const otherUnits = Object.values(window.units || {}).filter(u => u.id !== currentUnitId);
-    console.log('[DEBUG] otherUnits:', otherUnits);
     
     if (otherUnits.length === 0) {
         alert('You are not assigned to any other units.');

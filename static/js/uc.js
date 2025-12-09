@@ -4550,8 +4550,8 @@ function initSchedulePanel() {
   currentWeekStart.setDate(today.getDate() + daysToMonday);
   currentWeekStart.setHours(0, 0, 0, 0);
 
-  // Load sessions for current week
-  loadScheduleSessions();
+  // Load sessions for current week (show conflicts banner on initial load)
+  loadScheduleSessions(true);
   
   // Also load data for list view
   loadListSessionData();
@@ -4560,10 +4560,21 @@ function initSchedulePanel() {
   setupScheduleEventListeners();
 }
 
+// Prevent duplicate simultaneous calls
+let isLoadingSchedule = false;
+
 // Load sessions for the current week
-async function loadScheduleSessions() {
+async function loadScheduleSessions(showConflictsBanner = false) {
   const unitId = getUnitId();
   if (!unitId) return;
+  
+  // Prevent duplicate calls
+  if (isLoadingSchedule) {
+    console.log('[DEBUG] Already loading schedule, skipping...');
+    return;
+  }
+  
+  isLoadingSchedule = true;
 
   try {
     // Format week start date using local timezone
@@ -4573,18 +4584,35 @@ async function loadScheduleSessions() {
     const weekStart = `${year}-${month}-${day}`;
     const url = withUnitId(CAL_WEEK_TEMPLATE, unitId) + `?week_start=${weekStart}`;
     
+    console.log('[DEBUG] Fetching schedule from:', url);
     const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     const data = await response.json();
+    
+    console.log('[DEBUG] loadScheduleSessions response:', data);
+    console.log('[DEBUG] showConflictsBanner:', showConflictsBanner);
     
     if (data.ok) {
       scheduleSessions = data.sessions || [];
+      console.log('[DEBUG] scheduleSessions loaded:', scheduleSessions.length, 'sessions');
       renderScheduleGrid();
       
-      // Also load and display conflicts
-      loadAndDisplayConflicts();
+      // Only show conflicts banner on initial load or when explicitly requested
+      if (showConflictsBanner) {
+        console.log('[DEBUG] Loading conflicts banner...');
+        loadAndDisplayConflicts();
+      }
+    } else {
+      console.error('[DEBUG] Failed to load sessions:', data.error);
     }
   } catch (error) {
     console.error('Error loading schedule sessions:', error);
+  } finally {
+    isLoadingSchedule = false;
   }
 }
 
@@ -4668,8 +4696,10 @@ function renderDaySessions(sessions, dayDate) {
       console.log('Session session_name:', session.session_name);
       console.log('Session module_type:', session.module_type);
       
+      const facilitatorIds = session.facilitators?.map(f => f.id).join(',') || '';
+      
       return `
-     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" onclick="openSessionDetailsModal(${JSON.stringify({
+     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
        id: session.id || `temp-${index}`,
        title: session.session_name || session.extendedProps?.session_name || session.title || 'New Session',
        day: new Date(session.start).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
@@ -5505,6 +5535,12 @@ function closeConflictsBanner() {
   }
 }
 
+// Refresh conflicts - reload and check if they're resolved
+async function refreshConflicts() {
+  await loadAndDisplayConflicts();
+  showSimpleNotification('Conflicts refreshed', 'success');
+}
+
 // Update conflicts banner on schedule page
 function updateConflictsBanner(conflicts) {
   const banner = document.getElementById('conflicts-banner');
@@ -5545,17 +5581,22 @@ function updateConflictsBanner(conflicts) {
       const time2End = conflict.session2.end_time.substring(11, 16);
       
       html += `
-        <li style="margin-bottom: 12px;">
-          <strong style="color: #991b1b;">${conflict.facilitator_name}</strong> on <strong>${date}</strong>
-          <div style="margin-left: 16px; margin-top: 4px; font-size: 0.8125rem; line-height: 1.5;">
-            <div style="margin-bottom: 2px;">
-              📍 <strong>${conflict.session1.module}</strong><br>
-              <span style="margin-left: 20px; color: #6b7280;">${time1Start} - ${time1End}</span>
+        <li style="margin-bottom: 16px; padding: 12px; background: white; border-radius: 6px; border-left: 3px solid #ef4444;">
+          <div style="margin-bottom: 8px;">
+            <strong style="color: #991b1b; font-size: 0.9375rem;">${conflict.facilitator_name}</strong>
+            <span style="color: #6b7280; font-size: 0.875rem;"> • ${date}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.875rem;">
+            <div style="padding: 8px; background: #fef2f2; border-radius: 4px;">
+              <div style="font-weight: 600; color: #991b1b; margin-bottom: 2px;">${conflict.session1.module}</div>
+              <div style="color: #6b7280; font-size: 0.8125rem;">⏰ ${time1Start} - ${time1End}</div>
             </div>
-            <div style="color: #ef4444; margin: 2px 0; margin-left: 20px;">↓ overlaps with ↓</div>
-            <div>
-              📍 <strong>${conflict.session2.module}</strong><br>
-              <span style="margin-left: 20px; color: #6b7280;">${time2Start} - ${time2End}</span>
+            <div style="text-align: center; color: #ef4444; font-weight: 600; font-size: 0.75rem;">
+              ⚠️ OVERLAPS WITH ⚠️
+            </div>
+            <div style="padding: 8px; background: #fef2f2; border-radius: 4px;">
+              <div style="font-weight: 600; color: #991b1b; margin-bottom: 2px;">${conflict.session2.module}</div>
+              <div style="color: #6b7280; font-size: 0.8125rem;">⏰ ${time2Start} - ${time2End}</div>
             </div>
           </div>
         </li>
@@ -6203,7 +6244,9 @@ function openFacilitatorModalAfterDelay(element) {
     id: sessionCard.dataset.sessionId || null,
     name: sessionCard.dataset.sessionName || 'Unknown Session',
     time: sessionCard.dataset.sessionTime || 'Unknown Time',
-    location: sessionCard.dataset.sessionLocation || 'Unknown Location'
+    location: sessionCard.dataset.sessionLocation || 'Unknown Location',
+    assignedFacilitators: sessionCard.dataset.facilitatorIds ? 
+      sessionCard.dataset.facilitatorIds.split(',').map(id => id.trim()) : []
   };
   
   // Reset selection
@@ -6346,18 +6389,36 @@ function renderFacilitatorList() {
     return;
   }
   
-  facilitatorList.innerHTML = filteredFacilitators.map((facilitator, index) => `
-    <div class="facilitator-item" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
-      <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" onchange="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}')">
-      <div class="facilitator-avatar">
-        ${getFacilitatorInitials(facilitator.name)}
+  // Get currently assigned facilitator IDs
+  const assignedIds = currentSessionData?.assignedFacilitators || [];
+  
+  facilitatorList.innerHTML = filteredFacilitators.map((facilitator, index) => {
+    const isAssigned = assignedIds.includes(facilitator.id.toString());
+    return `
+      <div class="facilitator-item ${isAssigned ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
+        <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isAssigned ? 'checked' : ''} onchange="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}')">
+        <div class="facilitator-avatar">
+          ${getFacilitatorInitials(facilitator.name)}
+        </div>
+        <div class="facilitator-info">
+          <div class="facilitator-name">${facilitator.name}</div>
+          <div class="facilitator-email">${facilitator.email}</div>
+        </div>
       </div>
-      <div class="facilitator-info">
-        <div class="facilitator-name">${facilitator.name}</div>
-        <div class="facilitator-email">${facilitator.email}</div>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+  
+  // Pre-select assigned facilitators
+  assignedIds.forEach(id => {
+    const facilitator = filteredFacilitators.find(f => String(f.id) === String(id));
+    if (facilitator && !selectedFacilitators.find(f => String(f.id) === String(facilitator.id))) {
+      selectedFacilitators.push({
+        id: String(facilitator.id),
+        name: facilitator.name,
+        email: facilitator.email
+      });
+    }
+  });
   
   // Update select button state
   updateSelectButton();
@@ -6374,11 +6435,14 @@ function toggleFacilitatorSelection(facilitatorId, facilitatorName, facilitatorE
   const checkbox = document.getElementById(`facilitator-${facilitatorId}`);
   const facilitatorItem = checkbox.closest('.facilitator-item');
   
+  // Normalize ID to string for consistent comparison
+  const normalizedId = String(facilitatorId);
+  
   if (checkbox.checked) {
     // Add to selection if not already selected
-    if (!selectedFacilitators.find(f => f.id === facilitatorId)) {
+    if (!selectedFacilitators.find(f => String(f.id) === normalizedId)) {
       const newFacilitator = {
-        id: facilitatorId,
+        id: normalizedId,
         name: facilitatorName,
         email: facilitatorEmail
       };
@@ -6389,7 +6453,7 @@ function toggleFacilitatorSelection(facilitatorId, facilitatorName, facilitatorE
     }
   } else {
     // Remove from selection
-    selectedFacilitators = selectedFacilitators.filter(f => f.id !== facilitatorId);
+    selectedFacilitators = selectedFacilitators.filter(f => String(f.id) !== normalizedId);
     console.log('Removed facilitator from selection. Current selectedFacilitators:', selectedFacilitators);
     facilitatorItem.classList.remove('selected');
   }
@@ -6458,16 +6522,37 @@ async function selectMultipleFacilitators() {
     if (!response.ok) {
       // Handle conflict errors specifically
       if (result.error === 'Scheduling conflicts detected' && result.conflicts) {
-        let conflictMessage = 'Scheduling conflicts detected:\n\n';
-        result.conflicts.forEach(conflict => {
-          conflictMessage += `• <strong>${conflict.facilitator_name}</strong> is already assigned to "<strong>${conflict.conflicting_session.name}</strong>" `;
-          conflictMessage += `(${conflict.conflicting_session.start_time.substring(0, 16)} - ${conflict.conflicting_session.end_time.substring(0, 16)}) `;
-          conflictMessage += `which overlaps with this session.\n\n`;
+        // Build a nicely formatted conflict message
+        let conflictHTML = '<div style="text-align: left; max-width: 600px;">';
+        conflictHTML += '<p style="margin-bottom: 16px; color: #6b7280;">The following facilitators cannot be assigned due to scheduling conflicts:</p>';
+        
+        result.conflicts.forEach((conflict, index) => {
+          const date = new Date(conflict.conflicting_session.start_time).toLocaleDateString('en-AU', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+          });
+          const time1 = conflict.conflicting_session.start_time.substring(11, 16);
+          const time2 = conflict.conflicting_session.end_time.substring(11, 16);
+          
+          conflictHTML += `
+            <div style="margin-bottom: 12px; padding: 12px; background: #fef2f2; border-left: 3px solid #ef4444; border-radius: 4px;">
+              <div style="font-weight: 600; color: #991b1b; margin-bottom: 4px;">
+                ${conflict.facilitator_name}
+              </div>
+              <div style="font-size: 0.875rem; color: #6b7280;">
+                Already assigned to <strong>${conflict.conflicting_session.name}</strong><br>
+                <span style="color: #991b1b;">${date} • ${time1} - ${time2}</span>
+              </div>
+            </div>
+          `;
         });
-        conflictMessage += 'Please select different facilitators or resolve the scheduling conflicts.';
+        
+        conflictHTML += '<p style="margin-top: 16px; color: #6b7280; font-size: 0.875rem;">Please select different facilitators or resolve the conflicts first.</p>';
+        conflictHTML += '</div>';
         
         // Show as custom popup
-        showConflictPopup('Scheduling Conflicts Detected', conflictMessage);
+        showConflictPopup('⚠️ Cannot Assign - Scheduling Conflicts', conflictHTML);
         return; // Don't throw error, just show the notification and return
       } else {
         throw new Error(result.error || result.message || `HTTP error! status: ${response.status}`);
