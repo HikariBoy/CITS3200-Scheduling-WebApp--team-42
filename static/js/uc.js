@@ -5162,12 +5162,29 @@ function showConflictPopup(title, message, conflicts = null) {
   const popup = document.createElement('div');
   popup.className = 'conflict-popup';
   
-  // Add instruction text if conflicts are provided
-  let instructionHTML = '';
+  // Add navigation if conflicts are provided
+  let navigationHTML = '';
   if (conflicts && conflicts.length > 0) {
-    instructionHTML = `
-      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 0.875rem; color: #6b7280;">
-        💡 Go to the Schedule page to view and reassign these sessions.
+    navigationHTML = `
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <span style="font-size: 0.875rem; color: #6b7280;">
+            Conflict <span id="popup-conflict-num">1</span> of ${conflicts.length}
+          </span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="popup-prev-conflict" style="padding: 4px 8px;">
+              <span class="material-icons" style="font-size: 18px;">chevron_left</span>
+            </button>
+            <button class="btn btn-secondary" id="popup-next-conflict" style="padding: 4px 8px;">
+              <span class="material-icons" style="font-size: 18px;">chevron_right</span>
+            </button>
+          </div>
+        </div>
+        <div id="popup-conflict-details" style="font-size: 0.875rem; padding: 12px; background: #fef2f2; border-radius: 4px; border-left: 3px solid #ef4444;">
+        </div>
+        <div style="margin-top: 12px; font-size: 0.875rem; color: #6b7280;">
+          💡 Go to the Schedule page to reassign these sessions.
+        </div>
       </div>
     `;
   }
@@ -5181,7 +5198,7 @@ function showConflictPopup(title, message, conflicts = null) {
       </div>
       <div class="conflict-popup-body">
         <p>${message.replace(/\n/g, '<br>')}</p>
-        ${instructionHTML}
+        ${navigationHTML}
       </div>
       <div class="conflict-popup-footer">
         <button class="btn btn-primary" onclick="closeConflictPopup()">OK</button>
@@ -5193,6 +5210,73 @@ function showConflictPopup(title, message, conflicts = null) {
   
   // Close popup when clicking backdrop
   popup.querySelector('.conflict-popup-backdrop').addEventListener('click', closeConflictPopup);
+  
+  // Add navigation functionality
+  if (conflicts && conflicts.length > 0) {
+    let currentIndex = 0;
+    
+    const updateConflictDisplay = () => {
+      const conflict = conflicts[currentIndex];
+      document.getElementById('popup-conflict-num').textContent = currentIndex + 1;
+      document.getElementById('popup-prev-conflict').disabled = currentIndex === 0;
+      document.getElementById('popup-next-conflict').disabled = currentIndex === conflicts.length - 1;
+      
+      // Update conflict details
+      let detailsHTML = '';
+      if (conflict.type === 'schedule_overlap') {
+        const date1 = new Date(conflict.session1.start_time).toLocaleDateString('en-AU', { 
+          weekday: 'short', 
+          day: 'numeric', 
+          month: 'short' 
+        });
+        const time1 = conflict.session1.start_time.substring(11, 16) + ' - ' + conflict.session1.end_time.substring(11, 16);
+        const time2 = conflict.session2.start_time.substring(11, 16) + ' - ' + conflict.session2.end_time.substring(11, 16);
+        
+        detailsHTML = `
+          <div style="margin-bottom: 8px;">
+            <strong style="color: #ef4444;">${conflict.facilitator_name}</strong>
+          </div>
+          <div style="margin-bottom: 4px; font-weight: 500;">
+            ⚠️ Overlapping Sessions:
+          </div>
+          <div style="margin-left: 8px; line-height: 1.6;">
+            <div style="margin-bottom: 4px;">
+              <strong>1.</strong> ${conflict.session1.module}<br>
+              <span style="color: #6b7280; font-size: 0.8125rem;">${date1} • ${time1}</span>
+            </div>
+            <div>
+              <strong>2.</strong> ${conflict.session2.module}<br>
+              <span style="color: #6b7280; font-size: 0.8125rem;">${date1} • ${time2}</span>
+            </div>
+          </div>
+        `;
+      } else {
+        detailsHTML = `
+          <div style="color: #6b7280;">
+            ${conflict.facilitator_name || 'Unknown conflict'}
+          </div>
+        `;
+      }
+      
+      document.getElementById('popup-conflict-details').innerHTML = detailsHTML;
+    };
+    
+    document.getElementById('popup-prev-conflict').addEventListener('click', () => {
+      if (currentIndex > 0) {
+        currentIndex--;
+        updateConflictDisplay();
+      }
+    });
+    
+    document.getElementById('popup-next-conflict').addEventListener('click', () => {
+      if (currentIndex < conflicts.length - 1) {
+        currentIndex++;
+        updateConflictDisplay();
+      }
+    });
+    
+    updateConflictDisplay();
+  }
 }
 
 // Show conflict navigation bar on schedule page
