@@ -104,11 +104,43 @@ def prepare_facilitator_data(facilitators_from_db):
     
     return facilitator_data
 
-def check_availability(facilitator, session):
+def batch_load_unavailability(facilitator_ids, unit_id):
+    """
+    Batch load all unavailability data for given facilitators and unit
+    Returns a dictionary: {facilitator_id: [list of unavailability objects]}
+    This prevents N×M database queries (one per facilitator-session pair)
+    """
+    from models import Unavailability
+    
+    if not facilitator_ids or not unit_id:
+        return {}
+    
+    # Single query to get all unavailabilities for all facilitators in this unit
+    unavailabilities = Unavailability.query.filter(
+        Unavailability.user_id.in_(facilitator_ids),
+        Unavailability.unit_id == unit_id
+    ).all()
+    
+    # Organize by facilitator_id for quick lookup
+    unavailability_map = {}
+    for unavail in unavailabilities:
+        if unavail.user_id not in unavailability_map:
+            unavailability_map[unavail.user_id] = []
+        unavailability_map[unavail.user_id].append(unavail)
+    
+    return unavailability_map
+
+def check_availability(facilitator, session, unavailability_map=None):
     """
     Check if facilitator is available for the session time
     Returns 1.0 if available, 0.0 if not (hard constraint)
-    Now properly checks database unavailability data
+    Now uses pre-loaded unavailability data for performance
+    
+    Args:
+        facilitator: Facilitator dict with 'id' key
+        session: Session dict with date/time info
+        unavailability_map: Pre-loaded dict of {facilitator_id: [unavailability objects]}
+                           If None, will fall back to database query (slower)
     """
     from models import Unavailability, Module
     from datetime import datetime
@@ -122,43 +154,48 @@ def check_availability(facilitator, session):
         # If we don't have proper date/time info, assume available
         return 1.0
     
-    # Get the module ID from the session
-    module_id = session.get('module_id')
-    if not module_id:
-        return 1.0
+    facilitator_id = facilitator['id']
     
-    # Get the unit ID from the module
-    module = Module.query.get(module_id)
-    if not module:
-        return 1.0
-    
-    unit_id = module.unit_id
-    
-    # Check if facilitator has any unavailability for this specific date and time
-    unavailability = Unavailability.query.filter_by(
-        user_id=facilitator['id'],
-        unit_id=unit_id,
-        date=session_date
-    ).first()
-    
-    if not unavailability:
-        # No unavailability entry means facilitator is available
-        return 1.0
-    
-    # Check if it's a full day unavailability
-    if unavailability.is_full_day:
-        return 0.0  # Not available for full day
-    
-    # Check if the session time conflicts with the unavailability time block
-    if unavailability.start_time and unavailability.end_time:
-        session_start = session_start_time
-        session_end = session_end_time
-        unavail_start = unavailability.start_time
-        unavail_end = unavailability.end_time
+    # Use pre-loaded data if available, otherwise fall back to query
+    if unavailability_map is not None:
+        unavailabilities = unavailability_map.get(facilitator_id, [])
+    else:
+        # Fallback: query database (slower, but maintains backward compatibility)
+        module_id = session.get('module_id')
+        if not module_id:
+            return 1.0
         
-        # Check if sessions overlap
-        if (session_start < unavail_end and session_end > unavail_start):
-            return 0.0  # Conflict detected
+        module = Module.query.get(module_id)
+        if not module:
+            return 1.0
+        
+        unit_id = module.unit_id
+        unavailabilities = Unavailability.query.filter_by(
+            user_id=facilitator_id,
+            unit_id=unit_id,
+            date=session_date
+        ).all()
+    
+    # Check each unavailability entry for this facilitator
+    for unavailability in unavailabilities:
+        # Skip if not for this date
+        if unavailability.date != session_date:
+            continue
+        
+        # Check if it's a full day unavailability
+        if unavailability.is_full_day:
+            return 0.0  # Not available for full day
+        
+        # Check if the session time conflicts with the unavailability time block
+        if unavailability.start_time and unavailability.end_time:
+            session_start = session_start_time
+            session_end = session_end_time
+            unavail_start = unavailability.start_time
+            unavail_end = unavailability.end_time
+            
+            # Check if sessions overlap
+            if (session_start < unavail_end and session_end > unavail_start):
+                return 0.0  # Conflict detected
     
     # If we get here, no conflict was found
     return 1.0
@@ -278,17 +315,20 @@ def check_skill_constraint(facilitator, session):
     # This is safer than blocking assignments due to missing data
     return True
 
-def calculate_facilitator_score(facilitator, session, current_assignments, total_hours_per_facilitator=None):
+def calculate_facilitator_score(facilitator, session, current_assignments, total_hours_per_facilitator=None, unavailability_map=None):
     """
     Calculate the score for assigning a facilitator to a session
     Uses the formula: (W_avail × availability_match) + (W_fair × fairness_factor) + (W_skill × skill_score)
+    
+    Args:
+        unavailability_map: Pre-loaded unavailability data for performance
     """
     # Skill constraint check (hard constraint - no interest = cannot be assigned)
     if not check_skill_constraint(facilitator, session):
         return 0.0  # Hard constraint violation - no interest in this session
     
-    # Availability check (hard constraint)
-    availability_match = check_availability(facilitator, session)
+    # Availability check (hard constraint) - use pre-loaded data
+    availability_match = check_availability(facilitator, session, unavailability_map)
     if availability_match == 0.0:
         return 0.0  # Hard constraint violation
     
@@ -339,6 +379,12 @@ def generate_optimal_assignments(facilitators, unit_id=None):
     assignments = []
     conflicts = []
     
+    # PERFORMANCE OPTIMIZATION: Batch load all unavailability data once
+    # This prevents N×M database queries (one per facilitator-session pair)
+    facilitator_ids = [f['id'] for f in facilitators]
+    unavailability_map = batch_load_unavailability(facilitator_ids, unit_id) if unit_id else {}
+    print(f"[OPTIMIZATION] Loaded unavailability data for {len(facilitator_ids)} facilitators in 1 query")
+    
     # Add randomization: shuffle sessions to vary the assignment order
     # This creates different but still optimal solutions on each run
     sessions_copy = sessions.copy()
@@ -385,12 +431,21 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                 if check_location_conflict(facilitator, session, assignments):
                     continue
                 
+                # Check for unavailability (hard constraint)
+                if check_availability(facilitator, session, unavailability_map) == 0.0:
+                    continue
+                
                 score = calculate_facilitator_score(
                     facilitator, 
                     session, 
                     assignments, 
-                    total_hours_per_facilitator
+                    total_hours_per_facilitator,
+                    unavailability_map
                 )
+                
+                # If score is 0, hard constraint violated (unavailable, no interest, etc.) - skip this facilitator
+                if score == 0.0:
+                    continue
                 
                 # Bonus for lead roles: prefer higher skill levels
                 skill_score = get_skill_score(facilitator, session)
@@ -441,12 +496,21 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                 if check_location_conflict(facilitator, session, assignments):
                     continue
                 
+                # Check for unavailability (hard constraint)
+                if check_availability(facilitator, session, unavailability_map) == 0.0:
+                    continue
+                
                 score = calculate_facilitator_score(
                     facilitator, 
                     session, 
                     assignments, 
-                    total_hours_per_facilitator
+                    total_hours_per_facilitator,
+                    unavailability_map
                 )
+                
+                # If score is 0, hard constraint violated (unavailable, no interest, etc.) - skip this facilitator
+                if score == 0.0:
+                    continue
                 
                 # Add small random variation (±5%) to introduce diversity while maintaining quality
                 score = score * (1 + random.uniform(-0.05, 0.05))
@@ -491,7 +555,7 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                         conflict_reasons.append(f"{facilitator['name']} has no interest in this module")
                 
                 # Check availability constraints
-                elif check_availability(facilitator, session) == 0.0:
+                elif check_availability(facilitator, session, unavailability_map) == 0.0:
                     conflict_reasons.append(f"{facilitator['name']} is unavailable at this time")
             
             if conflict_reasons:

@@ -747,17 +747,26 @@ def get_unit_info():
 @facilitator_required
 def get_unavailability():
     """Get unavailability for a specific unit"""
-    user = get_current_user()
+    current_user = get_current_user()
     unit_id = request.args.get('unit_id', type=int)
     
     if not unit_id:
         return jsonify({"error": "unit_id is required"}), 400
     
-    # Verify user has access to this unit
+    # Get the target user (facilitator being viewed)
+    # If 'user_id' is provided, UC/admin is viewing on behalf of facilitator
+    target_user_id = request.args.get('user_id', type=int, default=current_user.id)
+    
+    # Check permission: either viewing own data or UC/admin viewing facilitator's data
+    if target_user_id != current_user.id:
+        if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
+            return jsonify({"error": "forbidden"}), 403
+    
+    # Verify target user has access to this unit
     access = (
         db.session.query(Unit)
         .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == user.id)
+        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
         .first()
     )
     if not access:
@@ -765,7 +774,7 @@ def get_unavailability():
     
     # Get unavailability records for this user and unit
     unavailabilities = Unavailability.query.filter_by(
-        user_id=user.id, 
+        user_id=target_user_id, 
         unit_id=unit_id
     ).all()
     

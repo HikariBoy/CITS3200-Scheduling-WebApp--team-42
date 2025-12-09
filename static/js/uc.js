@@ -6616,7 +6616,9 @@ function updateSessionStatusMultiple(sessionId, status, facilitators) {
       
       // Update session card data attributes for session details modal
       const facilitatorNames = facilitators.map(f => f?.name || 'Unknown').join(', ');
+      const facilitatorIds = facilitators.map(f => f?.id).filter(id => id).join(',');
       sessionCard.setAttribute('data-facilitator-names', facilitatorNames);
+      sessionCard.setAttribute('data-facilitator-ids', facilitatorIds); // FIX: Update IDs so modal pre-selects correctly
       sessionCard.setAttribute('data-session-status', 'approved');
       break;
     case 'unassigned':
