@@ -4579,6 +4579,9 @@ async function loadScheduleSessions() {
     if (data.ok) {
       scheduleSessions = data.sessions || [];
       renderScheduleGrid();
+      
+      // Also load and display conflicts
+      loadAndDisplayConflicts();
     }
   } catch (error) {
     console.error('Error loading schedule sessions:', error);
@@ -5494,6 +5497,59 @@ async function showConflictsOnClick() {
   }
 }
 
+// Close conflicts banner
+function closeConflictsBanner() {
+  const banner = document.getElementById('conflicts-banner');
+  if (banner) {
+    banner.style.display = 'none';
+  }
+}
+
+// Update conflicts banner on schedule page
+function updateConflictsBanner(conflicts) {
+  const banner = document.getElementById('conflicts-banner');
+  const countEl = document.getElementById('conflicts-count');
+  const listEl = document.getElementById('conflicts-list');
+  
+  if (!banner || !countEl || !listEl) return;
+  
+  if (!conflicts || conflicts.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+  
+  // Show banner
+  banner.style.display = 'block';
+  countEl.textContent = conflicts.length;
+  
+  // Build conflicts list
+  let html = '<ul style="margin: 8px 0; padding-left: 20px;">';
+  conflicts.forEach((conflict, index) => {
+    if (conflict.type === 'schedule_overlap') {
+      const date = new Date(conflict.session1.start_time).toLocaleDateString('en-AU', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      const time1 = conflict.session1.start_time.substring(11, 16);
+      const time2 = conflict.session2.start_time.substring(11, 16);
+      
+      html += `
+        <li style="margin-bottom: 8px;">
+          <strong>${conflict.facilitator_name}</strong> on <strong>${date}</strong>:
+          <br>
+          <span style="margin-left: 8px; font-size: 0.8125rem;">
+            • ${conflict.session1.module} (${time1}) overlaps with ${conflict.session2.module} (${time2})
+          </span>
+        </li>
+      `;
+    }
+  });
+  html += '</ul>';
+  
+  listEl.innerHTML = html;
+}
+
 // Load and display existing conflicts
 async function loadAndDisplayConflicts() {
   const unitId = getUnitId();
@@ -5509,6 +5565,9 @@ async function loadAndDisplayConflicts() {
     });
     
     const result = await response.json();
+    
+    // Update conflicts banner on page
+    updateConflictsBanner(result.conflicts || []);
     
     if (result.ok && result.conflicts && result.conflicts.length > 0) {
       // Show conflicts in a notification or banner
