@@ -5511,9 +5511,15 @@ function updateConflictsBanner(conflicts) {
   const countEl = document.getElementById('conflicts-count');
   const listEl = document.getElementById('conflicts-list');
   
-  if (!banner || !countEl || !listEl) return;
+  console.log('[DEBUG] updateConflictsBanner called with:', conflicts);
+  
+  if (!banner || !countEl || !listEl) {
+    console.log('[DEBUG] Banner elements not found');
+    return;
+  }
   
   if (!conflicts || conflicts.length === 0) {
+    console.log('[DEBUG] No conflicts, hiding banner');
     banner.style.display = 'none';
     return;
   }
@@ -5525,28 +5531,50 @@ function updateConflictsBanner(conflicts) {
   // Build conflicts list
   let html = '<ul style="margin: 8px 0; padding-left: 20px;">';
   conflicts.forEach((conflict, index) => {
-    if (conflict.type === 'schedule_overlap') {
+    console.log(`[DEBUG] Processing conflict ${index}:`, conflict);
+    
+    if (conflict.type === 'schedule_overlap' && conflict.session1 && conflict.session2) {
       const date = new Date(conflict.session1.start_time).toLocaleDateString('en-AU', { 
         weekday: 'short', 
         month: 'short', 
         day: 'numeric' 
       });
-      const time1 = conflict.session1.start_time.substring(11, 16);
-      const time2 = conflict.session2.start_time.substring(11, 16);
+      const time1Start = conflict.session1.start_time.substring(11, 16);
+      const time1End = conflict.session1.end_time.substring(11, 16);
+      const time2Start = conflict.session2.start_time.substring(11, 16);
+      const time2End = conflict.session2.end_time.substring(11, 16);
       
       html += `
+        <li style="margin-bottom: 12px;">
+          <strong style="color: #991b1b;">${conflict.facilitator_name}</strong> on <strong>${date}</strong>
+          <div style="margin-left: 16px; margin-top: 4px; font-size: 0.8125rem; line-height: 1.5;">
+            <div style="margin-bottom: 2px;">
+              📍 <strong>${conflict.session1.module}</strong><br>
+              <span style="margin-left: 20px; color: #6b7280;">${time1Start} - ${time1End}</span>
+            </div>
+            <div style="color: #ef4444; margin: 2px 0; margin-left: 20px;">↓ overlaps with ↓</div>
+            <div>
+              📍 <strong>${conflict.session2.module}</strong><br>
+              <span style="margin-left: 20px; color: #6b7280;">${time2Start} - ${time2End}</span>
+            </div>
+          </div>
+        </li>
+      `;
+    } else {
+      // Fallback for unexpected conflict format
+      html += `
         <li style="margin-bottom: 8px;">
-          <strong>${conflict.facilitator_name}</strong> on <strong>${date}</strong>:
-          <br>
-          <span style="margin-left: 8px; font-size: 0.8125rem;">
-            • ${conflict.session1.module} (${time1}) overlaps with ${conflict.session2.module} (${time2})
-          </span>
+          <strong>${conflict.facilitator_name || 'Unknown'}</strong>
+          <div style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">
+            ${JSON.stringify(conflict)}
+          </div>
         </li>
       `;
     }
   });
   html += '</ul>';
   
+  console.log('[DEBUG] Generated HTML:', html);
   listEl.innerHTML = html;
 }
 
