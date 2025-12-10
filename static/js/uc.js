@@ -4960,13 +4960,21 @@ async function autoAssignFacilitators() {
   autoAssignBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>Running Algorithm...';
 
   try {
+    // Get current weight settings
+    const weights = getAutoAssignWeights();
+    
     const url = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE, unitId);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRFToken': window.CSRF_TOKEN
-      }
+      },
+      body: JSON.stringify({
+        w_skill: weights.skill / 100,        // Convert percentage to decimal (0.0-1.0)
+        w_fairness: weights.fairness / 100   // Convert percentage to decimal (0.0-1.0)
+        // Note: Availability is a hard constraint (always checked), not sent as weight
+      })
     });
 
     const data = await response.json();
@@ -7177,4 +7185,219 @@ async function resendSetupEmail(facilitatorId, email) {
     console.error('Error resending setup email:', error);
     showSimpleNotification('Failed to send email', 'error');
   }
+}
+
+// ============================================
+// AUTO-ASSIGNMENT SETTINGS MODAL
+// ============================================
+
+// Store current weights (defaults)
+// Note: Only skill and fairness are adjustable (sum = 100%)
+// Availability is a hard constraint (always checked, not weighted)
+let autoAssignWeights = {
+  skill: 50,
+  fairness: 50
+};
+
+function openAutoAssignSettings() {
+  const unitId = getUnitId();
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  document.getElementById('auto-assign-settings-modal').style.display = 'flex';
+  
+  // Load saved weights for THIS UNIT or use defaults
+  const storageKey = `autoAssignWeights_unit_${unitId}`;
+  try {
+    const savedWeights = localStorage.getItem(storageKey);
+    if (savedWeights) {
+      const parsed = JSON.parse(savedWeights);
+      // Validate parsed data
+      if (parsed && typeof parsed.skill === 'number' && typeof parsed.fairness === 'number') {
+        // Ensure values are within valid range and sum to 100
+        if (parsed.skill >= 0 && parsed.skill <= 100 && 
+            parsed.fairness >= 0 && parsed.fairness <= 100 &&
+            parsed.skill + parsed.fairness === 100) {
+          autoAssignWeights = parsed;
+        } else {
+          console.warn('Saved weights out of range, using defaults');
+          autoAssignWeights = { skill: 50, fairness: 50 };
+        }
+      } else {
+        console.warn('Invalid saved weights format, using defaults');
+        autoAssignWeights = { skill: 50, fairness: 50 };
+      }
+    } else {
+      // Use defaults
+      autoAssignWeights = { skill: 50, fairness: 50 };
+    }
+  } catch (error) {
+    console.error('Error loading saved weights:', error);
+    autoAssignWeights = { skill: 50, fairness: 50 };
+  }
+  
+  // Set both slider values
+  document.getElementById('skill-weight-slider').value = autoAssignWeights.skill;
+  document.getElementById('fairness-weight-slider').value = autoAssignWeights.fairness;
+  
+  // Update displays
+  updateWeightDisplay('skill', autoAssignWeights.skill);
+}
+
+function closeAutoAssignSettings() {
+  document.getElementById('auto-assign-settings-modal').style.display = 'none';
+}
+
+function updateWeightDisplay(type, value) {
+  value = parseInt(value);
+  
+  // Validate value is a number
+  if (isNaN(value)) {
+    console.error('Invalid weight value:', value);
+    return;
+  }
+  
+  // Clamp value between 0 and 100
+  value = Math.max(0, Math.min(100, value));
+  
+  // Update the weight that was changed
+  if (type === 'skill') {
+    autoAssignWeights.skill = value;
+    autoAssignWeights.fairness = 100 - value;
+    // Update fairness slider to match
+    document.getElementById('fairness-weight-slider').value = autoAssignWeights.fairness;
+  } else if (type === 'fairness') {
+    autoAssignWeights.fairness = value;
+    autoAssignWeights.skill = 100 - value;
+    // Update skill slider to match
+    document.getElementById('skill-weight-slider').value = autoAssignWeights.skill;
+  }
+  
+  // Update text displays
+  document.getElementById('skill-weight-value').textContent = autoAssignWeights.skill + '%';
+  document.getElementById('fairness-weight-value').textContent = autoAssignWeights.fairness + '%';
+  
+  // Update visual balance indicator (bar width)
+  const balanceIndicator = document.getElementById('balance-indicator');
+  if (balanceIndicator) {
+    // Fairness percentage determines bar width (more fairness = wider bar)
+    balanceIndicator.style.width = autoAssignWeights.fairness + '%';
+  }
+  
+  // Update balance text
+  const balanceText = document.getElementById('balance-text');
+  if (balanceText) {
+    if (autoAssignWeights.skill > 60) {
+      balanceText.textContent = 'Skill-Focused';
+    } else if (autoAssignWeights.fairness > 60) {
+      balanceText.textContent = 'Fairness-Focused';
+    } else {
+      balanceText.textContent = 'Balanced';
+    }
+  }
+}
+
+function resetToRecommended() {
+  // Recommended defaults: balanced 50/50
+  autoAssignWeights = {
+    skill: 50,
+    fairness: 50
+  };
+  
+  document.getElementById('skill-weight-slider').value = 50;
+  document.getElementById('fairness-weight-slider').value = 50;
+  
+  updateWeightDisplay('skill', 50);
+  
+  showSimpleNotification('Reset to recommended settings (50/50 balance)', 'success');
+}
+
+function saveAutoAssignSettings() {
+  const unitId = getUnitId();
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  // Validate weights before saving
+  const sum = autoAssignWeights.skill + autoAssignWeights.fairness;
+  if (sum !== 100) {
+    showSimpleNotification('Error: Weights must sum to 100%', 'error');
+    console.error('Invalid weights sum:', sum, autoAssignWeights);
+    return;
+  }
+  
+  // Validate individual weights
+  if (autoAssignWeights.skill < 0 || autoAssignWeights.skill > 100 ||
+      autoAssignWeights.fairness < 0 || autoAssignWeights.fairness > 100) {
+    showSimpleNotification('Error: Weights out of valid range', 'error');
+    console.error('Invalid weight values:', autoAssignWeights);
+    return;
+  }
+  
+  try {
+    // Save to localStorage with unit-specific key
+    const storageKey = `autoAssignWeights_unit_${unitId}`;
+    localStorage.setItem(storageKey, JSON.stringify(autoAssignWeights));
+    
+    showSimpleNotification('Settings saved for this unit! They will be used for the next auto-assignment.', 'success');
+    closeAutoAssignSettings();
+  } catch (error) {
+    console.error('Error saving weights:', error);
+    showSimpleNotification('Error saving settings. Please try again.', 'error');
+  }
+}
+
+// Get current weights for auto-assignment (unit-specific)
+function getAutoAssignWeights() {
+  const unitId = getUnitId();
+  const defaults = {
+    skill: 50,
+    fairness: 50
+  };
+  
+  if (!unitId) {
+    // Return defaults if no unit selected
+    return defaults;
+  }
+  
+  try {
+    // Get unit-specific weights
+    const storageKey = `autoAssignWeights_unit_${unitId}`;
+    const savedWeights = localStorage.getItem(storageKey);
+    
+    if (savedWeights) {
+      const parsed = JSON.parse(savedWeights);
+      
+      // Validate parsed data
+      if (parsed && 
+          typeof parsed.skill === 'number' && 
+          typeof parsed.fairness === 'number') {
+        
+        // Validate ranges and sum
+        if (parsed.skill >= 0 && parsed.skill <= 100 &&
+            parsed.fairness >= 0 && parsed.fairness <= 100) {
+          
+          // Validate sum
+          const sum = parsed.skill + parsed.fairness;
+          if (sum === 100) {
+            return parsed;
+          } else {
+            console.warn('Saved weights do not sum to 100, using defaults');
+          }
+        } else {
+          console.warn('Saved weights out of range, using defaults');
+        }
+      } else {
+        console.warn('Invalid saved weights format, using defaults');
+      }
+    }
+  } catch (error) {
+    console.error('Error loading weights:', error);
+  }
+  
+  // Return defaults if validation failed or no saved weights
+  return defaults;
 }

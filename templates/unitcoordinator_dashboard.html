@@ -845,8 +845,12 @@
               <h3>{{ unit.unit_code }} Schedule</h3>
               <p>Manage {{ unit.session_count or 0 }} sessions from university timetable with facilitator assignments.</p>
               
-              <!-- Auto Assign Button -->
+              <!-- Auto Assign Buttons -->
               <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="auto-assign-settings-btn" onclick="openAutoAssignSettings()" title="Configure auto-assignment priorities">
+                  <span class="material-icons">tune</span>
+                  Settings
+                </button>
                 <button type="button" class="auto-assign-btn">
                   <span class="material-icons">auto_awesome</span>
                   Auto-Assign Facilitators
@@ -2568,6 +2572,79 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
       <button class="btn-primary" onclick="addFacilitatorByEmail()">
         <span class="material-icons text-base">person_add</span>
         Add Facilitator
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Auto-Assignment Settings Modal -->
+<div id="auto-assign-settings-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <h3>⚙️ Auto-Assignment Settings</h3>
+      <button class="modal-close" onclick="closeAutoAssignSettings()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-gray-600 mb-4">
+        Adjust how the algorithm prioritizes different factors when assigning facilitators to sessions.
+      </p>
+      
+      <!-- Skill Weight Slider -->
+      <div class="form-group mb-4">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="margin: 0; font-weight: 600;">🎯 Skill Priority</label>
+          <span id="skill-weight-value" style="font-weight: 600; font-size: 18px;">50%</span>
+        </div>
+        <input type="range" id="skill-weight-slider" min="0" max="100" value="50" step="5" 
+               style="width: 100%; height: 8px; border-radius: 5px; background: #e5e7eb; outline: none; -webkit-appearance: none;"
+               oninput="updateWeightDisplay('skill', this.value)">
+        <p class="text-xs text-gray-500 mt-1">Prioritize experienced facilitators (Proficient > Have Run Before > Have Some Skill)</p>
+      </div>
+      
+      <!-- Fairness Weight Slider -->
+      <div class="form-group mb-4">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="margin: 0; font-weight: 600;">⚖️ Fairness Priority</label>
+          <span id="fairness-weight-value" style="font-weight: 600; font-size: 18px;">50%</span>
+        </div>
+        <input type="range" id="fairness-weight-slider" min="0" max="100" value="50" step="5"
+               style="width: 100%; height: 8px; border-radius: 5px; background: #e5e7eb; outline: none; -webkit-appearance: none;"
+               oninput="updateWeightDisplay('fairness', this.value)">
+        <p class="text-xs text-gray-500 mt-1">Distribute hours evenly across all facilitators</p>
+      </div>
+      
+      <!-- Visual Balance Indicator (Auto-calculated) -->
+      <div class="form-group mb-4">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="margin: 0; font-weight: 600;">Current Balance</label>
+          <span id="balance-text" style="font-weight: 600; font-size: 14px;">Balanced</span>
+        </div>
+        <div style="height: 8px; border-radius: 5px; background: #e5e7eb; position: relative;">
+          <div id="balance-indicator" style="height: 100%; width: 50%; background: #8b5cf6; border-radius: 5px; transition: width 0.3s;"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: #6b7280;">
+          <span>← More Skilled Assignments</span>
+          <span>More Fair Distribution →</span>
+        </div>
+      </div>
+      
+      <!-- Info Box -->
+      <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; border-radius: 4px; margin-top: 16px;">
+        <p style="margin: 0; font-size: 13px; color: #1e40af;">
+          <strong>💡 Tip:</strong> Higher skill priority = more experienced facilitators assigned. Higher fairness = more even workload distribution.
+        </p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="resetToRecommended()">
+        <span class="material-icons text-base">restart_alt</span>
+        Reset to Recommended
+      </button>
+      <button class="btn-primary" onclick="saveAutoAssignSettings()">
+        <span class="material-icons text-base">check</span>
+        Save Settings
       </button>
     </div>
   </div>
