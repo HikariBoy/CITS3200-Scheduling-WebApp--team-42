@@ -626,6 +626,11 @@ def format_session_time(session):
         # Fallback to old format if datetime not available
         days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         day_name = days[session['day_of_week']]
+        
+        # Check for None values before calling strftime
+        if session.get('start_time') is None or session.get('end_time') is None:
+            return f"{day_name} TBA"
+        
         start_str = session['start_time'].strftime('%H:%M')
         end_str = session['end_time'].strftime('%H:%M')
         return f"{day_name} {start_str}-{end_str}"
