@@ -2345,7 +2345,8 @@ function loadUnavailabilityData() {
     }
     
     console.log('[DEBUG] Fetching unavailability for unit:', currentUnitId);
-    fetch(`/facilitator/unavailability?unit_id=${currentUnitId}`)
+    const url = addUserIdToUrl(`/facilitator/unavailability?unit_id=${currentUnitId}`);
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             console.log('[DEBUG] Unavailability data received:', data);
@@ -2789,6 +2790,11 @@ function saveUnavailability() {
         
         // Use the recurring endpoint for recurring unavailability
         endpoint = '/facilitator/unavailability/generate-recurring';
+    }
+    
+    // Add user_id if UC/admin is editing on behalf of facilitator
+    if (window.IS_UC_EDITING && window.TARGET_USER_ID) {
+        data.user_id = window.TARGET_USER_ID;
     }
     
     fetch(endpoint, {

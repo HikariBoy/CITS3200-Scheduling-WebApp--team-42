@@ -2518,6 +2518,16 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </div>
       </div>
       
+      <!-- Unassigned Sessions Warning (shown only if there are unassigned sessions) -->
+      <div id="publish-unassigned-warning" class="publish-warning-banner" style="display: none; background: #fef3c7; border-left: 4px solid #f59e0b;">
+        <div class="publish-warning-icon" style="color: #f59e0b;">
+          <span class="material-icons">error_outline</span>
+        </div>
+        <div class="publish-warning-text" style="color: #92400e;">
+          <strong>Warning:</strong> <span id="publish-unassigned-count">0</span> session(s) do not have a facilitator assigned. These sessions will be published without assignments.
+        </div>
+      </div>
+      
       <div class="publish-warning-banner">
         <div class="publish-warning-icon">
           <span class="material-icons">warning_amber</span>

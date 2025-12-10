@@ -3668,8 +3668,16 @@ def publish_preview(unit_id: int):
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
     try:
-        # Get all sessions for this unit that have facilitators assigned
-        sessions = (
+        # Get all sessions for this unit
+        all_sessions = (
+            db.session.query(Session)
+            .join(Module, Session.module_id == Module.id)
+            .filter(Module.unit_id == unit_id)
+            .all()
+        )
+        
+        # Get sessions that have facilitators assigned
+        assigned_sessions = (
             db.session.query(Session)
             .join(Module, Session.module_id == Module.id)
             .join(Assignment, Session.id == Assignment.session_id)
@@ -3680,15 +3688,19 @@ def publish_preview(unit_id: int):
         
         # Count unique facilitators
         facilitator_ids = set()
-        for session in sessions:
+        for session in assigned_sessions:
             assignments = Assignment.query.filter_by(session_id=session.id).all()
             for assignment in assignments:
                 facilitator_ids.add(assignment.facilitator_id)
         
+        # Calculate unassigned count
+        unassigned_count = len(all_sessions) - len(assigned_sessions)
+        
         return jsonify({
             "ok": True,
-            "session_count": len(sessions),
-            "facilitator_count": len(facilitator_ids)
+            "session_count": len(all_sessions),
+            "facilitator_count": len(facilitator_ids),
+            "unassigned_count": unassigned_count
         })
     except Exception as e:
         print(f"Error getting publish preview: {e}")
@@ -4083,6 +4095,28 @@ def list_facilitators(unit_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
 
+    # Get session date and time if provided (for unavailability check)
+    session_date_str = request.args.get('session_date')
+    session_start_time_str = request.args.get('session_start_time')
+    session_end_time_str = request.args.get('session_end_time')
+    
+    session_date = None
+    session_start_time = None
+    session_end_time = None
+    
+    if session_date_str:
+        try:
+            from datetime import datetime, time as dt_time
+            session_date = datetime.strptime(session_date_str, '%Y-%m-%d').date()
+            
+            # Parse session times if provided
+            if session_start_time_str:
+                session_start_time = datetime.strptime(session_start_time_str, '%H:%M').time()
+            if session_end_time_str:
+                session_end_time = datetime.strptime(session_end_time_str, '%H:%M').time()
+        except ValueError:
+            pass  # Invalid date/time format, ignore
+
     facs = (
         db.session.query(User)
         .join(UnitFacilitator, UnitFacilitator.user_id == User.id)
@@ -4093,6 +4127,32 @@ def list_facilitators(unit_id: int):
     
     facilitators = []
     for fac in facs:
+        is_unavailable = False
+        unavailability_reason = None
+        
+        # Check if facilitator is unavailable on this date
+        if session_date:
+            unavailability = Unavailability.query.filter_by(
+                user_id=fac.id,
+                unit_id=unit_id,
+                date=session_date
+            ).first()
+            
+            if unavailability:
+                # Check if it's full day or if times overlap
+                if unavailability.is_full_day:
+                    is_unavailable = True
+                    unavailability_reason = "Full day"
+                elif session_start_time and session_end_time and unavailability.start_time and unavailability.end_time:
+                    # Check time overlap: session overlaps if it starts before unavailability ends AND ends after unavailability starts
+                    if session_start_time < unavailability.end_time and session_end_time > unavailability.start_time:
+                        is_unavailable = True
+                        unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
+                else:
+                    # If no session times provided, assume unavailable for the whole day
+                    is_unavailable = True
+                    unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
+        
         facilitators.append({
             "id": fac.id,
             "name": fac.full_name,
@@ -4100,7 +4160,9 @@ def list_facilitators(unit_id: int):
             "first_name": fac.first_name,
             "last_name": fac.last_name,
             "phone_number": fac.phone_number,
-            "staff_number": fac.staff_number
+            "staff_number": fac.staff_number,
+            "is_unavailable": is_unavailable,
+            "unavailability_reason": unavailability_reason
         })
     
     return jsonify({"ok": True, "facilitators": facilitators})
