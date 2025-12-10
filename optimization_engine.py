@@ -300,7 +300,7 @@ def get_assigned_hours(facilitator, current_assignments):
 def check_skill_constraint(facilitator, session):
     """
     Check if facilitator has "no interest" in this session (hard constraint)
-    Returns False if facilitator should NOT be assigned (no interest)
+    Returns False if facilitator should NOT be assigned (no interest or no skill declared)
     Returns True if facilitator CAN be assigned (any other skill level)
     """
     module_id = session.get('module_id')
@@ -311,9 +311,9 @@ def check_skill_constraint(facilitator, session):
         # Hard constraint: NO_INTEREST means cannot be assigned
         return skill_level != SkillLevel.NO_INTEREST
     
-    # If no skill data exists for this module, allow assignment (fallback)
-    # This is safer than blocking assignments due to missing data
-    return True
+    # If no skill data exists for this module, treat as NO_INTEREST (block assignment)
+    # This ensures facilitators must explicitly declare interest in a module to be assigned
+    return False
 
 def calculate_facilitator_score(facilitator, session, current_assignments, total_hours_per_facilitator=None, unavailability_map=None):
     """
