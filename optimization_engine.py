@@ -21,16 +21,18 @@ from datetime import datetime, time
 from models import User, UserRole, FacilitatorSkill, SkillLevel, db
 
 # Tunable weights for scoring function
-W_AVAILABILITY = 0.4
-W_FAIRNESS = 0.4  # Increased fairness weight
-W_SKILL = 0.2     # Reduced skill weight to balance with fairness
+# Note: Only Skill and Fairness are weighted (sum = 100%)
+# Availability is a HARD CONSTRAINT (always checked, not weighted)
+# These are fallback defaults if no weights provided by frontend
+W_FAIRNESS = 0.50      # Default: 50% - distribute hours evenly
+W_SKILL = 0.50         # Default: 50% - prioritize skilled facilitators
 
 # Skill level to score mapping (matches models.py SkillLevel enum)
 SKILL_SCORES = {
-    SkillLevel.PROFICIENT: 1.0,
-    SkillLevel.HAVE_RUN_BEFORE: 0.8,  # "done it before"
-    SkillLevel.HAVE_SOME_SKILL: 0.5,  # "interested/has some skill"
-    SkillLevel.NO_INTEREST: 0.0
+    SkillLevel.PROFICIENT: 1.0,        # Best - full score
+    SkillLevel.HAVE_RUN_BEFORE: 0.8,   # Good - balanced
+    SkillLevel.HAVE_SOME_SKILL: 0.5,   # Okay - balanced
+    SkillLevel.NO_INTEREST: 0.0        # Blocked - hard constraint
 }
 
 def get_real_sessions(unit_id=None):
@@ -50,6 +52,11 @@ def get_real_sessions(unit_id=None):
     db_sessions = query.all()
     
     for session in db_sessions:
+        # Skip sessions with missing time data
+        if not session.start_time or not session.end_time:
+            print(f"⚠️ Skipping session {session.id} - missing start_time or end_time")
+            continue
+        
         # Calculate duration directly from datetime objects
         duration = (session.end_time - session.start_time).total_seconds() / 3600
         
@@ -315,14 +322,24 @@ def check_skill_constraint(facilitator, session):
     # This ensures facilitators must explicitly declare interest in a module to be assigned
     return False
 
-def calculate_facilitator_score(facilitator, session, current_assignments, total_hours_per_facilitator=None, unavailability_map=None):
+def calculate_facilitator_score(facilitator, session, current_assignments, total_hours_per_facilitator=None, unavailability_map=None, weights=None):
     """
     Calculate the score for assigning a facilitator to a session
-    Uses the formula: (W_avail × availability_match) + (W_fair × fairness_factor) + (W_skill × skill_score)
+    Uses the formula: (W_fairness × fairness_factor) + (W_skill × skill_score)
+    
+    Note: Availability is a HARD CONSTRAINT (checked first, returns 0 if unavailable)
     
     Args:
         unavailability_map: Pre-loaded unavailability data for performance
+        weights: Optional dict with 'skill' and 'fairness' keys. If None, uses global defaults (50/50).
     """
+    # Use provided weights or fall back to global defaults
+    if weights is None:
+        weights = {
+            'skill': W_SKILL,
+            'fairness': W_FAIRNESS
+        }
+    
     # Skill constraint check (hard constraint - no interest = cannot be assigned)
     if not check_skill_constraint(facilitator, session):
         return 0.0  # Hard constraint violation - no interest in this session
@@ -332,36 +349,36 @@ def calculate_facilitator_score(facilitator, session, current_assignments, total
     if availability_match == 0.0:
         return 0.0  # Hard constraint violation
     
-    # Enhanced fairness calculation
-    assigned_hours = get_assigned_hours(facilitator, current_assignments)
+    # Fairness factor (soft constraint)
+    facilitator_id = facilitator['id']
+    assigned_hours = total_hours_per_facilitator.get(facilitator_id, 0)
     
-    # Calculate fairness based on relative distribution
-    if total_hours_per_facilitator and len(total_hours_per_facilitator) > 1:
-        # Find the minimum assigned hours among all facilitators
-        min_assigned = min(total_hours_per_facilitator.values())
-        max_assigned = max(total_hours_per_facilitator.values())
-        
-        if max_assigned > min_assigned:
-            # Normalize fairness: facilitators with fewer hours get higher scores
-            fairness_factor = 1.0 - ((assigned_hours - min_assigned) / (max_assigned - min_assigned))
-        else:
-            fairness_factor = 1.0  # All facilitators have equal hours
+    # Calculate fairness based on how close to target hours
+    if 'max_hours' in facilitator and facilitator['max_hours'] > 0:
+        target_hours = facilitator['max_hours']
+    elif 'min_hours' in facilitator and facilitator['min_hours'] > 0:
+        target_hours = facilitator['min_hours']
     else:
-        # Fallback to original fairness calculation
-        target_hours = (facilitator['min_hours'] + facilitator['max_hours']) / 2
-        if target_hours == 0:
-            target_hours = 10  # Default target
-        fairness_factor = max(0, 1 - (assigned_hours / target_hours))
+        target_hours = 10  # Default target
+    
+    fairness_factor = max(0, 1 - (assigned_hours / target_hours))
     
     # Skill score
     skill_score = get_skill_score(facilitator, session)
     
-    # Final weighted score
-    score = (W_AVAILABILITY * availability_match) + (W_FAIRNESS * fairness_factor) + (W_SKILL * skill_score)
+    # Final weighted score using provided or default weights
+    # Note: availability_match is always 1.0 here (we already returned 0 if unavailable)
+    # So we only weight skill vs fairness
+    score = (weights['fairness'] * fairness_factor) + (weights['skill'] * skill_score)
+    
+    # Add small tie-breaker (0.1% of skill score) to prevent identical scores
+    # This ensures deterministic assignment even when one weight is 0%
+    tie_breaker = skill_score * 0.001
+    score = score + tie_breaker
     
     return score
 
-def generate_optimal_assignments(facilitators, unit_id=None):
+def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fairness=None):
     """
     Main function to generate optimal facilitator-to-session assignments
     Uses enhanced fairness algorithm to ensure equal distribution of hours
@@ -370,7 +387,18 @@ def generate_optimal_assignments(facilitators, unit_id=None):
     Args:
         facilitators: List of facilitator data dictionaries
         unit_id: Optional unit ID to filter sessions (if None, gets sessions from all units)
+        w_skill: Weight for skill priority (0.0-1.0). If None, uses 0.5 (50%).
+        w_fairness: Weight for fairness priority (0.0-1.0). If None, uses 0.5 (50%).
+    
+    Note: Availability is a hard constraint (always checked), not a weighted factor.
     """
+    # Use provided weights or fall back to defaults (50/50 balance)
+    # Note: Weights should sum to 1.0 (100%)
+    weights = {
+        'skill': w_skill if w_skill is not None else 0.5,
+        'fairness': w_fairness if w_fairness is not None else 0.5
+    }
+    
     sessions = get_real_sessions(unit_id)
     
     if not facilitators:
@@ -440,7 +468,8 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                     session, 
                     assignments, 
                     total_hours_per_facilitator,
-                    unavailability_map
+                    unavailability_map,
+                    weights
                 )
                 
                 # If score is 0, hard constraint violated (unavailable, no interest, etc.) - skip this facilitator
@@ -468,6 +497,10 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                 }
                 session_assignments.append(assignment)
                 assignments.append(assignment)
+                
+                # 🆕 STEP 3 FIX: Update fairness data after each assignment
+                # This ensures support staff selection uses updated hour counts
+                total_hours_per_facilitator[best_facilitator['id']] = total_hours_per_facilitator.get(best_facilitator['id'], 0) + session['duration_hours']
             else:
                 # Could not fill this lead position
                 conflict_msg = f"Could not assign lead staff {lead_slot + 1}/{lead_staff_needed} for {session['module_name']} ({format_session_time(session)})"
@@ -505,7 +538,8 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                     session, 
                     assignments, 
                     total_hours_per_facilitator,
-                    unavailability_map
+                    unavailability_map,
+                    weights
                 )
                 
                 # If score is 0, hard constraint violated (unavailable, no interest, etc.) - skip this facilitator
@@ -529,6 +563,10 @@ def generate_optimal_assignments(facilitators, unit_id=None):
                 }
                 session_assignments.append(assignment)
                 assignments.append(assignment)
+                
+                # 🆕 STEP 3 FIX: Update fairness data after each assignment
+                # This ensures subsequent support staff selection uses updated hour counts
+                total_hours_per_facilitator[best_facilitator['id']] = total_hours_per_facilitator.get(best_facilitator['id'], 0) + session['duration_hours']
             else:
                 # Could not fill this support position
                 conflict_msg = f"Could not assign support staff {support_slot + 1}/{support_staff_needed} for {session['module_name']} ({format_session_time(session)})"

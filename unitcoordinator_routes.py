@@ -3082,8 +3082,20 @@ def auto_assign_facilitators(unit_id: int):
         # Prepare facilitator data for optimization
         facilitators = prepare_facilitator_data(facilitators_from_db)
         
+        # Get weight parameters from request (if provided)
+        # Note: Only skill and fairness are weighted (sum = 100%)
+        # Availability is a hard constraint (always checked, not weighted)
+        request_data = request.get_json() or {}
+        w_skill = request_data.get('w_skill', 0.50)  # Default: 50%
+        w_fairness = request_data.get('w_fairness', 0.50)  # Default: 50%
+        
         # Generate assignments using the optimization algorithm (filtered to this unit only)
-        assignments, conflicts = generate_optimal_assignments(facilitators, unit_id)
+        assignments, conflicts = generate_optimal_assignments(
+            facilitators, 
+            unit_id,
+            w_skill=w_skill,
+            w_fairness=w_fairness
+        )
         
         if not assignments:
             return jsonify({
