@@ -1015,7 +1015,11 @@ def generate_schedule_report_csv(assignments, unit_name="Unit", total_facilitato
                 if unavail.is_full_day:
                     detail = f"{unavail.date} (Full Day)"
                 else:
-                    detail = f"{unavail.date} {unavail.start_time.strftime('%H:%M')}-{unavail.end_time.strftime('%H:%M')}"
+                    # Safety check for None times
+                    if unavail.start_time and unavail.end_time:
+                        detail = f"{unavail.date} {unavail.start_time.strftime('%H:%M')}-{unavail.end_time.strftime('%H:%M')}"
+                    else:
+                        detail = f"{unavail.date} (Time TBA)"
                 
                 # Add recurring info if applicable
                 if unavail.recurring_pattern:
