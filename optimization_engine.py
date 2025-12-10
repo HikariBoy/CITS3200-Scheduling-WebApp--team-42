@@ -626,6 +626,11 @@ def format_session_time(session):
         # Fallback to old format if datetime not available
         days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         day_name = days[session['day_of_week']]
+        
+        # Check for None values before calling strftime
+        if session.get('start_time') is None or session.get('end_time') is None:
+            return f"{day_name} TBA"
+        
         start_str = session['start_time'].strftime('%H:%M')
         end_str = session['end_time'].strftime('%H:%M')
         return f"{day_name} {start_str}-{end_str}"
@@ -1010,7 +1015,11 @@ def generate_schedule_report_csv(assignments, unit_name="Unit", total_facilitato
                 if unavail.is_full_day:
                     detail = f"{unavail.date} (Full Day)"
                 else:
-                    detail = f"{unavail.date} {unavail.start_time.strftime('%H:%M')}-{unavail.end_time.strftime('%H:%M')}"
+                    # Safety check for None times
+                    if unavail.start_time and unavail.end_time:
+                        detail = f"{unavail.date} {unavail.start_time.strftime('%H:%M')}-{unavail.end_time.strftime('%H:%M')}"
+                    else:
+                        detail = f"{unavail.date} (Time TBA)"
                 
                 # Add recurring info if applicable
                 if unavail.recurring_pattern:
