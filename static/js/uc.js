@@ -4697,9 +4697,12 @@ function renderDaySessions(sessions, dayDate) {
       console.log('Session module_type:', session.module_type);
       
       const facilitatorIds = session.facilitators?.map(f => f.id).join(',') || '';
+      const sessionDate = new Date(session.start).toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      const sessionStartTime = new Date(session.start).toTimeString().split(' ')[0].substring(0, 5); // Format: HH:MM
+      const sessionEndTime = new Date(session.end).toTimeString().split(' ')[0].substring(0, 5); // Format: HH:MM
       
       return `
-     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
+     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-session-date="${sessionDate}" data-session-start-time="${sessionStartTime}" data-session-end-time="${sessionEndTime}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
        id: session.id || `temp-${index}`,
        title: session.session_name || session.extendedProps?.session_name || session.title || 'New Session',
        day: new Date(session.start).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
@@ -5911,7 +5914,7 @@ function updateSessionStats(sessions) {
   const assigned = sessions.filter(s => s.status === 'assigned').length;
   const unassigned = sessions.filter(s => s.status === 'unassigned').length;
   
-  // Update stat cards
+  // Update stat cards (list view)
   const totalEl = document.getElementById('total-sessions');
   const assignedEl = document.getElementById('assigned-sessions');
   const unassignedEl = document.getElementById('unassigned-sessions');
@@ -5919,6 +5922,40 @@ function updateSessionStats(sessions) {
   if (totalEl) totalEl.textContent = total;
   if (assignedEl) assignedEl.textContent = assigned;
   if (unassignedEl) unassignedEl.textContent = unassigned;
+}
+
+// Update total unassigned count for entire unit (not just current week)
+async function updateTotalUnassignedCount() {
+  const unitId = getUnitId();
+  if (!unitId) return;
+  
+  try {
+    // Fetch all sessions from a very wide date range to get all sessions in the unit
+    // Use a date range from 2020 to 2030 to catch everything
+    const response = await fetch(`${withUnitId(CAL_WEEK_TEMPLATE, unitId)}?week_start=2020-01-01`, {
+      headers: { 'X-CSRFToken': CSRF_TOKEN }
+    });
+    const data = await response.json();
+    
+    if (data.ok && data.sessions) {
+      // Count unassigned sessions
+      let unassignedCount = 0;
+      data.sessions.forEach(session => {
+        const status = getSessionStatus(session);
+        if (status === 'unassigned') {
+          unassignedCount++;
+        }
+      });
+      
+      // Update calendar counter
+      const calendarUnassignedEl = document.getElementById('calendar-unassigned-count');
+      if (calendarUnassignedEl) {
+        calendarUnassignedEl.textContent = unassignedCount;
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching total unassigned count:', error);
+  }
 }
 
 // Update session count display
@@ -6245,6 +6282,9 @@ function openFacilitatorModalAfterDelay(element) {
     name: sessionCard.dataset.sessionName || 'Unknown Session',
     time: sessionCard.dataset.sessionTime || 'Unknown Time',
     location: sessionCard.dataset.sessionLocation || 'Unknown Location',
+    date: sessionCard.dataset.sessionDate || null,
+    startTime: sessionCard.dataset.sessionStartTime || null,  // Add start time
+    endTime: sessionCard.dataset.sessionEndTime || null,  // Add end time
     assignedFacilitators: sessionCard.dataset.facilitatorIds ? 
       sessionCard.dataset.facilitatorIds.split(',').map(id => id.trim()) : []
   };
@@ -6340,7 +6380,18 @@ async function loadFacilitators() {
       </div>
     `;
     
-    const url = withUnitId(LIST_FACILITATORS_TEMPLATE, currentUnitId);
+    let url = withUnitId(LIST_FACILITATORS_TEMPLATE, currentUnitId);
+    
+    // Add session date and time if available to check unavailability
+    if (currentSessionData?.date) {
+      url += `?session_date=${currentSessionData.date}`;
+      if (currentSessionData?.startTime) {
+        url += `&session_start_time=${currentSessionData.startTime}`;
+      }
+      if (currentSessionData?.endTime) {
+        url += `&session_end_time=${currentSessionData.endTime}`;
+      }
+    }
     
     const response = await fetch(url, {
       method: 'GET',
@@ -6392,21 +6443,69 @@ function renderFacilitatorList() {
   // Get currently assigned facilitator IDs
   const assignedIds = currentSessionData?.assignedFacilitators || [];
   
-  facilitatorList.innerHTML = filteredFacilitators.map((facilitator, index) => {
-    const isAssigned = assignedIds.includes(facilitator.id.toString());
-    return `
-      <div class="facilitator-item ${isAssigned ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
-        <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isAssigned ? 'checked' : ''} onchange="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}')">
-        <div class="facilitator-avatar">
-          ${getFacilitatorInitials(facilitator.name)}
-        </div>
-        <div class="facilitator-info">
-          <div class="facilitator-name">${facilitator.name}</div>
-          <div class="facilitator-email">${facilitator.email}</div>
-        </div>
+  // Separate available and unavailable facilitators
+  const availableFacilitators = filteredFacilitators.filter(f => !f.is_unavailable);
+  const unavailableFacilitators = filteredFacilitators.filter(f => f.is_unavailable);
+  
+  let html = '';
+  
+  // Render Available section
+  if (availableFacilitators.length > 0) {
+    html += `
+      <div style="padding: 12px 16px; background: #f0fdf4; border-bottom: 2px solid #86efac; font-weight: 600; color: #166534; display: flex; align-items: center; gap: 8px;">
+        <span class="material-icons" style="font-size: 20px;">check_circle</span>
+        Available Facilitators (${availableFacilitators.length})
       </div>
     `;
-  }).join('');
+    
+    html += availableFacilitators.map((facilitator) => {
+      const isAssigned = assignedIds.includes(facilitator.id.toString());
+      return `
+        <div class="facilitator-item ${isAssigned ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
+          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isAssigned ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
+          <div class="facilitator-avatar">
+            ${getFacilitatorInitials(facilitator.name)}
+          </div>
+          <div class="facilitator-info">
+            <div class="facilitator-name">${facilitator.name}</div>
+            <div class="facilitator-email">${facilitator.email}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  // Render Unavailable section
+  if (unavailableFacilitators.length > 0) {
+    html += `
+      <div style="padding: 12px 16px; background: #fef3c7; border-bottom: 2px solid #fbbf24; font-weight: 600; color: #92400e; display: flex; align-items: center; gap: 8px; margin-top: ${availableFacilitators.length > 0 ? '8px' : '0'};">
+        <span class="material-icons" style="font-size: 20px;">warning</span>
+        Unavailable (${unavailableFacilitators.length})
+      </div>
+    `;
+    
+    html += unavailableFacilitators.map((facilitator) => {
+      return `
+        <div class="facilitator-item" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}" style="opacity: 0.6; background: #fef3c7; cursor: not-allowed;">
+          <div class="facilitator-avatar" style="background: #fbbf24;">
+            ${getFacilitatorInitials(facilitator.name)}
+          </div>
+          <div class="facilitator-info">
+            <div class="facilitator-name" style="color: #92400e;">${facilitator.name}</div>
+            <div class="facilitator-email" style="color: #92400e;">
+              <span class="material-icons" style="font-size: 14px; vertical-align: middle;">event_busy</span>
+              ${facilitator.unavailability_reason || 'Unavailable'}
+            </div>
+          </div>
+          <div style="margin-left: auto; padding: 4px 8px; background: #fbbf24; color: #78350f; border-radius: 4px; font-size: 11px; font-weight: 600;">
+            UNAVAILABLE
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  facilitatorList.innerHTML = html;
   
   // Pre-select assigned facilitators
   assignedIds.forEach(id => {
@@ -6431,30 +6530,44 @@ function getFacilitatorInitials(name) {
 }
 
 // Toggle facilitator selection
-function toggleFacilitatorSelection(facilitatorId, facilitatorName, facilitatorEmail) {
+function toggleFacilitatorSelection(facilitatorId, facilitatorName, facilitatorEmail, isUnavailable = false, event = null) {
   const checkbox = document.getElementById(`facilitator-${facilitatorId}`);
   const facilitatorItem = checkbox.closest('.facilitator-item');
   
   // Normalize ID to string for consistent comparison
   const normalizedId = String(facilitatorId);
   
-  if (checkbox.checked) {
-    // Add to selection if not already selected
-    if (!selectedFacilitators.find(f => String(f.id) === normalizedId)) {
-      const newFacilitator = {
-        id: normalizedId,
-        name: facilitatorName,
-        email: facilitatorEmail
-      };
-      selectedFacilitators.push(newFacilitator);
-      console.log('Added facilitator to selection:', newFacilitator);
-      console.log('Current selectedFacilitators:', selectedFacilitators);
-      facilitatorItem.classList.add('selected');
+  // Determine if we're checking or unchecking
+  const willBeChecked = !selectedFacilitators.find(f => String(f.id) === normalizedId);
+  
+  if (willBeChecked) {
+    // Show warning if selecting an unavailable facilitator
+    if (isUnavailable) {
+      const confirmed = confirm(`⚠️ Warning: ${facilitatorName} is marked as unavailable for this session.\n\nAre you sure you want to assign them anyway? This will override their unavailability.`);
+      if (!confirmed) {
+        // Prevent the checkbox from being checked
+        if (event) event.preventDefault();
+        checkbox.checked = false;
+        return;
+      }
     }
+    
+    // Add to selection
+    const newFacilitator = {
+      id: normalizedId,
+      name: facilitatorName,
+      email: facilitatorEmail
+    };
+    selectedFacilitators.push(newFacilitator);
+    console.log('Added facilitator to selection:', newFacilitator);
+    console.log('Current selectedFacilitators:', selectedFacilitators);
+    checkbox.checked = true;
+    facilitatorItem.classList.add('selected');
   } else {
     // Remove from selection
     selectedFacilitators = selectedFacilitators.filter(f => String(f.id) !== normalizedId);
     console.log('Removed facilitator from selection. Current selectedFacilitators:', selectedFacilitators);
+    checkbox.checked = false;
     facilitatorItem.classList.remove('selected');
   }
   
@@ -6920,10 +7033,23 @@ async function openPublishConfirmation() {
       const data = await response.json();
       document.getElementById('publish-session-count').textContent = data.session_count || 0;
       document.getElementById('publish-facilitator-count').textContent = data.facilitator_count || 0;
+      
+      // Show/hide unassigned warning
+      const unassignedCount = data.unassigned_count || 0;
+      const warningEl = document.getElementById('publish-unassigned-warning');
+      const unassignedCountEl = document.getElementById('publish-unassigned-count');
+      
+      if (unassignedCount > 0) {
+        unassignedCountEl.textContent = unassignedCount;
+        warningEl.style.display = 'flex';
+      } else {
+        warningEl.style.display = 'none';
+      }
     } else {
       // Fallback to counting visible sessions
       document.getElementById('publish-session-count').textContent = '0';
       document.getElementById('publish-facilitator-count').textContent = '0';
+      document.getElementById('publish-unassigned-warning').style.display = 'none';
     }
   } catch (error) {
     console.error('Error getting publish preview:', error);
