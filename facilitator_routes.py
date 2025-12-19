@@ -1593,17 +1593,17 @@ def manage_skills():
         preferences = request.form.get('preferences', '')
         
         # Update preferences
-        user.preferences = preferences
+        current_user.preferences = preferences
         
         # Clear existing skills
-        FacilitatorSkill.query.filter_by(facilitator_id=user.id).delete()
+        FacilitatorSkill.query.filter_by(facilitator_id=current_user.id).delete()
         
         # Add new skills with levels based on module IDs
         for module in modules:
             skill_level = request.form.get(f'skill_level_{module.id}')
             if skill_level and skill_level != 'uninterested':
                 facilitator_skill = FacilitatorSkill(
-                    facilitator_id=user.id,
+                    facilitator_id=current_user.id,
                     module_id=module.id,
                     skill_level=SkillLevel(skill_level)
                 )
@@ -1615,15 +1615,15 @@ def manage_skills():
     
     # Get current skills for this facilitator
     current_skills = {}
-    facilitator_skills = FacilitatorSkill.query.filter_by(facilitator_id=user.id).all()
+    facilitator_skills = FacilitatorSkill.query.filter_by(facilitator_id=current_user.id).all()
     for skill in facilitator_skills:
         current_skills[skill.module_id] = skill.skill_level.value
     
     return render_template('manage_skills.html', 
-                         user=user,
+                         user=current_user,
                          modules=modules,
                          current_skills=current_skills,
-                         current_preferences=user.preferences)
+                         current_preferences=current_user.preferences)
 
 @facilitator_bp.route('/swaps')
 @facilitator_required
