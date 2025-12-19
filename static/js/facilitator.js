@@ -2752,7 +2752,7 @@ function addTimeRange() {
 function saveUnavailability() {
     const modal = document.getElementById('unavailability-modal');
     const date = modal.dataset.currentDate;
-    const editingId = modal.dataset.editingId;
+    const editingId = modal.dataset.editingId ? parseInt(modal.dataset.editingId, 10) : null;
     
     if (!date || !currentUnitId) return;
     if (isCurrentUnitSchedulePublished()) {
@@ -2760,19 +2760,29 @@ function saveUnavailability() {
         return;
     }
     
+    // Check full-day checkbox state first - this takes priority
+    const fullDayCheckbox = document.getElementById('full-day-toggle');
+    const isFullDayChecked = fullDayCheckbox && fullDayCheckbox.checked;
+    
     // Check if user has added time ranges
     const timeRanges = document.querySelectorAll('.time-range-item');
     const hasTimeRanges = timeRanges.length > 0;
     
-    // If time ranges exist, it's partial-day regardless of checkbox state
-    // If no time ranges and checkbox is checked, it's full-day
-    const isFullDay = !hasTimeRanges && document.getElementById('full-day-toggle').checked;
+    // If full-day is checked, it's full-day regardless of time ranges
+    // Otherwise, if time ranges exist, it's partial-day
+    // If neither, show error
+    const isFullDay = isFullDayChecked;
     const isRecurring = document.getElementById('recurring-toggle').checked;
     
     let startTime = null;
     let endTime = null;
     
-    if (!isFullDay) {
+    if (isFullDay) {
+        // Full-day: explicitly set times to null
+        startTime = null;
+        endTime = null;
+    } else {
+        // Partial-day: require time ranges
         if (hasTimeRanges) {
             // For now, just use the first time range
             const firstRange = timeRanges[0];
@@ -2835,6 +2845,13 @@ function saveUnavailability() {
     
     console.log('[DEBUG] Saving unavailability:', { editingId, endpoint, method, data });
     
+    // Validate editingId if we're editing
+    if (editingId && (isNaN(editingId) || editingId <= 0)) {
+        console.error('[DEBUG] Invalid editingId:', editingId);
+        alert('Error: Invalid unavailability ID. Please try again.');
+        return;
+    }
+    
     fetch(endpoint, {
         method: method,
         headers: {
@@ -2844,7 +2861,7 @@ function saveUnavailability() {
         body: JSON.stringify(data)
     })
     .then(response => {
-        console.log('[DEBUG] Response status:', response.status);
+        console.log('[DEBUG] Response status:', response.status, 'for endpoint:', endpoint);
         if (!response.ok) {
             return response.json().then(err => {
                 console.error('[DEBUG] Error response:', err);
@@ -3077,14 +3094,18 @@ function navigateCalendar(direction) {
 }
 
 function editUnavailability(unavailabilityId) {
-    // Find the unavailability record
-    const unav = unavailabilityData.find(u => u.id === unavailabilityId);
+    // Convert to number if it's a string
+    const id = typeof unavailabilityId === 'string' ? parseInt(unavailabilityId, 10) : unavailabilityId;
+    
+    // Find the unavailability record - try both the converted ID and original
+    const unav = unavailabilityData.find(u => u.id === id || u.id === unavailabilityId);
     if (!unav) {
-        console.error('[DEBUG] Unavailability not found:', unavailabilityId);
+        console.error('[DEBUG] Unavailability not found in data:', unavailabilityId, 'Available IDs:', unavailabilityData.map(u => u.id));
+        alert('Error: Unavailability record not found. Please refresh the page and try again.');
         return;
     }
     
-    console.log('[DEBUG] Editing unavailability:', unav);
+    console.log('[DEBUG] Editing unavailability:', unav, 'ID:', unav.id);
     
     // Get modal first and set editing ID before opening
     const modal = document.getElementById('unavailability-modal');
@@ -3093,19 +3114,25 @@ function editUnavailability(unavailabilityId) {
         return;
     }
     
-    // Store the unavailability ID for editing BEFORE opening modal
-    modal.dataset.editingId = unavailabilityId;
+    // Store the unavailability ID for editing BEFORE opening modal (use the actual ID from the record)
+    const recordId = unav.id;
+    modal.dataset.editingId = recordId.toString();
     
     // Open the modal with existing data
     openUnavailabilityModal(unav.date);
     
     // Ensure editing ID is still set (in case openUnavailabilityModal cleared it)
-    modal.dataset.editingId = unavailabilityId;
+    modal.dataset.editingId = recordId.toString();
     
     // Pre-populate the form with existing data
     setTimeout(() => {
+        // Ensure form is reset first to avoid formatting issues
+        resetUnavailabilityForm();
+        // Restore editing ID after reset
+        modal.dataset.editingId = recordId.toString();
+        // Now populate with data
         populateUnavailabilityForm(unav);
-        console.log('[DEBUG] Form populated, editingId:', modal.dataset.editingId);
+        console.log('[DEBUG] Form populated, editingId:', modal.dataset.editingId, 'Record ID:', recordId);
     }, 100);
 }
 
@@ -3184,9 +3211,20 @@ function populateUnavailabilityForm(unav) {
     // Pre-populate the modal form with existing unavailability data
     const fullDayToggle = document.getElementById('full-day-toggle');
     const recurringToggle = document.getElementById('recurring-toggle');
+    const container = document.getElementById('time-ranges-container');
+    const addTimeRangeBtn = document.getElementById('add-time-range');
     
     if (fullDayToggle) fullDayToggle.checked = unav.is_full_day;
     if (recurringToggle) recurringToggle.checked = !!unav.recurring_pattern;
+    
+    // Handle full-day toggle UI
+    if (unav.is_full_day) {
+        if (container) container.style.display = 'none';
+        if (addTimeRangeBtn) addTimeRangeBtn.style.display = 'none';
+    } else {
+        if (container) container.style.display = 'block';
+        if (addTimeRangeBtn) addTimeRangeBtn.style.display = 'block';
+    }
     
     // Handle recurring options
     if (unav.recurring_pattern) {
@@ -3202,26 +3240,76 @@ function populateUnavailabilityForm(unav) {
         }
     }
     
-    // Handle time ranges
+    // Handle time ranges - convert time format to HH:MM for time input
     if (!unav.is_full_day && unav.start_time && unav.end_time) {
-        const container = document.getElementById('time-ranges-container');
-        container.innerHTML = `
-            <div class="time-range-item">
+        // Convert time format from backend (could be HH:MM:SS or ISO format) to HH:MM
+        function formatTimeForInput(timeStr) {
+            if (!timeStr) return '';
+            // If it's already in HH:MM format, return as is
+            if (/^\d{2}:\d{2}$/.test(timeStr)) {
+                return timeStr;
+            }
+            // If it's in HH:MM:SS format, extract HH:MM
+            if (/^\d{2}:\d{2}:\d{2}/.test(timeStr)) {
+                return timeStr.substring(0, 5);
+            }
+            // If it's in ISO format (with T), extract time part
+            if (timeStr.includes('T')) {
+                const timePart = timeStr.split('T')[1];
+                return timePart.substring(0, 5);
+            }
+            return timeStr.substring(0, 5); // Fallback: take first 5 characters
+        }
+        
+        const startTime = formatTimeForInput(unav.start_time);
+        const endTime = formatTimeForInput(unav.end_time);
+        
+        if (container) {
+            // Clear existing content
+            container.innerHTML = '';
+            
+            // Create time range item
+            const timeRangeDiv = document.createElement('div');
+            timeRangeDiv.className = 'time-range-item';
+            
+            timeRangeDiv.innerHTML = `
                 <div class="time-range-controls">
                     <div class="time-input-group">
                         <label>Start Time</label>
-                        <input type="time" class="time-input" value="${unav.start_time}">
+                        <input type="time" class="time-input" value="${startTime}">
                     </div>
                     <div class="time-input-group">
                         <label>End Time</label>
-                        <input type="time" class="time-input" value="${unav.end_time}">
+                        <input type="time" class="time-input" value="${endTime}">
                     </div>
                     <button class="remove-time-range" type="button">
                         <span class="material-icons">delete</span>
                     </button>
                 </div>
-            </div>
-        `;
+            `;
+            
+            container.appendChild(timeRangeDiv);
+            
+            // Add event listener for remove button
+            const removeBtn = timeRangeDiv.querySelector('.remove-time-range');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function() {
+                    timeRangeDiv.remove();
+                    
+                    // Show "no time ranges" message if no ranges left
+                    if (container.children.length === 0) {
+                        container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
+                    }
+                });
+            }
+        }
+    } else if (!unav.is_full_day) {
+        // Partial day but no times set - show empty state
+        if (container) {
+            container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
+            container.style.display = 'block';
+        }
+        if (addTimeRangeBtn) addTimeRangeBtn.style.display = 'block';
     }
 }
 
