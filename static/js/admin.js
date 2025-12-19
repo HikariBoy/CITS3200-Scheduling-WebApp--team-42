@@ -756,50 +756,64 @@ async function resendSetupEmailAdmin(userId, email) {
 let coordinatorSearchTimeout;
 let selectedCoordinatorId = null;
 
-// Unit filtering
-const unitSearchInput = document.getElementById('unitSearch');
-const yearFilter = document.getElementById('yearFilter');
-const semesterFilter = document.getElementById('semesterFilter');
-const unitStatusFilter = document.getElementById('statusFilter');
+// Unit filtering - initialize when DOM is ready
+function initializeUnitFilters() {
+  const unitSearchInput = document.getElementById('unitSearch');
+  const yearFilter = document.getElementById('yearFilter');
+  const semesterFilter = document.getElementById('semesterFilter');
+  const unitStatusFilter = document.getElementById('unitStatusFilter');
 
-function filterUnits() {
-  const searchTerm = (unitSearchInput?.value || '').toLowerCase();
-  const yearValue = yearFilter?.value || '';
-  const semesterValue = semesterFilter?.value || '';
-  const statusValue = unitStatusFilter?.value || '';
+  function filterUnits() {
+    const searchTerm = (unitSearchInput?.value || '').toLowerCase();
+    const yearValue = yearFilter?.value || '';
+    const semesterValue = semesterFilter?.value || '';
+    const statusValue = unitStatusFilter?.value || '';
 
-  const unitCards = document.querySelectorAll('.unit-card');
-  let visibleCount = 0;
+    // Select unit cards by data-unit-id attribute (units tab cards)
+    // Only filter cards that are within the units management section
+    const unitsManagement = document.getElementById('unitsManagement');
+    if (!unitsManagement) return;
+    
+    const unitCards = unitsManagement.querySelectorAll('[data-unit-id]');
+    let visibleCount = 0;
 
-  unitCards.forEach(card => {
-    const unitName = card.querySelector('.facilitator-name')?.textContent.toLowerCase() || '';
-    const unitYear = card.getAttribute('data-year') || '';
-    const unitSemester = card.getAttribute('data-semester') || '';
-    const unitStatus = card.getAttribute('data-status') || '';
+    unitCards.forEach(card => {
+      const unitName = card.querySelector('.facilitator-name')?.textContent.toLowerCase() || '';
+      const unitYear = card.getAttribute('data-year') || '';
+      const unitSemester = card.getAttribute('data-semester') || '';
+      const unitStatus = card.getAttribute('data-status') || '';
 
-    const matchesSearch = !searchTerm || unitName.includes(searchTerm);
-    const matchesYear = !yearValue || unitYear === yearValue;
-    const matchesSemester = !semesterValue || unitSemester === semesterValue;
-    const matchesStatus = !statusValue || unitStatus === statusValue;
+      const matchesSearch = !searchTerm || unitName.includes(searchTerm);
+      const matchesYear = !yearValue || unitYear === yearValue;
+      const matchesSemester = !semesterValue || unitSemester === semesterValue;
+      const matchesStatus = !statusValue || unitStatus === statusValue;
 
-    if (matchesSearch && matchesYear && matchesSemester && matchesStatus) {
-      card.style.display = 'flex';
-      visibleCount++;
-    } else {
-      card.style.display = 'none';
+      if (matchesSearch && matchesYear && matchesSemester && matchesStatus) {
+        card.style.display = 'flex';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    const resultsCount = document.getElementById('unitsResultsCount');
+    if (resultsCount) {
+      resultsCount.textContent = `Showing ${visibleCount} units`;
     }
-  });
-
-  const resultsCount = document.getElementById('unitsResultsCount');
-  if (resultsCount) {
-    resultsCount.textContent = `Showing ${visibleCount} units`;
   }
+
+  if (unitSearchInput) unitSearchInput.addEventListener('input', filterUnits);
+  if (yearFilter) yearFilter.addEventListener('change', filterUnits);
+  if (semesterFilter) semesterFilter.addEventListener('change', filterUnits);
+  if (unitStatusFilter) unitStatusFilter.addEventListener('change', filterUnits);
 }
 
-if (unitSearchInput) unitSearchInput.addEventListener('input', filterUnits);
-if (yearFilter) yearFilter.addEventListener('change', filterUnits);
-if (semesterFilter) semesterFilter.addEventListener('change', filterUnits);
-if (unitStatusFilter) unitStatusFilter.addEventListener('change', filterUnits);
+// Initialize filters when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeUnitFilters);
+} else {
+  initializeUnitFilters();
+}
 
 // Coordinator management
 function openAddCoordinatorModal(unitId) {
