@@ -6423,6 +6423,20 @@ async function loadFacilitators() {
     if (data.ok) {
       allFacilitators = data.facilitators;
       filteredFacilitators = [...allFacilitators];
+      
+      // Initialize selectedFacilitators with currently assigned facilitators (only on initial load)
+      const assignedIds = currentSessionData?.assignedFacilitators || [];
+      assignedIds.forEach(id => {
+        const facilitator = allFacilitators.find(f => String(f.id) === String(id));
+        if (facilitator && !selectedFacilitators.find(f => String(f.id) === String(facilitator.id))) {
+          selectedFacilitators.push({
+            id: String(facilitator.id),
+            name: facilitator.name,
+            email: facilitator.email
+          });
+        }
+      });
+      
       renderFacilitatorList();
     } else {
       throw new Error(data.error || 'Failed to load facilitators');
@@ -6453,9 +6467,6 @@ function renderFacilitatorList() {
     return;
   }
   
-  // Get currently assigned facilitator IDs
-  const assignedIds = currentSessionData?.assignedFacilitators || [];
-  
   // Separate available and unavailable facilitators
   const availableFacilitators = filteredFacilitators.filter(f => !f.is_unavailable);
   const unavailableFacilitators = filteredFacilitators.filter(f => f.is_unavailable);
@@ -6472,10 +6483,11 @@ function renderFacilitatorList() {
     `;
     
     html += availableFacilitators.map((facilitator) => {
-      const isAssigned = assignedIds.includes(facilitator.id.toString());
+      // Use selectedFacilitators to determine checked state (preserves user's selections during search)
+      const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
       return `
-        <div class="facilitator-item ${isAssigned ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
-          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isAssigned ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
+        <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
+          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
           <div class="facilitator-avatar">
             ${getFacilitatorInitials(facilitator.name)}
           </div>
@@ -6519,18 +6531,6 @@ function renderFacilitatorList() {
   }
   
   facilitatorList.innerHTML = html;
-  
-  // Pre-select assigned facilitators
-  assignedIds.forEach(id => {
-    const facilitator = filteredFacilitators.find(f => String(f.id) === String(id));
-    if (facilitator && !selectedFacilitators.find(f => String(f.id) === String(facilitator.id))) {
-      selectedFacilitators.push({
-        id: String(facilitator.id),
-        name: facilitator.name,
-        email: facilitator.email
-      });
-    }
-  });
   
   // Update select button state
   updateSelectButton();
@@ -7019,10 +7019,14 @@ function closeSessionDetailsModal() {
 }
 
 // Publish Schedule Functions
+// Store facilitators data for publish modal
+let publishFacilitatorsList = [];
+
 async function openPublishConfirmation() {
   // Show modal first with loading state
   document.getElementById('publish-session-count').textContent = 'Loading...';
   document.getElementById('publish-facilitator-count').textContent = 'Loading...';
+  document.getElementById('publish-facilitator-list').innerHTML = '<div style="padding: 16px; text-align: center; color: #6b7280;">Loading facilitators...</div>';
   document.getElementById('publish-confirmation-modal').style.display = 'flex';
   
   // Get actual counts from backend (for ALL sessions, not just current week)
@@ -7031,6 +7035,7 @@ async function openPublishConfirmation() {
     if (!unitId) {
       document.getElementById('publish-session-count').textContent = '0';
       document.getElementById('publish-facilitator-count').textContent = '0';
+      document.getElementById('publish-facilitator-list').innerHTML = '<div style="padding: 16px; text-align: center; color: #6b7280;">No unit selected</div>';
       return;
     }
     
@@ -7058,25 +7063,94 @@ async function openPublishConfirmation() {
       } else {
         warningEl.style.display = 'none';
       }
+      
+      // Populate facilitator list with checkboxes
+      publishFacilitatorsList = data.facilitators || [];
+      renderPublishFacilitatorList();
     } else {
       // Fallback to counting visible sessions
       document.getElementById('publish-session-count').textContent = '0';
       document.getElementById('publish-facilitator-count').textContent = '0';
       document.getElementById('publish-unassigned-warning').style.display = 'none';
+      document.getElementById('publish-facilitator-list').innerHTML = '<div style="padding: 16px; text-align: center; color: #6b7280;">Could not load facilitators</div>';
     }
   } catch (error) {
     console.error('Error getting publish preview:', error);
     document.getElementById('publish-session-count').textContent = '0';
     document.getElementById('publish-facilitator-count').textContent = '0';
+    document.getElementById('publish-facilitator-list').innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444;">Error loading facilitators</div>';
   }
+}
+
+function renderPublishFacilitatorList() {
+  const listEl = document.getElementById('publish-facilitator-list');
+  
+  if (publishFacilitatorsList.length === 0) {
+    listEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #6b7280;">No facilitators assigned to sessions</div>';
+    return;
+  }
+  
+  let html = '';
+  publishFacilitatorsList.forEach((f, index) => {
+    html += `
+      <label style="display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.15s;" 
+             onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+        <input type="checkbox" id="publish-facilitator-${f.id}" value="${f.id}" checked 
+               style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer; accent-color: #3b82f6;"
+               onchange="updatePublishCount()">
+        <div style="flex: 1;">
+          <div style="font-weight: 500; color: #1f2937;">${f.name}</div>
+          <div style="font-size: 12px; color: #6b7280;">${f.email}</div>
+        </div>
+        <div style="font-size: 12px; color: #9ca3af; background: #f3f4f6; padding: 2px 8px; border-radius: 4px;">
+          ${f.session_count} session${f.session_count !== 1 ? 's' : ''}
+        </div>
+      </label>
+    `;
+  });
+  
+  listEl.innerHTML = html;
+}
+
+function selectAllFacilitators(selectAll) {
+  const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
+  checkboxes.forEach(cb => cb.checked = selectAll);
+  updatePublishCount();
+}
+
+function updatePublishCount() {
+  const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]:checked');
+  document.getElementById('publish-facilitator-count').textContent = checkboxes.length;
+}
+
+function getSelectedFacilitatorIds() {
+  const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]:checked');
+  return Array.from(checkboxes).map(cb => parseInt(cb.value));
 }
 
 function closePublishConfirmation() {
   document.getElementById('publish-confirmation-modal').style.display = 'none';
 }
 
+let isPublishing = false; // Guard against duplicate submissions
+
 async function confirmPublish() {
+  // Prevent duplicate submissions
+  if (isPublishing) {
+    console.log('Publish already in progress, ignoring duplicate click');
+    return;
+  }
+  
   try {
+    isPublishing = true;
+    
+    // Disable the confirm button to prevent double-clicks
+    const confirmBtn = document.getElementById('publish-confirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Publishing...';
+    }
+    
     // Get current unit ID
     const tabsNav = document.querySelector('.uc-tabs[data-unit-id]');
     const currentUnitId = tabsNav ? tabsNav.getAttribute('data-unit-id') : null;
@@ -7086,12 +7160,18 @@ async function confirmPublish() {
       return;
     }
     
+    // Get selected facilitator IDs to email
+    const selectedFacilitatorIds = getSelectedFacilitatorIds();
+    
     const response = await fetch(`/unitcoordinator/units/${currentUnitId}/publish`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRFToken': CSRF_TOKEN
-      }
+      },
+      body: JSON.stringify({
+        notify_facilitator_ids: selectedFacilitatorIds
+      })
     });
     
     if (!response.ok) {
@@ -7109,6 +7189,14 @@ async function confirmPublish() {
       if (publishBtn) {
         publishBtn.innerHTML = '<span class="material-icons">publish</span>Re-publish Schedule';
       }
+      
+      // Automatically download the schedule report CSV
+      if (result.csv_download_url) {
+        // Small delay to let the notification show first
+        setTimeout(() => {
+          window.location.href = result.csv_download_url;
+        }, 500);
+      }
     } else {
       throw new Error(result.error || 'Failed to publish schedule');
     }
@@ -7116,6 +7204,15 @@ async function confirmPublish() {
   } catch (error) {
     console.error('Error publishing schedule:', error);
     showSimpleNotification(`Error publishing schedule: ${error.message}`, 'error');
+  } finally {
+    isPublishing = false;
+    
+    // Re-enable the confirm button
+    const confirmBtn = document.getElementById('publish-confirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Publish';
+    }
   }
 }
 
@@ -7128,12 +7225,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  document.getElementById('publish-confirmation-close').addEventListener('click', closePublishConfirmation);
-  document.getElementById('publish-cancel').addEventListener('click', closePublishConfirmation);
-  document.getElementById('publish-confirm').addEventListener('click', confirmPublish);
-  
-  // Publish Button
-  document.getElementById('publish-schedule-btn').addEventListener('click', openPublishConfirmation);
+  // Note: onclick handlers are already in HTML for these buttons
+  // Only add listeners for elements without onclick handlers
+  document.getElementById('publish-confirmation-modal').querySelector('.modal-overlay');
   
   // Create Session Modal
   document.getElementById('create-session-modal').addEventListener('click', function(e) {

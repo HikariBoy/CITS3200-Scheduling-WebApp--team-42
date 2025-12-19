@@ -49,17 +49,31 @@ def generate_unavailability_from_schedule(unit_id):
         return 0
     
     # Get all sessions with assigned facilitators in this unit
-    sessions = Session.query.filter_by(unit_id=unit_id).filter(Session.facilitator_id.isnot(None)).all()
+    # Sessions are linked through Module, and facilitators through Assignment
+    sessions_with_assignments = (
+        db.session.query(Session, Assignment)
+        .join(Module, Session.module_id == Module.id)
+        .join(Assignment, Assignment.session_id == Session.id)
+        .filter(Module.unit_id == unit_id)
+        .all()
+    )
     
     created_count = 0
     
-    for session in sessions:
-        if not session.facilitator_id or not session.date or not session.start_time or not session.end_time:
+    for session, assignment in sessions_with_assignments:
+        facilitator_id = assignment.facilitator_id
+        
+        if not facilitator_id or not session.start_time or not session.end_time:
             continue
+        
+        # Get session date from start_time
+        session_date = session.start_time.date()
+        session_start_time = session.start_time.time()
+        session_end_time = session.end_time.time()
         
         # Get all OTHER units this facilitator is assigned to
         other_unit_ids = db.session.query(UnitFacilitator.unit_id).filter(
-            UnitFacilitator.user_id == session.facilitator_id,
+            UnitFacilitator.user_id == facilitator_id,
             UnitFacilitator.unit_id != unit_id
         ).all()
         
@@ -67,11 +81,11 @@ def generate_unavailability_from_schedule(unit_id):
         for (other_unit_id,) in other_unit_ids:
             # Check if unavailability already exists
             existing = Unavailability.query.filter_by(
-                user_id=session.facilitator_id,
+                user_id=facilitator_id,
                 unit_id=other_unit_id,
-                date=session.date,
-                start_time=session.start_time,
-                end_time=session.end_time,
+                date=session_date,
+                start_time=session_start_time,
+                end_time=session_end_time,
                 source_session_id=session.id
             ).first()
             
@@ -85,11 +99,11 @@ def generate_unavailability_from_schedule(unit_id):
             
             # Create unavailability
             unavail = Unavailability(
-                user_id=session.facilitator_id,
+                user_id=facilitator_id,
                 unit_id=other_unit_id,
-                date=session.date,
-                start_time=session.start_time,
-                end_time=session.end_time,
+                date=session_date,
+                start_time=session_start_time,
+                end_time=session_end_time,
                 is_full_day=False,
                 reason=reason,
                 source_session_id=session.id
@@ -114,8 +128,13 @@ def remove_unavailability_from_schedule(unit_id):
     Args:
         unit_id: The unit whose schedule was unpublished
     """
-    # Find all sessions from this unit
-    session_ids = db.session.query(Session.id).filter_by(unit_id=unit_id).all()
+    # Find all sessions from this unit (sessions are linked through Module)
+    session_ids = (
+        db.session.query(Session.id)
+        .join(Module, Session.module_id == Module.id)
+        .filter(Module.unit_id == unit_id)
+        .all()
+    )
     session_ids = [sid[0] for sid in session_ids]
     
     if not session_ids:
@@ -2750,17 +2769,8 @@ def remove_individual_facilitator(unit_id: int, email: str):
         if assignment_ids:
             Assignment.query.filter(Assignment.id.in_(assignment_ids)).delete(synchronize_session='fetch')
         
-        # 4. Delete notifications
-        from models import Notification
-        notification_ids = [
-            n.id for n in Notification.query.filter_by(
-                user_id=facilitator_user.id,
-                unit_id=unit.id
-            ).all()
-        ]
-        
-        if notification_ids:
-            Notification.query.filter(Notification.id.in_(notification_ids)).delete(synchronize_session='fetch')
+        # 4. Notifications are user-level (not unit-specific), so we don't delete them here
+        # The facilitator keeps their general notifications
         
         # 5. Delete unavailability records
         from models import Unavailability
@@ -2798,7 +2808,7 @@ def remove_individual_facilitator(unit_id: int, email: str):
             "ok": True,
             "message": ". ".join(message_parts).capitalize(),
             "removed_email": email,
-            "warning": "All assignments, skills, unavailability, and notifications for this facilitator in this unit have been deleted." if swap_count > 0 else None
+            "warning": "All assignments, skills, and unavailability for this facilitator in this unit have been deleted." if swap_count > 0 else None
         }), 200
         
     except Exception as e:
@@ -3436,9 +3446,10 @@ def auto_assign_facilitators(unit_id: int):
         # Clean up old temporary files to prevent disk space issues
         _cleanup_old_temp_files(temp_dir, f"schedule_report_{unit_id}_")
         
-        # Store only the filename in session (much smaller than the full CSV)
-        flask_session[f'schedule_report_{unit_id}'] = csv_filename
-        flask_session[f'schedule_report_timestamp_{unit_id}'] = datetime.now().isoformat()
+        # Store filename in database for persistence (survives cookie/session resets)
+        unit.csv_report_filename = csv_filename
+        unit.csv_report_generated_at = datetime.now()
+        db.session.commit()
         
         # Prepare success message
         message = f"Successfully created {len(created_assignments)} assignments"
@@ -3471,25 +3482,19 @@ def check_csv_availability(unit_id: int):
     """
     Check if a CSV report is available for download
     """
-    from flask import session as flask_session
-    
     user = get_current_user()
     unit = _get_user_unit_or_404(user, unit_id)
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
-    # Check if report exists in session
-    report_key = f'schedule_report_{unit_id}'
-    csv_available = report_key in flask_session
-    
-    if csv_available:
+    # Check if report exists in database
+    if unit.csv_report_filename:
         # Verify the file still exists
         import tempfile
         import os
         
-        csv_filename = flask_session[report_key]
         temp_dir = tempfile.gettempdir()
-        csv_filepath = os.path.join(temp_dir, csv_filename)
+        csv_filepath = os.path.join(temp_dir, unit.csv_report_filename)
         
         # Check if file exists
         if os.path.exists(csv_filepath):
@@ -3499,9 +3504,10 @@ def check_csv_availability(unit_id: int):
                 "csv_download_url": f"/unitcoordinator/units/{unit_id}/download_schedule_report"
             })
         else:
-            # File was cleaned up, remove from session
-            flask_session.pop(report_key, None)
-            flask_session.pop(f'schedule_report_timestamp_{unit_id}', None)
+            # File was cleaned up, clear from database
+            unit.csv_report_filename = None
+            unit.csv_report_generated_at = None
+            db.session.commit()
     
     return jsonify({
         "ok": True,
@@ -3516,7 +3522,7 @@ def download_schedule_report(unit_id: int):
     """
     Download the CSV report from the last auto-assignment run
     """
-    from flask import session as flask_session, Response
+    from flask import Response
     from datetime import datetime
     
     user = get_current_user()
@@ -3524,36 +3530,35 @@ def download_schedule_report(unit_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
-    # Check if report exists in session (now contains filename, not content)
-    report_key = f'schedule_report_{unit_id}'
-    if report_key not in flask_session:
+    # Check if report exists in database
+    if not unit.csv_report_filename:
         return jsonify({
             "ok": False, 
             "error": "No report available. Please run auto-assignment first."
         }), 404
-    
-    # Get the filename from session and read the CSV content from temporary file
-    csv_filename = flask_session[report_key]
-    timestamp = flask_session.get(f'schedule_report_timestamp_{unit_id}', datetime.now().isoformat())
     
     # Read CSV content from temporary file
     import tempfile
     import os
     
     temp_dir = tempfile.gettempdir()
-    csv_filepath = os.path.join(temp_dir, csv_filename)
+    csv_filepath = os.path.join(temp_dir, unit.csv_report_filename)
     
     try:
         with open(csv_filepath, 'r', encoding='utf-8') as f:
             csv_content = f.read()
     except FileNotFoundError:
+        # File was cleaned up, clear from database
+        unit.csv_report_filename = None
+        unit.csv_report_generated_at = None
+        db.session.commit()
         return jsonify({
             "ok": False, 
             "error": "Report file not found. Please run auto-assignment again."
         }), 404
     
     # Generate filename with timestamp
-    timestamp_str = datetime.fromisoformat(timestamp).strftime('%Y%m%d_%H%M%S')
+    timestamp_str = unit.csv_report_generated_at.strftime('%Y%m%d_%H%M%S') if unit.csv_report_generated_at else datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"schedule_report_{unit.unit_code}_{timestamp_str}.csv"
     
     # Return as downloadable file
@@ -3962,12 +3967,34 @@ def publish_preview(unit_id: int):
             .all()
         )
         
-        # Count unique facilitators
-        facilitator_ids = set()
+        # Build facilitator info with session counts
+        facilitator_sessions = {}  # {facilitator_id: {user, sessions: []}}
         for session in assigned_sessions:
             assignments = Assignment.query.filter_by(session_id=session.id).all()
             for assignment in assignments:
-                facilitator_ids.add(assignment.facilitator_id)
+                fid = assignment.facilitator_id
+                if fid not in facilitator_sessions:
+                    facilitator = User.query.get(fid)
+                    if facilitator:
+                        facilitator_sessions[fid] = {
+                            'user': facilitator,
+                            'session_count': 0
+                        }
+                if fid in facilitator_sessions:
+                    facilitator_sessions[fid]['session_count'] += 1
+        
+        # Build facilitators list for frontend
+        facilitators_list = []
+        for fid, data in facilitator_sessions.items():
+            facilitators_list.append({
+                'id': fid,
+                'name': data['user'].full_name,
+                'email': data['user'].email,
+                'session_count': data['session_count']
+            })
+        
+        # Sort by name
+        facilitators_list.sort(key=lambda x: x['name'].lower())
         
         # Calculate unassigned count
         unassigned_count = len(all_sessions) - len(assigned_sessions)
@@ -3975,8 +4002,9 @@ def publish_preview(unit_id: int):
         return jsonify({
             "ok": True,
             "session_count": len(all_sessions),
-            "facilitator_count": len(facilitator_ids),
-            "unassigned_count": unassigned_count
+            "facilitator_count": len(facilitator_sessions),
+            "unassigned_count": unassigned_count,
+            "facilitators": facilitators_list
         })
     except Exception as e:
         print(f"Error getting publish preview: {e}")
@@ -4130,6 +4158,10 @@ def publish_schedule(unit_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
+    # Get optional list of facilitator IDs to notify (if not provided, notify all)
+    data = request.get_json() or {}
+    notify_facilitator_ids = data.get('notify_facilitator_ids', None)  # None means notify all
+    
     try:
         # Get all sessions for this unit that have facilitators assigned
         # Check for sessions with any assignments, regardless of status
@@ -4226,7 +4258,7 @@ def publish_schedule(unit_id: int):
                 
                 print(f"Processing facilitator: {facilitator.email} with {len(sessions_list)} sessions")
                 
-                # Create in-app notification
+                # Create in-app notification (always created for all facilitators)
                 notification = Notification(
                     user_id=facilitator_id,
                     message=f"Your schedule for {unit.unit_code} has been published. Please review your assigned sessions.",
@@ -4234,6 +4266,14 @@ def publish_schedule(unit_id: int):
                 )
                 db.session.add(notification)
                 notifications_created += 1
+                
+                # Check if we should send email to this facilitator
+                # If notify_facilitator_ids is None, send to all; otherwise only send to selected
+                should_send_email = (notify_facilitator_ids is None) or (facilitator_id in notify_facilitator_ids)
+                
+                if not should_send_email:
+                    print(f"⏭️ Skipping email for {facilitator.email} (not selected)")
+                    continue
                 
                 # Send email with session details
                 try:
@@ -4274,13 +4314,70 @@ def publish_schedule(unit_id: int):
         # Generate auto-unavailability for facilitators in other units
         auto_unavail_count = generate_unavailability_from_schedule(unit_id)
         
+        # Generate CSV report for download
+        csv_download_url = None
+        try:
+            from optimization_engine import generate_schedule_report_csv
+            from flask import session as flask_session
+            import tempfile
+            import os
+            
+            # Get all assignments for this unit
+            assignments = (
+                db.session.query(Assignment)
+                .join(Session, Assignment.session_id == Session.id)
+                .join(Module, Session.module_id == Module.id)
+                .filter(Module.unit_id == unit_id)
+                .all()
+            )
+            
+            # Get all facilitators in the unit
+            facilitators_from_db = (
+                db.session.query(User)
+                .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
+                .filter(UnitFacilitator.unit_id == unit_id)
+                .all()
+            )
+            
+            unit_display_name = f"{unit.unit_code} - {unit.unit_name}"
+            csv_report = generate_schedule_report_csv(
+                assignments,
+                unit_display_name,
+                total_facilitators_in_pool=len(facilitators_from_db),
+                unit_id=unit_id,
+                all_facilitators=facilitators_from_db
+            )
+            
+            # Store CSV in a temporary file
+            temp_dir = tempfile.gettempdir()
+            csv_filename = f"schedule_report_{unit_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+            csv_filepath = os.path.join(temp_dir, csv_filename)
+            
+            with open(csv_filepath, 'w', encoding='utf-8') as f:
+                f.write(csv_report)
+            
+            # Clean up old temporary files
+            _cleanup_old_temp_files(temp_dir, f"schedule_report_{unit_id}_")
+            
+            # Store filename in database for persistence
+            unit.csv_report_filename = csv_filename
+            unit.csv_report_generated_at = datetime.utcnow()
+            db.session.commit()
+            
+            csv_download_url = f"/unitcoordinator/units/{unit_id}/download_schedule_report"
+        except Exception as csv_error:
+            import traceback
+            print(f"Warning: Could not generate CSV report: {csv_error}")
+            traceback.print_exc()
+        
         return jsonify({
             "ok": True,
-            "message": f"Schedule published successfully. {notifications_created} facilitators notified via email.",
+            "message": f"Schedule published successfully. {emails_sent} facilitators notified via email.",
             "sessions_published": len(sessions),
-            "facilitators_notified": notifications_created,
-            "emails_sent": emails_sent,
-            "auto_unavailability_created": auto_unavail_count
+            "facilitators_notified": emails_sent,
+            "notifications_created": notifications_created,
+            "auto_unavailability_created": auto_unavail_count,
+            "csv_download_url": csv_download_url
         })
         
     except Exception as e:
