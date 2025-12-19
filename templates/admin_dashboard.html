@@ -660,6 +660,10 @@
         <span class="material-icons">bar_chart</span>
         <span>Dashboard</span>
       </button>
+      <button class="admin-tab {% if tab == 'units' %}active{% endif %}" data-tab="units">
+        <span class="material-icons">school</span>
+        <span>Units</span>
+      </button>
       <button class="admin-tab {% if tab == 'employees' %}active{% endif %}" data-tab="employees">
         <span class="material-icons">group</span>
         <span>Users</span>
@@ -667,7 +671,7 @@
     </nav>
 
     <!-- Welcome Banner -->
-    <div class="admin-welcome-banner" {% if tab == 'employees' %}style="display: none;"{% endif %}>
+    <div class="admin-welcome-banner" {% if tab == 'employees' or tab == 'units' %}style="display: none;"{% endif %}>
       <div class="admin-welcome-content">
         <h1 class="admin-welcome-greeting">Good afternoon, {{ user.first_name if user else 'Admin' }}! 👋</h1>
         <p class="admin-welcome-role">System Administrator • Schedule Manager</p>
@@ -682,7 +686,7 @@
 
 
     <!-- Unit Status Distribution -->
-    <div class="unit-status-card" {% if tab == 'employees' %}style="display: none;"{% endif %}>
+    <div class="unit-status-card" {% if tab == 'employees' or tab == 'units' %}style="display: none;"{% endif %}>
       <h3 class="unit-status-title">Unit Status Distribution</h3>
       
       <!-- Top Row - Unit Status -->
@@ -711,6 +715,140 @@
           <div class="session-stat-value">{{ total_sessions_completed }}</div>
           <div class="session-stat-label">Total Sessions Completed</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Units Management Section -->
+    <div class="units-management" id="unitsManagement" {% if tab == 'units' %}style="display: block;"{% else %}style="display: none;"{% endif %}>
+      <!-- Header -->
+      <div class="facilitator-header">
+        <div class="facilitator-header-content">
+          <h2 class="facilitator-title">Unit Management</h2>
+          <p class="facilitator-subtitle">Manage units, assign coordinators, and track unit status across all programs.</p>
+        </div>
+      </div>
+
+      <!-- Search and Filter Section -->
+      <div class="facilitator-search-section">
+        <div class="search-bar">
+          <span class="material-icons search-icon">search</span>
+          <input type="text" id="unitSearch" placeholder="Search units by code or name..." class="search-input">
+        </div>
+        <div class="filter-controls">
+          <select id="yearFilter" class="filter-select">
+            <option value="">All Years</option>
+            {% for year in range(2020, 2030) %}
+            <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+          </select>
+          <select id="semesterFilter" class="filter-select">
+            <option value="">All Semesters</option>
+            <option value="S1">Semester 1</option>
+            <option value="S2">Semester 2</option>
+            <option value="Summer">Summer</option>
+            <option value="Winter">Winter</option>
+          </select>
+          <select id="statusFilter" class="filter-select">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Results Summary -->
+      <div class="results-summary">
+        <span id="unitsResultsCount">
+          Showing {{ units_with_coordinators|length }} units
+        </span>
+      </div>
+
+      <!-- Units List -->
+      <div class="facilitator-list" id="unitsList">
+        {% for item in units_with_coordinators %}
+        {% set unit = item.unit %}
+        {% set coordinators = item.coordinators %}
+        {% set is_active = item.is_active %}
+        <div class="facilitator-card" data-unit-id="{{ unit.id }}" data-year="{{ unit.year }}" data-semester="{{ unit.semester }}" data-status="{% if is_active %}active{% else %}inactive{% endif %}">
+          <div class="facilitator-avatar">
+            <span class="material-icons">school</span>
+          </div>
+          <div class="facilitator-info">
+            <div class="facilitator-name">{{ unit.unit_code }} - {{ unit.unit_name }}</div>
+            <div class="facilitator-badges">
+              <span class="badge badge-position">
+                {{ unit.year }} - {{ unit.semester }}
+              </span>
+              <span class="badge badge-status {% if is_active %}active{% else %}inactive{% endif %}">
+                {% if is_active %}Active{% else %}Inactive{% endif %}
+              </span>
+            </div>
+            <div class="facilitator-details">
+              <span class="facilitator-email">
+                {% if unit.start_date and unit.end_date %}
+                  {{ unit.start_date.strftime('%d/%m/%Y') }} - {{ unit.end_date.strftime('%d/%m/%Y') }}
+                {% else %}
+                  No date range set
+                {% endif %}
+              </span>
+            </div>
+            <div class="facilitator-metrics">
+              <div class="metric-item">
+                <span class="material-icons">people</span>
+                <span>{{ coordinators|length }} Coordinator{{ 's' if coordinators|length != 1 else '' }}</span>
+              </div>
+              <div class="metric-item">
+                <span class="material-icons">event</span>
+                <span>{{ unit.year }} {{ unit.semester }}</span>
+              </div>
+            </div>
+            
+            <!-- Connected Coordinators Section -->
+            {% if coordinators %}
+            <div class="unit-associations">
+              <div class="unit-associations-header">
+                <span class="material-icons">people</span>
+                <span>Unit Coordinators</span>
+              </div>
+              <div class="unit-list">
+                {% for coordinator in coordinators %}
+                <div class="unit-item">
+                  <span class="unit-code">{{ coordinator.full_name }}</span>
+                  <span class="unit-name">{{ coordinator.email }}</span>
+                  <div class="unit-roles">
+                    <span class="role-badge role-coordinator">Unit Coordinator</span>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          <div class="facilitator-actions">
+            <button class="action-btn edit" title="Manage Coordinators" onclick="openAddCoordinatorModal({{ unit.id }})">
+              <span class="material-icons">person_add</span>
+            </button>
+            <button class="action-btn key" title="Edit Unit" onclick="alert('Edit unit functionality coming soon')">
+              <span class="material-icons">edit</span>
+            </button>
+            <div class="dropdown-container">
+              <button class="action-btn more" title="More Options" onclick="toggleUnitDropdown({{ unit.id }})">
+                <span class="material-icons">more_vert</span>
+              </button>
+              <div class="dropdown-menu" id="unit-dropdown-{{ unit.id }}" style="display: none;">
+                <button class="dropdown-item" onclick="openAddCoordinatorModal({{ unit.id }})">
+                  <span class="material-icons">person_add</span>
+                  Add Coordinator
+                </button>
+                <button class="dropdown-item delete" onclick="alert('Delete unit functionality coming soon')">
+                  <span class="material-icons">delete</span>
+                  Delete Unit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
       </div>
     </div>
 
@@ -779,10 +917,11 @@
             <div class="facilitator-info">
               <div class="facilitator-name">{{ facilitator.full_name }}</div>
               <div class="facilitator-badges">
-                <span class="badge badge-position">
-                  {% if facilitator.preferences %}
-                    {% set prefs = facilitator.preferences|from_json %}
-                    {{ prefs.get('position', 'facilitator')|replace('_', ' ')|title }}
+                <span class="badge badge-position" data-role="{{ facilitator.role.value }}">
+                  {% if facilitator.role.value == 'admin' %}
+                    Admin
+                  {% elif facilitator.role.value == 'unit_coordinator' %}
+                    Unit Coordinator
                   {% else %}
                     Facilitator
                   {% endif %}
@@ -1154,6 +1293,29 @@
     </div>
   </div>
 
+  <!-- Add Coordinator Modal -->
+  <div class="modal-overlay" id="addCoordinatorModal" style="display: none;">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2 class="modal-title">Add Unit Coordinator</h2>
+        <button class="modal-close" id="closeCoordinatorModal">
+          <span class="material-icons">close</span>
+        </button>
+      </div>
+      <form id="addCoordinatorForm">
+        <input type="hidden" id="coordinatorUnitId" name="unit_id">
+        <div class="form-group">
+          <label for="coordinatorSearch" class="form-label">Search Coordinator by Email</label>
+          <input type="text" id="coordinatorSearch" class="form-input" placeholder="Type email to search..." autocomplete="off">
+          <div id="coordinatorSearchResults" style="display: none;"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" id="cancelCoordinatorBtn">Cancel</button>
+          <button type="submit" class="btn-primary" disabled id="addCoordinatorBtn">Add Coordinator</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="{{ url_for('static', filename='js/admin.js') }}?v=2" defer></script>
   <script>
