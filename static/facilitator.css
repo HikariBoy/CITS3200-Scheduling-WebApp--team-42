@@ -1819,6 +1819,144 @@ input:checked + .toggle-slider:before {
     line-height: 1.5;
 }
 
+/* Unavailability Modal Specific Improvements */
+#unavailability-modal .modal-content {
+    max-width: 520px;
+    animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+#unavailability-modal .modal-body {
+    padding: 28px;
+}
+
+#unavailability-modal .form-group {
+    margin-bottom: 20px;
+}
+
+#unavailability-modal .form-group:last-of-type {
+    margin-bottom: 0;
+}
+
+#unavailability-modal .checkbox-label {
+    padding: 12px 16px;
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+#unavailability-modal .checkbox-label:hover {
+    background: #f8f9fa;
+    border-color: #d1d5db;
+}
+
+#unavailability-modal .checkbox-label input[type="checkbox"]:checked ~ span {
+    color: var(--color-text-primary);
+    font-weight: 500;
+}
+
+#unavailability-modal .modal-subtitle {
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+/* Add Time Range Button */
+#add-time-range {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  width: 100%;
+  background: #f8f9fa;
+  border: 1.5px dashed #d1d5db;
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+}
+
+#add-time-range:hover {
+  background: #f0f1f3;
+  border-color: #9ca3af;
+  border-style: solid;
+  transform: translateY(-1px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+#add-time-range:active {
+  transform: translateY(0);
+}
+
+#add-time-range .material-icons {
+  font-size: 20px;
+}
+
+/* Form Group Spacing */
+#unavailability-modal .form-group + .form-group {
+  margin-top: 20px;
+}
+
+/* Recurring Options Animation */
+#unavailability-modal .recurring-options {
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-top: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 500px;
+    }
+}
+
+/* Custom Recurrence Section */
+#unavailability-modal .custom-recurrence {
+  animation: slideDown 0.2s ease-out;
+}
+
+/* Input and Select Improvements */
+#unavailability-modal input[type="date"],
+#unavailability-modal input[type="number"],
+#unavailability-modal select {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+#unavailability-modal input[type="date"]:focus,
+#unavailability-modal input[type="number"]:focus,
+#unavailability-modal select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
 .modal-sessions-list {
     display: flex;
     flex-direction: column;
@@ -2950,9 +3088,9 @@ body.calendar-view-active #unit-selector {
 .btn-secondary {
   display: flex;
   align-items: center;
-  gap: var(--gap-sm);
-  padding: var(--gap-sm) var(--gap-md);
-  background: var(--surface-secondary);
+  gap: 8px;
+  padding: 10px 20px;
+  background: white;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   color: var(--color-text-primary);
@@ -2963,12 +3101,13 @@ body.calendar-view-active #unit-selector {
 }
 
 .btn-secondary:hover {
-  background: var(--border-color);
-  border-color: var(--color-text-tertiary);
+  background: #f9fafb;
+  border-color: #d1d5db;
 }
 
 .btn-secondary:active {
-  transform: translateY(1px);
+  transform: translateY(0);
+  background: #f3f4f6;
 }
 
 /* Unit Information Card */
@@ -3760,7 +3899,14 @@ input:checked + .toggle-slider:before {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: var(--gap-md);
-  margin-top: var(--gap-md);
+  margin: 16px 0;
+  min-height: 120px;
+  transition: all 0.2s ease;
+}
+
+.time-ranges-container:has(.no-time-ranges) {
+  border-style: dashed;
+  background: #fafafa;
 }
 
 .no-time-ranges {
@@ -3768,27 +3914,54 @@ input:checked + .toggle-slider:before {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--gap-lg);
+  padding: 32px 20px;
   color: var(--color-text-tertiary);
   text-align: center;
+  gap: 8px;
 }
 
 .no-time-ranges .material-icons {
-  font-size: 2rem;
-  margin-bottom: var(--gap-sm);
-  opacity: 0.5;
+  font-size: 2.5rem;
+  opacity: 0.4;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+.no-time-ranges p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #6b7280;
 }
 
 .time-range-item {
   background: var(--surface-primary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: var(--gap-md);
-  margin-bottom: var(--gap-sm);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  animation: slideIn 0.2s ease-out;
+  transition: all 0.2s ease;
+}
+
+.time-range-item:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .time-range-item:last-child {
   margin-bottom: 0;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .time-range-controls {
@@ -3958,10 +4131,13 @@ textarea::placeholder {
 
 /* Modal Footer */
 .modal-footer {
-  padding: var(--gap-lg);
+  padding: 20px 28px;
   border-top: 1px solid var(--border-color);
-  background: var(--surface-secondary);
+  background: #fafafa;
   border-radius: 0 0 12px 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .footer-actions {
@@ -3974,8 +4150,8 @@ textarea::placeholder {
 .btn-primary {
   display: flex;
   align-items: center;
-  gap: var(--gap-sm);
-  padding: var(--gap-sm) var(--gap-lg);
+  gap: 8px;
+  padding: 10px 20px;
   background: var(--color-text-primary);
   border: none;
   border-radius: 8px;
@@ -3984,12 +4160,18 @@ textarea::placeholder {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-primary:hover {
   background: var(--color-text-secondary);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-primary:disabled {
