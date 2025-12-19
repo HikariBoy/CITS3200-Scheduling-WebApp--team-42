@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
-from models import db, User, UserRole, Unit, Module, FacilitatorSkill, SkillLevel, SwapRequest, SwapStatus, Session, Assignment, UnitFacilitator, Unavailability, RecurringPattern
+from models import db, User, UserRole, Unit, Module, FacilitatorSkill, SkillLevel, SwapRequest, SwapStatus, Session, Assignment, UnitFacilitator, UnitCoordinator, Unavailability, RecurringPattern
 from werkzeug.security import generate_password_hash
 from datetime import datetime, time
 from auth import admin_required, get_current_user
@@ -48,8 +48,13 @@ def dashboard():
     # Create unit associations data without modifying user objects
     unit_associations = {}
     for facilitator in facilitators:
-        # Get units they created (as coordinators)
-        created_units = Unit.query.filter_by(created_by=facilitator.id).all()
+        # Get units they coordinate (via UnitCoordinator)
+        created_units = (
+            db.session.query(Unit)
+            .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+            .filter(UnitCoordinator.user_id == facilitator.id)
+            .all()
+        )
         
         # Get units they facilitate
         facilitated_units = (
@@ -325,7 +330,13 @@ def delete_employee(employee_id):
         
         # STEP 4: Handle UC units (must be done before deleting user)
         if employee.role == UserRole.UNIT_COORDINATOR:
-            units = Unit.query.filter_by(created_by=employee.id).all()
+            # Get all units this coordinator manages
+            units = (
+                db.session.query(Unit)
+                .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+                .filter(UnitCoordinator.user_id == employee.id)
+                .all()
+            )
             if units:
                 unit_names = ", ".join([f"{u.unit_code}" for u in units[:3]])
                 if len(units) > 3:

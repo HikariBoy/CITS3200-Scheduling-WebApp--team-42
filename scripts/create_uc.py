@@ -10,35 +10,59 @@ from models import User, UserRole
 from werkzeug.security import generate_password_hash
 
 def create_uc():
-    """Create a Unit Coordinator account with email uc@example.com"""
-    email = "uc@example.com"
-    password = "Admin123!@"
+    """Create 2 Unit Coordinator accounts"""
+    accounts = [
+        {
+            "email": "uc@example.com",
+            "first_name": "Unit",
+            "last_name": "Coordinator",
+            "password": "Admin123!@"
+        },
+        {
+            "email": "uc2@example.com",
+            "first_name": "Unit",
+            "last_name": "Coordinator 2",
+            "password": "Admin123!@"
+        }
+    ]
     
     with app.app_context():
         # Make sure tables exist
         db.create_all()
         
-        # Check if user already exists
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            print(f"User {email} already exists. Skipping.")
-            return
+        created_count = 0
+        for account in accounts:
+            email = account["email"]
+            
+            # Check if user already exists
+            existing_user = User.query.filter_by(email=email).first()
+            if existing_user:
+                print(f"User {email} already exists. Skipping.")
+                continue
+            
+            # Create Unit Coordinator user
+            uc = User(
+                email=email,
+                first_name=account["first_name"],
+                last_name=account["last_name"],
+                role=UserRole.UNIT_COORDINATOR,
+                password_hash=generate_password_hash(account["password"])
+            )
+            
+            db.session.add(uc)
+            created_count += 1
+            
+            print(f"Created Unit Coordinator account:")
+            print(f"• Email: {email}")
+            print(f"• Name: {account['first_name']} {account['last_name']}")
+            print(f"• Password: {account['password']}")
+            print()
         
-        # Create Unit Coordinator user
-        uc = User(
-            email=email,
-            first_name="Unit",
-            last_name="Coordinator",
-            role=UserRole.UNIT_COORDINATOR,
-            password_hash=generate_password_hash(password)
-        )
-        
-        db.session.add(uc)
-        db.session.commit()
-        
-        print(f"Created Unit Coordinator account:")
-        print(f"• Email: {email}")
-        print(f"• Password: {password}")
+        if created_count > 0:
+            db.session.commit()
+            print(f"Successfully created {created_count} Unit Coordinator account(s).")
+        else:
+            print("No new accounts were created (all already exist).")
 
 if __name__ == "__main__":
     create_uc()
