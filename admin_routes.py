@@ -35,11 +35,25 @@ def dashboard():
     pending_swaps = SwapRequest.query.filter_by(status=SwapStatus.PENDING).count()
     unassigned_sessions = Session.query.outerjoin(Assignment).filter(Assignment.id == None).count()
     
-    # Get employees data for the directory with pagination
+    # Get employees data for the directory with pagination and search
     page = request.args.get('page', 1, type=int)
     per_page = 10
+    search_query = request.args.get('search', '').strip()
     
     facilitators_query = User.query.filter(User.role.in_([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN]))
+    
+    # Apply search filter if provided
+    if search_query:
+        search_term = f"%{search_query}%"
+        facilitators_query = facilitators_query.filter(
+            db.or_(
+                User.first_name.ilike(search_term),
+                User.last_name.ilike(search_term),
+                User.email.ilike(search_term),
+                (User.first_name + ' ' + User.last_name).ilike(search_term)
+            )
+        )
+    
     facilitators_pagination = facilitators_query.paginate(
         page=page, per_page=per_page, error_out=False
     )
@@ -223,7 +237,8 @@ def dashboard():
                          upcoming_units_count=upcoming_units_count,
                          completed_units_count=completed_units_count,
                          avg_sessions_per_unit=round(avg_sessions_per_unit, 1) if avg_sessions_per_unit else 0,
-                         total_sessions_completed=total_sessions_completed)
+                         total_sessions_completed=total_sessions_completed,
+                         search_query=search_query)
 
 @admin_bp.route('/delete-employee/<int:employee_id>', methods=['DELETE'])
 @admin_required

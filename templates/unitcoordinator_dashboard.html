@@ -917,7 +917,11 @@
               </div>
               <button class="publish-btn" id="publish-schedule-btn" onclick="openPublishConfirmation()">
                 <span class="material-icons">publish</span>
+                {% if current_unit and current_unit.schedule_status and current_unit.schedule_status.value == 'published' %}
+                Re-publish Schedule
+                {% else %}
                 Publish Schedule
+                {% endif %}
               </button>
             </div>
 
@@ -2489,7 +2493,7 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
 
 <!-- Publish Confirmation Modal -->
 <div id="publish-confirmation-modal" class="modal-overlay" style="display: none;">
-  <div class="publish-modal-content">
+  <div class="publish-modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
     <div class="publish-modal-header">
       <h2 class="publish-modal-title">Publish Schedule</h2>
       <button class="publish-modal-close" id="publish-confirmation-close" onclick="closePublishConfirmation()">
@@ -2497,7 +2501,7 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
       </button>
     </div>
     
-    <div class="publish-modal-body">
+    <div class="publish-modal-body" style="overflow-y: auto; flex: 1;">
       <div class="publish-summary-cards">
         <div class="publish-summary-card">
           <div class="publish-card-icon">
@@ -2532,17 +2536,31 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </div>
       </div>
       
-      <div class="publish-warning-banner">
+      <!-- Facilitator Email Selection -->
+      <div class="publish-facilitator-selection" style="margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="font-weight: 600; color: #374151;">Email Notifications</label>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" onclick="selectAllFacilitators(true)" style="font-size: 12px; color: #3b82f6; background: none; border: none; cursor: pointer; text-decoration: underline;">Select All</button>
+            <button type="button" onclick="selectAllFacilitators(false)" style="font-size: 12px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline;">Deselect All</button>
+          </div>
+        </div>
+        <div id="publish-facilitator-list" style="max-height: 150px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb;">
+          <div style="padding: 16px; text-align: center; color: #6b7280;">Loading facilitators...</div>
+        </div>
+      </div>
+      
+      <div class="publish-warning-banner" style="margin-top: 16px;">
         <div class="publish-warning-icon">
           <span class="material-icons">warning_amber</span>
         </div>
         <div class="publish-warning-text">
-          <strong>Important:</strong> Once published, facilitators will be notified and the schedule will be finalized. This action cannot be undone.
+          <strong>Important:</strong> Once published, selected facilitators will be notified and the schedule will be finalized.
         </div>
       </div>
     </div>
     
-    <div class="publish-modal-footer">
+    <div class="publish-modal-footer" style="flex-shrink: 0;">
       <button class="publish-btn-secondary" id="publish-cancel" onclick="closePublishConfirmation()">Cancel</button>
       <button class="publish-btn-primary" id="publish-confirm" onclick="confirmPublish()">Publish Schedule</button>
     </div>

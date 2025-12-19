@@ -294,6 +294,130 @@ def get_skill_score(facilitator, session):
     # This encourages assigning facilitators who have declared their skills
     return SKILL_SCORES[SkillLevel.NO_INTEREST]
 
+def calculate_day_of_week_bonus(facilitator, session, skill_score, current_assignments=None):
+    """
+    Pedagogical model: Experienced facilitators early in week,
+    less experienced later (after they've observed).
+    
+    Monday-Wednesday: Prefer experienced facilitators (skill >= 0.8)
+    Thursday-Friday: Prefer less experienced (skill < 0.8) who can observe first
+    
+    BONUS: If less experienced facilitator already ran this module earlier in the week,
+    give them an extra bonus (simulates having observed/practiced).
+    
+    Returns bonus score (can be positive or negative)
+    """
+    # Get session date
+    session_date = session.get('date')
+    if not session_date:
+        return 0.0
+    
+    # Determine day of week (0=Monday, 6=Sunday)
+    try:
+        if isinstance(session_date, str):
+            from datetime import datetime
+            date_obj = datetime.strptime(session_date, '%Y-%m-%d').date()
+        else:
+            date_obj = session_date
+        day_of_week = date_obj.weekday()
+    except:
+        return 0.0
+    
+    # Define experience threshold
+    EXPERIENCED_THRESHOLD = 0.8  # Proficient (1.0) or Have Run Before (0.8)
+    
+    # Calculate base bonus based on day of week
+    base_bonus = 0.0
+    
+    # Monday-Wednesday (0, 1, 2): Prefer experienced facilitators
+    if day_of_week in [0, 1, 2]:  # Mon, Tue, Wed
+        if skill_score >= EXPERIENCED_THRESHOLD:
+            base_bonus = 0.25  # 25% bonus for experienced on early days
+        else:
+            base_bonus = -0.10  # 10% penalty for less experienced on early days
+    
+    # Thursday-Friday (3, 4): Prefer less experienced (they've observed!)
+    elif day_of_week in [3, 4]:  # Thu, Fri
+        if skill_score < EXPERIENCED_THRESHOLD:
+            base_bonus = 0.15  # 15% bonus for less experienced on late days
+        else:
+            base_bonus = 0.0  # No penalty for experienced (still can be assigned)
+    
+    # Weekend (5, 6): No preference
+    else:
+        base_bonus = 0.0
+    
+    # 🆕 OBSERVATION BONUS: If less experienced facilitator already ran this module earlier this week
+    # Give them an extra bonus (they've practiced and can do it again!)
+    observation_bonus = 0.0
+    if (current_assignments is not None and 
+        skill_score < EXPERIENCED_THRESHOLD and 
+        has_run_module_earlier_this_week(facilitator, session, current_assignments)):
+        observation_bonus = 0.20  # 20% bonus for having run the module earlier this week!
+    
+    return base_bonus + observation_bonus
+
+def has_run_module_earlier_this_week(facilitator, session, current_assignments):
+    """
+    Check if facilitator has already been assigned to the same module
+    earlier in the same week (Monday-Sunday).
+    
+    This is used to give a bonus to less experienced facilitators who
+    can observe experienced facilitators running the module earlier in the week.
+    
+    Returns True if facilitator has assignment for same module on earlier day this week.
+    """
+    module_id = session.get('module_id')
+    session_date = session.get('date')
+    
+    if not module_id or not session_date:
+        return False
+    
+    # Get the session's date
+    try:
+        if isinstance(session_date, str):
+            from datetime import datetime
+            current_date = datetime.strptime(session_date, '%Y-%m-%d').date()
+        else:
+            current_date = session_date
+    except:
+        return False
+    
+    # Get Monday of the current week (week starts on Monday)
+    from datetime import timedelta
+    week_start = current_date - timedelta(days=current_date.weekday())
+    
+    # Check all current assignments for this facilitator
+    for assignment in current_assignments:
+        if assignment['facilitator']['id'] == facilitator['id']:
+            assigned_session = assignment['session']
+            assigned_module_id = assigned_session.get('module_id')
+            assigned_date = assigned_session.get('date')
+            
+            if not assigned_module_id or not assigned_date:
+                continue
+            
+            # Parse assigned date
+            try:
+                if isinstance(assigned_date, str):
+                    from datetime import datetime
+                    assigned_date_obj = datetime.strptime(assigned_date, '%Y-%m-%d').date()
+                else:
+                    assigned_date_obj = assigned_date
+            except:
+                continue
+            
+            # Check if:
+            # 1. Same module
+            # 2. Same week (on or after week_start)
+            # 3. Earlier day (before current session)
+            if (assigned_module_id == module_id and 
+                assigned_date_obj >= week_start and 
+                assigned_date_obj < current_date):
+                return True  # Found earlier assignment this week!
+    
+    return False  # No earlier assignment found
+
 def get_assigned_hours(facilitator, current_assignments):
     """
     Calculate total hours already assigned to this facilitator
@@ -366,10 +490,13 @@ def calculate_facilitator_score(facilitator, session, current_assignments, total
     # Skill score
     skill_score = get_skill_score(facilitator, session)
     
+    # Day of week bonus (pedagogical model with observation bonus)
+    day_bonus = calculate_day_of_week_bonus(facilitator, session, skill_score, current_assignments)
+    
     # Final weighted score using provided or default weights
     # Note: availability_match is always 1.0 here (we already returned 0 if unavailable)
-    # So we only weight skill vs fairness
-    score = (weights['fairness'] * fairness_factor) + (weights['skill'] * skill_score)
+    # So we only weight skill vs fairness, then add day bonus
+    score = (weights['fairness'] * fairness_factor) + (weights['skill'] * skill_score) + day_bonus
     
     # Add small tie-breaker (0.1% of skill score) to prevent identical scores
     # This ensures deterministic assignment even when one weight is 0%

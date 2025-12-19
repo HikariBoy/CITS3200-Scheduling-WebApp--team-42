@@ -834,9 +834,8 @@ def create_unavailability():
     if not access:
         return jsonify({"error": "facilitator not linked to this unit"}), 403
     
-    # Check if schedule is published - block editing if so
-    if access.schedule_status and access.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    # Note: We allow editing unavailability even if schedule is published
+    # Auto-generated unavailability from published schedules is protected separately
     
     # Validate date format and range
     try:
@@ -984,8 +983,11 @@ def create_unavailability():
             }
         }), 201
     except Exception as e:
+        import traceback
         db.session.rollback()
-        return jsonify({"error": "Failed to create unavailability"}), 500
+        print(f"Error creating unavailability: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to create unavailability: {str(e)}"}), 500
 
 @facilitator_bp.route('/unavailability/<int:unavailability_id>', methods=['PUT'])
 @facilitator_required
@@ -1113,9 +1115,8 @@ def clear_all_unavailability():
     if not access:
         return jsonify({"error": "facilitator not linked to this unit"}), 403
     
-    # Check if schedule is published - block editing if so
-    if access.schedule_status and access.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    # Note: We allow clearing unavailability even if schedule is published
+    # Auto-generated unavailability from published schedules is protected separately
     
     try:
         # Delete all unavailability records for this user and unit
@@ -1183,9 +1184,8 @@ def generate_recurring_unavailability():
     if not access:
         return jsonify({"error": "forbidden"}), 403
     
-    # Check if schedule is published - block editing if so
-    if access.schedule_status and access.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    # Note: We allow generating recurring unavailability even if schedule is published
+    # Auto-generated unavailability from published schedules is protected separately
     
     # Parse the base unavailability data
     base_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
@@ -1514,9 +1514,8 @@ def manage_skills():
             if not unit:
                 return jsonify({"error": "Unit not found"}), 404
             
-            # Check if schedule is published - block editing if so
-            if unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
-                return jsonify({"error": "This unit's schedule has been published. Editing skills is disabled."}), 403
+            # Note: We allow editing skills even if schedule is published
+            # Existing assignments remain valid, skill changes only affect future auto-assignments
             
             # Use upsert logic: update existing skills or create new ones
             for module_id, skill_level in skills.items():
