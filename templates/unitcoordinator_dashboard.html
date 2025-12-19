@@ -1551,6 +1551,43 @@
             <label>Description (optional)</label>
             <textarea name="description" rows="3" placeholder="Brief description..."></textarea>
           </div>
+
+          <!-- Additional Unit Coordinators Section -->
+          <div class="form-group mt-6 pt-6 border-t">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <label class="text-base font-medium">Additional Unit Coordinators</label>
+                <p class="text-sm text-gray-500 mt-1">Add other coordinators who will manage this unit</p>
+              </div>
+            </div>
+
+            <!-- Coordinator Search/Add -->
+            <div class="mb-4">
+              <div class="flex gap-2">
+                <input 
+                  type="email" 
+                  id="coordinator-email-input" 
+                  placeholder="Enter coordinator email..."
+                  class="flex-1 px-3 py-2 border rounded-lg text-sm"
+                  autocomplete="off"
+                />
+                <button 
+                  type="button" 
+                  id="add-coordinator-btn"
+                  class="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 text-sm font-medium"
+                >
+                  Add
+                </button>
+              </div>
+              <div id="coordinator-search-results" class="mt-2 hidden"></div>
+            </div>
+
+            <!-- Added Coordinators List -->
+            <div id="coordinators-list" class="space-y-2">
+              <!-- Coordinators will be added here dynamically -->
+            </div>
+            <input type="hidden" name="additional_coordinators" id="additional_coordinators" value="">
+          </div>
         </section>
 
         <!-- STEP 2: Date Range (INLINE CALENDARS) -->

@@ -18,7 +18,7 @@ from auth import login_required, get_current_user
 from utils import role_required
 from models import db
 
-from models import db, UserRole, Unit, User, Venue, UnitFacilitator, UnitVenue, Module, Session, Assignment, Unavailability, Facilitator, SwapRequest, SwapStatus, FacilitatorSkill, Notification
+from models import db, UserRole, Unit, User, Venue, UnitFacilitator, UnitCoordinator, UnitVenue, Module, Session, Assignment, Unavailability, Facilitator, SwapRequest, SwapStatus, FacilitatorSkill, Notification
 
 # ------------------------------------------------------------------------------
 # Setup
@@ -159,7 +159,7 @@ def _valid_email(s: str) -> bool:
     return bool(EMAIL_RE.match(s or ""))
 
 def _get_user_unit_or_404(user, unit_id: int):
-    """Return Unit if it exists AND is owned by user (or user is admin); else None."""
+    """Return Unit if it exists AND user is a coordinator (or user is admin); else None."""
     try:
         unit_id = int(unit_id)
     except (TypeError, ValueError):
@@ -167,8 +167,15 @@ def _get_user_unit_or_404(user, unit_id: int):
     unit = Unit.query.get(unit_id)
     if not unit:
         return None
-    # Allow access if user owns the unit OR is an admin
-    if unit.created_by != user.id and user.role != UserRole.ADMIN:
+    # Allow access if user is a coordinator for this unit OR is an admin
+    if user.role == UserRole.ADMIN:
+        return unit
+    # Check if user is a coordinator for this unit
+    is_coordinator = UnitCoordinator.query.filter_by(
+        unit_id=unit_id, 
+        user_id=user.id
+    ).first() is not None
+    if not is_coordinator:
         return None
     return unit
 
@@ -490,12 +497,13 @@ def profile():
     user = get_current_user()
     today = date.today()
     
-    # Get user's units for display
+    # Get user's units for display (via UnitCoordinator relationship)
     units = (
         db.session.query(Unit, func.count(Session.id))
+        .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
         .outerjoin(Module, Module.unit_id == Unit.id)
         .outerjoin(Session, Session.module_id == Module.id)
-        .filter(Unit.created_by == user.id)
+        .filter(UnitCoordinator.user_id == user.id)
         .group_by(Unit.id)
         .order_by(Unit.unit_code.asc())
         .all()
@@ -769,12 +777,13 @@ def dashboard():
 
     user = get_current_user()
 
-    # Build list of units this UC owns + session counts (for the single-card header)
+    # Build list of units this UC coordinates + session counts (for the single-card header)
     rows = (
         db.session.query(Unit, func.count(Session.id))
+        .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
         .outerjoin(Module, Module.unit_id == Unit.id)
         .outerjoin(Session, Session.module_id == Module.id)
-        .filter(Unit.created_by == user.id)
+        .filter(UnitCoordinator.user_id == user.id)
         .group_by(Unit.id)
         .order_by(Unit.unit_code.asc())
         .all()
@@ -1637,10 +1646,20 @@ def create_unit():
 
         # If identity (code/year/semester) changes, guard duplicates
         if (unit.unit_code != unit_code or unit.year != year or unit.semester != semester):
-            dup = Unit.query.filter_by(
-                unit_code=unit_code, year=year, semester=semester, created_by=user.id
-            ).first()
-            if dup and dup.id != unit.id:
+            # Check if user is already a coordinator for another unit with this code/year/semester
+            dup = (
+                db.session.query(Unit)
+                .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+                .filter(
+                    Unit.unit_code == unit_code,
+                    Unit.year == year,
+                    Unit.semester == semester,
+                    UnitCoordinator.user_id == user.id,
+                    Unit.id != unit.id
+                )
+                .first()
+            )
+            if dup:
                 flash("Another unit with that code/year/semester already exists.", "error")
                 if user.role == UserRole.ADMIN:
                     return redirect(url_for("unitcoordinator.admin_dashboard"))
@@ -1685,12 +1704,20 @@ def create_unit():
             return redirect(url_for("unitcoordinator.dashboard"))
 
     # CREATE path (no unit_id)
-    # Per-UC uniqueness
-    existing = Unit.query.filter_by(
-        unit_code=unit_code, year=year, semester=semester, created_by=user.id
-    ).first()
+    # Per-UC uniqueness - check if user is already a coordinator for a unit with this code/year/semester
+    existing = (
+        db.session.query(Unit)
+        .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+        .filter(
+            Unit.unit_code == unit_code,
+            Unit.year == year,
+            Unit.semester == semester,
+            UnitCoordinator.user_id == user.id
+        )
+        .first()
+    )
     if existing:
-        flash("You already created this unit for that semester/year.", "error")
+        flash("You already coordinate a unit with that code/year/semester.", "error")
         if user.role == UserRole.ADMIN:
             return redirect(url_for("unitcoordinator.admin_dashboard"))
         else:
@@ -1707,6 +1734,44 @@ def create_unit():
         created_by=user.id,
     )
     db.session.add(new_unit)
+    db.session.flush()  # Flush to get the unit ID
+    
+    # Create UnitCoordinator entry for the creator
+    unit_coordinator = UnitCoordinator(
+        unit_id=new_unit.id,
+        user_id=user.id
+    )
+    db.session.add(unit_coordinator)
+    
+    # Handle additional coordinators
+    additional_coordinators_str = request.form.get("additional_coordinators", "").strip()
+    if additional_coordinators_str:
+        try:
+            import json
+            coordinator_ids = json.loads(additional_coordinators_str)
+            if isinstance(coordinator_ids, list):
+                for coordinator_id in coordinator_ids:
+                    try:
+                        coordinator_id = int(coordinator_id)
+                        # Verify the user exists and has appropriate role
+                        coordinator_user = User.query.filter_by(id=coordinator_id).first()
+                        if coordinator_user and coordinator_user.role in [UserRole.UNIT_COORDINATOR, UserRole.ADMIN]:
+                            # Check if already added (shouldn't happen, but safety check)
+                            existing = UnitCoordinator.query.filter_by(
+                                unit_id=new_unit.id,
+                                user_id=coordinator_id
+                            ).first()
+                            if not existing:
+                                additional_uc = UnitCoordinator(
+                                    unit_id=new_unit.id,
+                                    user_id=coordinator_id
+                                )
+                                db.session.add(additional_uc)
+                    except (ValueError, TypeError):
+                        continue  # Skip invalid IDs
+        except (json.JSONDecodeError, TypeError):
+            pass  # If JSON parsing fails, just continue without additional coordinators
+    
     db.session.commit()
 
     # Create default module for new unit
@@ -2035,8 +2100,8 @@ def create_or_get_draft():
         if unit_id:
             try:
                 unit_id = int(unit_id)
-                unit = Unit.query.get(unit_id)
-                if unit and (unit.created_by == user.id or user.role == UserRole.ADMIN):
+                unit = _get_user_unit_or_404(user, unit_id)
+                if unit:
                     # Get all modules for this unit
                     modules = Module.query.filter_by(unit_id=unit.id).all()
                     module_ids = [m.id for m in modules]
@@ -2104,9 +2169,18 @@ def create_or_get_draft():
     if parsed_start and parsed_end and parsed_start > parsed_end:
         return jsonify({"ok": False, "error": "Start date must be before end date"}), 400
 
-    unit = Unit.query.filter_by(
-        unit_code=unit_code, year=year, semester=semester, created_by=user.id
-    ).first()
+    # Check if user is already a coordinator for a unit with this code/year/semester
+    unit = (
+        db.session.query(Unit)
+        .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+        .filter(
+            Unit.unit_code == unit_code,
+            Unit.year == year,
+            Unit.semester == semester,
+            UnitCoordinator.user_id == user.id
+        )
+        .first()
+    )
     if not unit:
         unit = Unit(
             unit_code=unit_code,
@@ -2118,6 +2192,14 @@ def create_or_get_draft():
             created_by=user.id,
         )
         db.session.add(unit)
+        db.session.flush()  # Flush to get the unit ID
+        
+        # Create UnitCoordinator entry for the creator
+        unit_coordinator = UnitCoordinator(
+            unit_id=unit.id,
+            user_id=user.id
+        )
+        db.session.add(unit_coordinator)
         db.session.commit()
         # Create default module for new unit
         _get_or_create_default_module(unit)
@@ -2725,6 +2807,183 @@ def remove_individual_facilitator(unit_id: int, email: str):
         return jsonify({"ok": False, "error": f"Failed to remove facilitator: {str(e)}"}), 500
 
 # ---------- Step 3B: Calendar / Sessions ----------
+@unitcoordinator_bp.get("/search-coordinators")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def search_coordinators():
+    """Search for users with UNIT_COORDINATOR or ADMIN role by email."""
+    email_query = request.args.get('email', '').strip().lower()
+    
+    if not email_query or len(email_query) < 3:
+        return jsonify({
+            "ok": True,
+            "coordinators": []
+        })
+    
+    # Search for users with UNIT_COORDINATOR or ADMIN role
+    # Only return users with role >= UNIT_COORDINATOR (i.e., UNIT_COORDINATOR or ADMIN)
+    coordinators = (
+        db.session.query(User)
+        .filter(
+            User.email.ilike(f'%{email_query}%'),
+            User.role.in_([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+        )
+        .limit(10)
+        .all()
+    )
+    
+    coordinators_data = []
+    for coordinator in coordinators:
+        coordinators_data.append({
+            "id": coordinator.id,
+            "email": coordinator.email,
+            "full_name": coordinator.full_name,
+            "role": coordinator.role.value
+        })
+    
+    return jsonify({
+        "ok": True,
+        "coordinators": coordinators_data
+    })
+
+
+@unitcoordinator_bp.get("/units/<int:unit_id>/coordinators")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def get_unit_coordinators(unit_id: int):
+    """Get all coordinators for a unit."""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 403
+    
+    coordinators = (
+        db.session.query(User, UnitCoordinator)
+        .join(UnitCoordinator, UnitCoordinator.user_id == User.id)
+        .filter(UnitCoordinator.unit_id == unit_id)
+        .all()
+    )
+    
+    coordinators_data = []
+    for coordinator_user, uc_link in coordinators:
+        coordinators_data.append({
+            "id": coordinator_user.id,
+            "email": coordinator_user.email,
+            "first_name": coordinator_user.first_name,
+            "last_name": coordinator_user.last_name,
+            "full_name": coordinator_user.full_name,
+            "is_creator": unit.created_by == coordinator_user.id,
+            "added_at": uc_link.created_at.isoformat() if uc_link.created_at else None
+        })
+    
+    return jsonify({
+        "ok": True,
+        "coordinators": coordinators_data
+    })
+
+
+@unitcoordinator_bp.post("/units/<int:unit_id>/add-coordinator")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def add_unit_coordinator(unit_id: int):
+    """Add a coordinator to a unit by email address."""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 403
+    
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+    
+    if not email or not _valid_email(email):
+        return jsonify({"ok": False, "error": "Invalid email address"}), 400
+    
+    # Check if user exists and is a unit coordinator
+    coordinator_user = User.query.filter_by(email=email).first()
+    
+    if not coordinator_user:
+        return jsonify({"ok": False, "error": "User not found. User must exist and have a unit coordinator role."}), 404
+    
+    if coordinator_user.role != UserRole.UNIT_COORDINATOR:
+        return jsonify({"ok": False, "error": "User is not a unit coordinator"}), 400
+    
+    # Check if already a coordinator for this unit
+    existing_link = UnitCoordinator.query.filter_by(
+        unit_id=unit.id,
+        user_id=coordinator_user.id
+    ).first()
+    
+    if existing_link:
+        return jsonify({"ok": False, "error": "This user is already a coordinator for this unit"}), 400
+    
+    # Create link
+    uc_link = UnitCoordinator(unit_id=unit.id, user_id=coordinator_user.id)
+    db.session.add(uc_link)
+    
+    try:
+        db.session.commit()
+        return jsonify({
+            "ok": True,
+            "message": f"Coordinator {email} added successfully",
+            "coordinator": {
+                "id": coordinator_user.id,
+                "email": coordinator_user.email,
+                "full_name": coordinator_user.full_name
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Failed to add coordinator: {str(e)}"}), 500
+
+
+@unitcoordinator_bp.delete("/units/<int:unit_id>/coordinators/<int:coordinator_id>")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def remove_unit_coordinator(unit_id: int, coordinator_id: int):
+    """Remove a coordinator from a unit."""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 403
+    
+    # Prevent removing the creator if they're the only coordinator
+    if unit.created_by == coordinator_id:
+        # Check if there are other coordinators
+        other_coordinators = UnitCoordinator.query.filter(
+            UnitCoordinator.unit_id == unit.id,
+            UnitCoordinator.user_id != coordinator_id
+        ).count()
+        
+        if other_coordinators == 0:
+            return jsonify({
+                "ok": False,
+                "error": "Cannot remove the last coordinator. Please add another coordinator first."
+            }), 400
+    
+    # Find and remove the coordinator link
+    uc_link = UnitCoordinator.query.filter_by(
+        unit_id=unit.id,
+        user_id=coordinator_id
+    ).first()
+    
+    if not uc_link:
+        return jsonify({"ok": False, "error": "Coordinator not found for this unit"}), 404
+    
+    coordinator_user = User.query.get(coordinator_id)
+    coordinator_email = coordinator_user.email if coordinator_user else "Unknown"
+    
+    try:
+        db.session.delete(uc_link)
+        db.session.commit()
+        return jsonify({
+            "ok": True,
+            "message": f"Coordinator {coordinator_email} removed successfully"
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Failed to remove coordinator: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.get("/units/<int:unit_id>/calendar")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
@@ -3480,10 +3739,12 @@ def update_session(session_id: int):
     """Move/resize, update venue, or rename session; optional weekly fan-out when apply_to='series'."""
     user = get_current_user()
     session = Session.query.get(session_id)
-    if not session or session.module.unit.created_by != user.id:
-        return jsonify({"ok": False, "error": "Session not found or unauthorized"}), 404
-
-    unit = session.module.unit
+    if not session:
+        return jsonify({"ok": False, "error": "Session not found"}), 404
+    
+    unit = _get_user_unit_or_404(user, session.module.unit.id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
     data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"ok": False, "error": "Invalid or missing JSON data"}), 400
@@ -3633,8 +3894,12 @@ def delete_session(session_id: int):
     """Delete a session."""
     user = get_current_user()
     session = Session.query.get(session_id)
-    if not session or session.module.unit.created_by != user.id:
-        return jsonify({"ok": False, "error": "Session not found or unauthorized"}), 404
+    if not session:
+        return jsonify({"ok": False, "error": "Session not found"}), 404
+    
+    unit = _get_user_unit_or_404(user, session.module.unit.id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
 
     try:
         db.session.delete(session)

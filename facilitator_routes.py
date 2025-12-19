@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
-from models import db, User, Session, Assignment, SwapRequest, Unavailability, SwapStatus, FacilitatorSkill, SkillLevel, Unit, Module, UnitFacilitator, RecurringPattern, ScheduleStatus
+from models import db, User, Session, Assignment, SwapRequest, Unavailability, SwapStatus, FacilitatorSkill, SkillLevel, Unit, Module, UnitFacilitator, UnitCoordinator, RecurringPattern, ScheduleStatus
 from auth import facilitator_required, get_current_user, login_required
 from datetime import datetime, time, date, timedelta
 from utils import role_required
@@ -2184,13 +2184,25 @@ def can_edit_facilitator_data(current_user, target_user_id, unit_id):
     
     # Case 2: UC or Admin editing facilitator's data
     if current_user.role in [UserRole.UNIT_COORDINATOR, UserRole.ADMIN]:
-        # Verify the UC has access to this unit
-        from models import Unit
-        unit = Unit.query.get(unit_id)
-        if unit and (current_user.role == UserRole.ADMIN or unit.created_by == current_user.id):
+        # Admins can always edit
+        if current_user.role == UserRole.ADMIN:
             # Verify target user is a facilitator in this unit
             link = UnitFacilitator.query.filter_by(unit_id=unit_id, user_id=target_user_id).first()
             return link is not None
+        
+        # For UNIT_COORDINATOR, check if they're a coordinator for this unit via UnitCoordinator table
+        unit = Unit.query.get(unit_id)
+        if unit:
+            # Check if user is a coordinator for this unit
+            is_coordinator = UnitCoordinator.query.filter_by(
+                unit_id=unit_id,
+                user_id=current_user.id
+            ).first() is not None
+            
+            if is_coordinator:
+                # Verify target user is a facilitator in this unit
+                link = UnitFacilitator.query.filter_by(unit_id=unit_id, user_id=target_user_id).first()
+                return link is not None
     
     return False
 
