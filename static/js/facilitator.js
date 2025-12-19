@@ -2581,7 +2581,6 @@ function resetUnavailabilityForm() {
     document.getElementById('custom-recurrence').style.display = 'none';
     document.getElementById('recurring-options').style.display = 'none';
     document.getElementById('until-date').value = '';
-    document.getElementById('unavailability-reason').value = '';
     
     // Clear time ranges
     const container = document.getElementById('time-ranges-container');
@@ -2734,7 +2733,6 @@ function saveUnavailability() {
     
     const isFullDay = document.getElementById('full-day-toggle').checked;
     const isRecurring = document.getElementById('recurring-toggle').checked;
-    const reason = document.getElementById('unavailability-reason').value;
     
     let startTime = null;
     let endTime = null;
@@ -2772,8 +2770,7 @@ function saveUnavailability() {
         date: date,
         is_full_day: isFullDay,
         start_time: startTime,
-        end_time: endTime,
-        reason: reason
+        end_time: endTime
     };
     
     // Determine which endpoint to use based on whether it's recurring
@@ -3117,11 +3114,9 @@ function populateUnavailabilityForm(unav) {
     // Pre-populate the modal form with existing unavailability data
     const fullDayToggle = document.getElementById('full-day-toggle');
     const recurringToggle = document.getElementById('recurring-toggle');
-    const reasonField = document.getElementById('unavailability-reason');
     
     if (fullDayToggle) fullDayToggle.checked = unav.is_full_day;
     if (recurringToggle) recurringToggle.checked = !!unav.recurring_pattern;
-    if (reasonField) reasonField.value = unav.reason || '';
     
     // Handle recurring options
     if (unav.recurring_pattern) {
