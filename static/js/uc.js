@@ -7086,7 +7086,17 @@ async function deleteSession() {
     showSimpleNotification(result.message || 'Session deleted successfully', 'success');
     
     // Refresh the calendar/schedule view
-    await loadSessions();
+    if (typeof loadScheduleSessions === 'function') {
+      await loadScheduleSessions();
+    }
+    // Also refresh list view if it exists
+    if (typeof loadListSessionData === 'function') {
+      await loadListSessionData();
+    }
+    // Refresh calendar if it exists
+    if (window.calendar && typeof window.calendar.refetchEvents === 'function') {
+      window.calendar.refetchEvents();
+    }
     
   } catch (error) {
     console.error('Error deleting session:', error);
