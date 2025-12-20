@@ -6587,21 +6587,20 @@ function updateSelectButton() {
   const selectButton = document.getElementById('facilitator-modal-select');
   const count = selectedFacilitators.length;
   
-  selectButton.textContent = `Select (${count})`;
-  selectButton.disabled = count === 0;
+  // Allow selecting 0 facilitators to unassign/clear the session
+  if (count === 0) {
+    selectButton.textContent = 'Unassign All';
+  } else {
+    selectButton.textContent = `Select (${count})`;
+  }
+  selectButton.disabled = false; // Always enabled - 0 means unassign
 }
 
 // Select multiple facilitators
 async function selectMultipleFacilitators() {
-  if (selectedFacilitators.length === 0) return;
-  
+  // Allow 0 facilitators to unassign/clear the session
   // Filter out any null/undefined facilitators
   selectedFacilitators = selectedFacilitators.filter(f => f && f.id);
-  
-  if (selectedFacilitators.length === 0) {
-    showSimpleNotification('No valid facilitators selected', 'error');
-    return;
-  }
   
   console.log('Selected facilitators:', selectedFacilitators);
   
