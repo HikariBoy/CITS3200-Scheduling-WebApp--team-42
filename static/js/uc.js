@@ -7053,6 +7053,13 @@ async function deleteSession() {
       }
     });
     
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Non-JSON response received:', await response.text());
+      throw new Error('Server returned an error. Please check if you have permission to delete this session.');
+    }
+    
     const result = await response.json();
     
     if (!response.ok) {
