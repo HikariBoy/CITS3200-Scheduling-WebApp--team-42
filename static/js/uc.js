@@ -7087,14 +7087,16 @@ function renderPublishFacilitatorList() {
   
   let html = '';
   publishFacilitatorsList.forEach((f, index) => {
+    const changedBadge = f.has_changes ? '<span style="font-size: 11px; color: #f59e0b; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Changed</span>' : '';
     html += `
       <label style="display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.15s;" 
              onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
         <input type="checkbox" id="publish-facilitator-${f.id}" value="${f.id}" checked 
+               data-has-changes="${f.has_changes}"
                style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer; accent-color: #3b82f6;"
                onchange="updatePublishCount()">
         <div style="flex: 1;">
-          <div style="font-weight: 500; color: #1f2937;">${f.name}</div>
+          <div style="font-weight: 500; color: #1f2937;">${f.name}${changedBadge}</div>
           <div style="font-size: 12px; color: #6b7280;">${f.email}</div>
         </div>
         <div style="font-size: 12px; color: #9ca3af; background: #f3f4f6; padding: 2px 8px; border-radius: 4px;">
@@ -7110,6 +7112,16 @@ function renderPublishFacilitatorList() {
 function selectAllFacilitators(selectAll) {
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
   checkboxes.forEach(cb => cb.checked = selectAll);
+  updatePublishCount();
+}
+
+function selectOnlyChangedFacilitators() {
+  const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    // Check if this facilitator has changes (stored in data attribute)
+    const hasChanges = cb.dataset.hasChanges === 'true';
+    cb.checked = hasChanges;
+  });
   updatePublishCount();
 }
 

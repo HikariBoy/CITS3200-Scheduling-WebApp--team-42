@@ -3702,8 +3702,8 @@ def publish_preview(unit_id: int):
             .all()
         )
         
-        # Build facilitator info with session counts
-        facilitator_sessions = {}  # {facilitator_id: {user, sessions: []}}
+        # Build facilitator info with session counts and track current assignments
+        facilitator_sessions = {}  # {facilitator_id: {user, sessions: [], session_ids: set()}}
         for session in assigned_sessions:
             assignments = Assignment.query.filter_by(session_id=session.id).all()
             for assignment in assignments:
@@ -3713,19 +3713,51 @@ def publish_preview(unit_id: int):
                     if facilitator:
                         facilitator_sessions[fid] = {
                             'user': facilitator,
-                            'session_count': 0
+                            'session_count': 0,
+                            'session_ids': set()
                         }
                 if fid in facilitator_sessions:
                     facilitator_sessions[fid]['session_count'] += 1
+                    facilitator_sessions[fid]['session_ids'].add(session.id)
+        
+        # Check if schedule was previously published and get old assignments
+        previously_published_sessions = {}  # {facilitator_id: set(session_ids)}
+        if unit.schedule_status and unit.schedule_status.value == 'published':
+            # Get assignments from when schedule was last published
+            # We'll compare current assignments with what was there before
+            old_assignments = (
+                db.session.query(Assignment)
+                .join(Session, Assignment.session_id == Session.id)
+                .join(Module, Session.module_id == Module.id)
+                .filter(Module.unit_id == unit_id)
+                .all()
+            )
+            for assignment in old_assignments:
+                fid = assignment.facilitator_id
+                if fid not in previously_published_sessions:
+                    previously_published_sessions[fid] = set()
+                previously_published_sessions[fid].add(assignment.session_id)
         
         # Build facilitators list for frontend
         facilitators_list = []
         for fid, data in facilitator_sessions.items():
+            # Check if this facilitator's assignments have changed
+            has_changes = False
+            if unit.schedule_status and unit.schedule_status.value == 'published':
+                current_sessions = data['session_ids']
+                old_sessions = previously_published_sessions.get(fid, set())
+                # Check if sessions added, removed, or facilitator is new
+                has_changes = (current_sessions != old_sessions)
+            else:
+                # First publish - all facilitators are "changed"
+                has_changes = True
+            
             facilitators_list.append({
                 'id': fid,
                 'name': data['user'].full_name,
                 'email': data['user'].email,
-                'session_count': data['session_count']
+                'session_count': data['session_count'],
+                'has_changes': has_changes
             })
         
         # Sort by name
