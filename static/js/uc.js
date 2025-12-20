@@ -6680,9 +6680,10 @@ async function selectMultipleFacilitators() {
     }
     
     if (result.ok) {
-      // Update the session card to show assigned status
+      // Update the session card to show assigned or unassigned status
       if (currentSessionData && currentSessionData.id) {
-        updateSessionStatusMultiple(currentSessionData.id, 'assigned', selectedFacilitators);
+        const status = selectedFacilitators.length > 0 ? 'assigned' : 'unassigned';
+        updateSessionStatusMultiple(currentSessionData.id, status, selectedFacilitators);
       }
       
       // Debug logging
@@ -6749,6 +6750,7 @@ function updateSessionStatusMultiple(sessionId, status, facilitators) {
       
       // Clear session card data attributes
       sessionCard.removeAttribute('data-facilitator-names');
+      sessionCard.removeAttribute('data-facilitator-ids');
       sessionCard.setAttribute('data-session-status', 'unassigned');
       break;
   }
