@@ -6592,21 +6592,20 @@ function updateSelectButton() {
   const selectButton = document.getElementById('facilitator-modal-select');
   const count = selectedFacilitators.length;
   
-  selectButton.textContent = `Select (${count})`;
-  selectButton.disabled = count === 0;
+  // Allow selecting 0 facilitators to unassign/clear the session
+  if (count === 0) {
+    selectButton.textContent = 'Unassign All';
+  } else {
+    selectButton.textContent = `Select (${count})`;
+  }
+  selectButton.disabled = false; // Always enabled - 0 means unassign
 }
 
 // Select multiple facilitators
 async function selectMultipleFacilitators() {
-  if (selectedFacilitators.length === 0) return;
-  
+  // Allow 0 facilitators to unassign/clear the session
   // Filter out any null/undefined facilitators
   selectedFacilitators = selectedFacilitators.filter(f => f && f.id);
-  
-  if (selectedFacilitators.length === 0) {
-    showSimpleNotification('No valid facilitators selected', 'error');
-    return;
-  }
   
   console.log('Selected facilitators:', selectedFacilitators);
   
@@ -6686,9 +6685,10 @@ async function selectMultipleFacilitators() {
     }
     
     if (result.ok) {
-      // Update the session card to show assigned status
+      // Update the session card to show assigned or unassigned status
       if (currentSessionData && currentSessionData.id) {
-        updateSessionStatusMultiple(currentSessionData.id, 'assigned', selectedFacilitators);
+        const status = selectedFacilitators.length > 0 ? 'assigned' : 'unassigned';
+        updateSessionStatusMultiple(currentSessionData.id, status, selectedFacilitators);
       }
       
       // Debug logging
@@ -6755,6 +6755,7 @@ function updateSessionStatusMultiple(sessionId, status, facilitators) {
       
       // Clear session card data attributes
       sessionCard.removeAttribute('data-facilitator-names');
+      sessionCard.removeAttribute('data-facilitator-ids');
       sessionCard.setAttribute('data-session-status', 'unassigned');
       break;
   }
@@ -7092,14 +7093,16 @@ function renderPublishFacilitatorList() {
   
   let html = '';
   publishFacilitatorsList.forEach((f, index) => {
+    const changedBadge = f.has_changes ? '<span style="font-size: 11px; color: #f59e0b; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Changed</span>' : '';
     html += `
       <label style="display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.15s;" 
              onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
         <input type="checkbox" id="publish-facilitator-${f.id}" value="${f.id}" checked 
+               data-has-changes="${f.has_changes}"
                style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer; accent-color: #3b82f6;"
                onchange="updatePublishCount()">
         <div style="flex: 1;">
-          <div style="font-weight: 500; color: #1f2937;">${f.name}</div>
+          <div style="font-weight: 500; color: #1f2937;">${f.name}${changedBadge}</div>
           <div style="font-size: 12px; color: #6b7280;">${f.email}</div>
         </div>
         <div style="font-size: 12px; color: #9ca3af; background: #f3f4f6; padding: 2px 8px; border-radius: 4px;">
@@ -7115,6 +7118,16 @@ function renderPublishFacilitatorList() {
 function selectAllFacilitators(selectAll) {
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
   checkboxes.forEach(cb => cb.checked = selectAll);
+  updatePublishCount();
+}
+
+function selectOnlyChangedFacilitators() {
+  const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    // Check if this facilitator has changes (stored in data attribute)
+    const hasChanges = cb.dataset.hasChanges === 'true';
+    cb.checked = hasChanges;
+  });
   updatePublishCount();
 }
 

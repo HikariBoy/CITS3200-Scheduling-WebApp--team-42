@@ -2543,11 +2543,8 @@ function updateCalendarDisplay() {
 }
 
 function openUnavailabilityModal(date) {
-    // Check if current unit's schedule is published - block editing if so
-    if (isCurrentUnitSchedulePublished()) {
-        showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
-        return;
-    }
+    // Note: We allow editing unavailability even if schedule is published
+    // Auto-generated unavailability from published schedules is protected separately
     
     const modal = document.getElementById('unavailability-modal');
     const subtitle = document.getElementById('modal-date-subtitle');
@@ -2755,10 +2752,6 @@ function saveUnavailability() {
     const editingId = modal.dataset.editingId ? parseInt(modal.dataset.editingId, 10) : null;
     
     if (!date || !currentUnitId) return;
-    if (isCurrentUnitSchedulePublished()) {
-        showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
-        return;
-    }
     
     // Check full-day checkbox state first - this takes priority
     const fullDayCheckbox = document.getElementById('full-day-toggle');
@@ -2896,15 +2889,26 @@ function saveUnavailability() {
         modal.style.display = 'none';
         delete modal.dataset.editingId;
         
-        // Show success message with optional warning
-        let message = result.message || (editingId ? 'Unavailability updated successfully' : 'Unavailability saved successfully');
-        if (result.warning) {
+        // Show success message with optional conflict warning
+        let message = result.message || 'Unavailability saved successfully';
+        let notificationType = 'success';
+        
+        if (result.conflicts && result.conflicts.length > 0) {
+            // Show conflicts in a more detailed way
+            notificationType = 'warning';
+            message = `⚠️ Unavailability saved, but you have ${result.conflicts.length} conflicting assignment(s):\n\n`;
+            result.conflicts.forEach(conflict => {
+                message += `• ${conflict.module_name} (${conflict.session_type}) - ${conflict.start_time} to ${conflict.end_time} at ${conflict.location}\n`;
+            });
+            message += `\nPlease contact your Unit Coordinator to resolve these conflicts.`;
+        } else if (result.warning) {
+            notificationType = 'warning';
             message += '\n\n' + result.warning;
         }
         
         // Use the notification system if available, otherwise fallback to alert
         if (typeof showNotification === 'function') {
-            showNotification(message, 'success');
+            showNotification(message, notificationType);
         } else {
             alert(message);
         }
@@ -2932,10 +2936,6 @@ function initUnavailabilityControls() {
                 return;
             }
             
-            if (isCurrentUnitSchedulePublished()) {
-                showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
-                return;
-            }
             if (confirm('Are you sure you want to clear all unavailability and mark yourself as available for all days in this unit?')) {
                 clearAllUnavailability();
             }
@@ -4058,10 +4058,6 @@ async function saveSkills() {
     const currentUnitId = window.currentUnitId;
     if (!currentUnitId) {
         console.error('No unit selected');
-        return;
-    }
-    if (isCurrentUnitSchedulePublished()) {
-        showNotification("This unit's schedule has been published. Editing skills is disabled.", 'warning');
         return;
     }
 

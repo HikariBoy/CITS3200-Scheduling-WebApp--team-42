@@ -924,6 +924,47 @@ def create_unavailability():
     if existing:
         return jsonify({"error": "Unavailability already exists for this date and time"}), 409
     
+    # Check for conflicts with existing assignments
+    conflicts = []
+    assignments = (
+        db.session.query(Assignment)
+        .join(Session, Assignment.session_id == Session.id)
+        .join(Module, Session.module_id == Module.id)
+        .filter(
+            Assignment.facilitator_id == target_user_id,
+            Module.unit_id == unit_id,
+            db.func.date(Session.start_time) == unavailability_date
+        )
+        .all()
+    )
+    
+    for assignment in assignments:
+        session = assignment.session
+        # Check if the unavailability time overlaps with the session time
+        if is_full_day or (start_time and end_time and session.start_time and session.end_time):
+            if is_full_day:
+                conflicts.append({
+                    'session_id': session.id,
+                    'module_name': session.module.module_name,
+                    'session_type': session.session_type,
+                    'start_time': session.start_time.strftime('%I:%M %p') if session.start_time else 'N/A',
+                    'end_time': session.end_time.strftime('%I:%M %p') if session.end_time else 'N/A',
+                    'location': session.location or 'TBA'
+                })
+            elif start_time and end_time and session.start_time and session.end_time:
+                # Check time overlap
+                session_start = session.start_time.time()
+                session_end = session.end_time.time()
+                if not (end_time <= session_start or start_time >= session_end):
+                    conflicts.append({
+                        'session_id': session.id,
+                        'module_name': session.module.module_name,
+                        'session_type': session.session_type,
+                        'start_time': session.start_time.strftime('%I:%M %p'),
+                        'end_time': session.end_time.strftime('%I:%M %p'),
+                        'location': session.location or 'TBA'
+                    })
+    
     # Create unavailability record
     unavailability = Unavailability(
         user_id=target_user_id,
@@ -969,7 +1010,7 @@ def create_unavailability():
         
         db.session.commit()
         
-        return jsonify({
+        response_data = {
             "message": "Unavailability created successfully",
             "availability_configured": True,
             "unavailability": {
@@ -981,7 +1022,14 @@ def create_unavailability():
                 "recurring_pattern": unavailability.recurring_pattern.value if unavailability.recurring_pattern else None,
                 "reason": unavailability.reason
             }
-        }), 201
+        }
+        
+        # Include conflicts if any exist
+        if conflicts:
+            response_data["conflicts"] = conflicts
+            response_data["warning"] = f"Warning: You have {len(conflicts)} assignment(s) on this date. Please contact your Unit Coordinator to resolve this conflict."
+        
+        return jsonify(response_data), 201
     except Exception as e:
         import traceback
         db.session.rollback()

@@ -3967,8 +3967,8 @@ def publish_preview(unit_id: int):
             .all()
         )
         
-        # Build facilitator info with session counts
-        facilitator_sessions = {}  # {facilitator_id: {user, sessions: []}}
+        # Build facilitator info with session counts and track current assignments
+        facilitator_sessions = {}  # {facilitator_id: {user, sessions: [], session_ids: set()}}
         for session in assigned_sessions:
             assignments = Assignment.query.filter_by(session_id=session.id).all()
             for assignment in assignments:
@@ -3978,19 +3978,49 @@ def publish_preview(unit_id: int):
                     if facilitator:
                         facilitator_sessions[fid] = {
                             'user': facilitator,
-                            'session_count': 0
+                            'session_count': 0,
+                            'session_ids': set()
                         }
                 if fid in facilitator_sessions:
                     facilitator_sessions[fid]['session_count'] += 1
+                    facilitator_sessions[fid]['session_ids'].add(session.id)
+        
+        # Check if schedule was previously published and get snapshot of old assignments
+        previously_published_sessions = {}  # {facilitator_id: set(session_ids)}
+        if unit.schedule_status and unit.schedule_status.value == 'published' and unit.published_assignments_snapshot:
+            # Load the snapshot from when schedule was last published
+            import json
+            try:
+                snapshot = json.loads(unit.published_assignments_snapshot)
+                # Convert lists back to sets for comparison
+                previously_published_sessions = {
+                    int(fid): set(session_ids) 
+                    for fid, session_ids in snapshot.items()
+                }
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"Error loading published assignments snapshot: {e}")
+                previously_published_sessions = {}
         
         # Build facilitators list for frontend
         facilitators_list = []
         for fid, data in facilitator_sessions.items():
+            # Check if this facilitator's assignments have changed
+            has_changes = False
+            if unit.schedule_status and unit.schedule_status.value == 'published':
+                current_sessions = data['session_ids']
+                old_sessions = previously_published_sessions.get(fid, set())
+                # Check if sessions added, removed, or facilitator is new
+                has_changes = (current_sessions != old_sessions)
+            else:
+                # First publish - all facilitators are "changed"
+                has_changes = True
+            
             facilitators_list.append({
                 'id': fid,
                 'name': data['user'].full_name,
                 'email': data['user'].email,
-                'session_count': data['session_count']
+                'session_count': data['session_count'],
+                'has_changes': has_changes
             })
         
         # Sort by name
@@ -4025,8 +4055,9 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
         data = request.get_json()
         facilitator_ids = data.get('facilitator_ids', [])
         
-        if not facilitator_ids:
-            return jsonify({"ok": False, "error": "No facilitators provided"}), 400
+        # Allow empty list to unassign all facilitators
+        # if not facilitator_ids:
+        #     return jsonify({"ok": False, "error": "No facilitators provided"}), 400
         
         # Verify session belongs to this unit
         session = (
@@ -4133,13 +4164,22 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
             db.session.add(assignment)
         
         # Update session status
-        session.status = 'assigned'
+        if len(facilitator_ids) > 0:
+            session.status = 'assigned'
+        else:
+            session.status = 'unassigned'
         
         db.session.commit()
         
+        # Return appropriate message
+        if len(facilitator_ids) == 0:
+            message = "All facilitators unassigned from session"
+        else:
+            message = f"Assigned {len(facilitator_ids)} facilitator{'s' if len(facilitator_ids) != 1 else ''} to session"
+        
         return jsonify({
             "ok": True,
-            "message": f"Assigned {len(facilitator_ids)} facilitators to session",
+            "message": message,
             "session_id": session_id
         })
         
@@ -4305,9 +4345,27 @@ def publish_schedule(unit_id: int):
         try:
             unit.schedule_status = ScheduleStatus.PUBLISHED
             unit.published_at = datetime.utcnow()
-        except Exception:
-            # If enum not available for any reason, silently continue; sessions are still published
-            pass
+            
+            # Save snapshot of current assignments for change detection on next publish
+            import json
+            assignments_snapshot = {}  # {facilitator_id: [session_ids]}
+            all_current_assignments = (
+                db.session.query(Assignment)
+                .join(Session, Assignment.session_id == Session.id)
+                .join(Module, Session.module_id == Module.id)
+                .filter(Module.unit_id == unit_id)
+                .all()
+            )
+            for assignment in all_current_assignments:
+                fid = str(assignment.facilitator_id)  # JSON keys must be strings
+                if fid not in assignments_snapshot:
+                    assignments_snapshot[fid] = []
+                assignments_snapshot[fid].append(assignment.session_id)
+            
+            unit.published_assignments_snapshot = json.dumps(assignments_snapshot)
+        except Exception as e:
+            print(f"Warning: Could not save assignments snapshot: {e}")
+            # Continue anyway - this is not critical
         
         db.session.commit()
         
