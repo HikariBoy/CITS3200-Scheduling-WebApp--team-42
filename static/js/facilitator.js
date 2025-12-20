@@ -2543,11 +2543,8 @@ function updateCalendarDisplay() {
 }
 
 function openUnavailabilityModal(date) {
-    // Check if current unit's schedule is published - block editing if so
-    if (isCurrentUnitSchedulePublished()) {
-        showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
-        return;
-    }
+    // Note: We allow editing unavailability even if schedule is published
+    // Auto-generated unavailability from published schedules is protected separately
     
     const modal = document.getElementById('unavailability-modal');
     const subtitle = document.getElementById('modal-date-subtitle');
@@ -2727,10 +2724,6 @@ function saveUnavailability() {
     const date = modal.dataset.currentDate;
     
     if (!date || !currentUnitId) return;
-    if (isCurrentUnitSchedulePublished()) {
-        showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
-        return;
-    }
     
     const isFullDay = document.getElementById('full-day-toggle').checked;
     const isRecurring = document.getElementById('recurring-toggle').checked;
@@ -2867,10 +2860,6 @@ function initUnavailabilityControls() {
                 return;
             }
             
-            if (isCurrentUnitSchedulePublished()) {
-                showNotification("This unit's schedule has been published. Editing unavailability is disabled.", 'warning');
-                return;
-            }
             if (confirm('Are you sure you want to clear all unavailability and mark yourself as available for all days in this unit?')) {
                 clearAllUnavailability();
             }
@@ -3905,10 +3894,6 @@ async function saveSkills() {
     const currentUnitId = window.currentUnitId;
     if (!currentUnitId) {
         console.error('No unit selected');
-        return;
-    }
-    if (isCurrentUnitSchedulePublished()) {
-        showNotification("This unit's schedule has been published. Editing skills is disabled.", 'warning');
         return;
     }
 
