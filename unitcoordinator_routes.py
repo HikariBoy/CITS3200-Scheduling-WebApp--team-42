@@ -4191,7 +4191,7 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
 @unitcoordinator_bp.delete("/units/<int:unit_id>/sessions/<int:session_id>")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
-def delete_session(unit_id: int, session_id: int):
+def delete_unit_session(unit_id: int, session_id: int):
     """Delete a session and unassign all facilitators."""
     user = get_current_user()
     unit = _get_user_unit_or_404(user, unit_id)
