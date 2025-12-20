@@ -7028,8 +7028,16 @@ async function deleteSession() {
   const modal = document.getElementById('session-details-modal');
   const sessionId = modal?.dataset?.sessionId;
   
+  console.log('Delete session called with ID:', sessionId);
+  
   if (!sessionId) {
     alert('Error: No session selected');
+    return;
+  }
+  
+  // Check if it's a temporary session
+  if (String(sessionId).startsWith('temp-')) {
+    alert('Cannot delete unsaved sessions. Please save the session first or close without saving.');
     return;
   }
   
@@ -7044,6 +7052,8 @@ async function deleteSession() {
       alert('Error: No unit selected');
       return;
     }
+    
+    console.log('Deleting session:', { unitId, sessionId });
     
     const response = await fetch(`/unitcoordinator/units/${unitId}/sessions/${sessionId}`, {
       method: 'DELETE',
