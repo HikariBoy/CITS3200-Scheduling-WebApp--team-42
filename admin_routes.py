@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
-from models import db, User, UserRole, Unit, Module, FacilitatorSkill, SkillLevel, SwapRequest, SwapStatus, Session, Assignment, UnitFacilitator, Unavailability, RecurringPattern
+from models import db, User, UserRole, Unit, Module, FacilitatorSkill, SkillLevel, SwapRequest, SwapStatus, Session, Assignment, UnitFacilitator, UnitCoordinator, Unavailability, RecurringPattern
 from werkzeug.security import generate_password_hash
 from datetime import datetime, time
 from auth import admin_required, get_current_user
@@ -62,8 +62,13 @@ def dashboard():
     # Create unit associations data without modifying user objects
     unit_associations = {}
     for facilitator in facilitators:
-        # Get units they created (as coordinators)
-        created_units = Unit.query.filter_by(created_by=facilitator.id).all()
+        # Get units they coordinate (via UnitCoordinator)
+        created_units = (
+            db.session.query(Unit)
+            .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+            .filter(UnitCoordinator.user_id == facilitator.id)
+            .all()
+        )
         
         # Get units they facilitate
         facilitated_units = (
@@ -108,6 +113,44 @@ def dashboard():
     # Count admins to check if we can delete the last one
     admin_count = User.query.filter_by(role=UserRole.ADMIN).count()
     
+    # Get all units with their coordinators for the Units tab
+    all_units = Unit.query.order_by(Unit.year.desc(), Unit.semester.desc(), Unit.unit_code.asc()).all()
+    units_with_coordinators = []
+    from datetime import date
+    today = date.today()
+    
+    for unit in all_units:
+        # Get coordinators for this unit
+        coordinators = (
+            db.session.query(User)
+            .join(UnitCoordinator, User.id == UnitCoordinator.user_id)
+            .filter(UnitCoordinator.unit_id == unit.id)
+            .all()
+        )
+        
+        # Determine if unit is active
+        is_active = False
+        if unit.start_date and unit.end_date:
+            is_active = unit.start_date <= today <= unit.end_date
+        elif unit.start_date and not unit.end_date:
+            is_active = unit.start_date <= today
+        elif not unit.start_date and unit.end_date:
+            is_active = today <= unit.end_date
+        else:
+            # Check if there are future sessions
+            has_future_sessions = (
+                db.session.query(Session)
+                .join(Module, Session.module_id == Module.id)
+                .filter(Module.unit_id == unit.id, Session.start_time > datetime.utcnow())
+                .count() > 0
+            )
+            is_active = has_future_sessions
+        
+        units_with_coordinators.append({
+            'unit': unit,
+            'coordinators': coordinators,
+            'is_active': is_active
+        })
     
     # Calculate additional statistics
     active_facilitators = User.query.filter_by(role=UserRole.FACILITATOR).count()  # Keep facilitator count for compatibility
@@ -224,6 +267,7 @@ def dashboard():
                          all_employees=facilitators,  # Explicit alias for clarity
                          facilitators_pagination=facilitators_pagination,  # Pagination object
                          unit_associations=unit_associations,  # Unit associations data
+                         units_with_coordinators=units_with_coordinators,  # Units with coordinators for Units tab
                          total_facilitators_count=total_facilitators,
                          active_facilitators_count=active_facilitators,
                          total_hours_worked=total_hours_worked,
@@ -340,7 +384,13 @@ def delete_employee(employee_id):
         
         # STEP 4: Handle UC units (must be done before deleting user)
         if employee.role == UserRole.UNIT_COORDINATOR:
-            units = Unit.query.filter_by(created_by=employee.id).all()
+            # Get all units this coordinator manages
+            units = (
+                db.session.query(Unit)
+                .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
+                .filter(UnitCoordinator.user_id == employee.id)
+                .all()
+            )
             if units:
                 unit_names = ", ".join([f"{u.unit_code}" for u in units[:3]])
                 if len(units) > 3:
@@ -1860,4 +1910,116 @@ def export_users_csv():
     response.headers['Content-Disposition'] = f'attachment; filename=users_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
     
     return response
+
+@admin_bp.route('/units/<int:unit_id>/add-coordinator', methods=['POST'])
+@admin_required
+def add_unit_coordinator_admin(unit_id):
+    """Add a coordinator to a unit (admin endpoint)"""
+    try:
+        data = request.get_json()
+        coordinator_id = data.get('coordinator_id')
+        
+        if not coordinator_id:
+            return jsonify({'success': False, 'error': 'Coordinator ID is required'}), 400
+        
+        # Verify unit exists
+        unit = Unit.query.get(unit_id)
+        if not unit:
+            return jsonify({'success': False, 'error': 'Unit not found'}), 404
+        
+        # Verify coordinator exists and has correct role
+        coordinator = User.query.get(coordinator_id)
+        if not coordinator:
+            return jsonify({'success': False, 'error': 'Coordinator not found'}), 404
+        
+        if coordinator.role not in [UserRole.UNIT_COORDINATOR, UserRole.ADMIN]:
+            return jsonify({'success': False, 'error': 'User must be a Unit Coordinator or Admin'}), 400
+        
+        # Check if already a coordinator
+        existing = UnitCoordinator.query.filter_by(unit_id=unit_id, user_id=coordinator_id).first()
+        if existing:
+            return jsonify({'success': False, 'error': 'User is already a coordinator for this unit'}), 400
+        
+        # Add coordinator
+        unit_coordinator = UnitCoordinator(unit_id=unit_id, user_id=coordinator_id)
+        db.session.add(unit_coordinator)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{coordinator.full_name} has been added as a coordinator for {unit.unit_code}',
+            'coordinator': {
+                'id': coordinator.id,
+                'name': coordinator.full_name,
+                'email': coordinator.email
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@admin_bp.route('/units/<int:unit_id>/remove-coordinator/<int:coordinator_id>', methods=['DELETE'])
+@admin_required
+def remove_unit_coordinator_admin(unit_id, coordinator_id):
+    """Remove a coordinator from a unit (admin endpoint)"""
+    try:
+        # Verify unit exists
+        unit = Unit.query.get(unit_id)
+        if not unit:
+            return jsonify({'success': False, 'error': 'Unit not found'}), 404
+        
+        # Find and remove coordinator
+        unit_coordinator = UnitCoordinator.query.filter_by(unit_id=unit_id, user_id=coordinator_id).first()
+        if not unit_coordinator:
+            return jsonify({'success': False, 'error': 'Coordinator not found for this unit'}), 404
+        
+        coordinator = User.query.get(coordinator_id)
+        coordinator_name = coordinator.full_name if coordinator else 'Unknown'
+        
+        db.session.delete(unit_coordinator)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{coordinator_name} has been removed as a coordinator for {unit.unit_code}'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@admin_bp.route('/search-coordinators', methods=['GET'])
+@admin_required
+def search_coordinators_admin():
+    """Search for unit coordinators and admins by email"""
+    email_query = request.args.get('email', '').strip().lower()
+    
+    if not email_query or len(email_query) < 3:
+        return jsonify({
+            "ok": True,
+            "coordinators": []
+        })
+    
+    # Search for users with UNIT_COORDINATOR or ADMIN role
+    coordinators = (
+        db.session.query(User)
+        .filter(
+            User.email.ilike(f'%{email_query}%'),
+            User.role.in_([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+        )
+        .limit(10)
+        .all()
+    )
+    
+    results = [{
+        'id': uc.id,
+        'email': uc.email,
+        'name': uc.full_name
+    } for uc in coordinators]
+    
+    return jsonify({
+        "ok": True,
+        "coordinators": results
+    })
 

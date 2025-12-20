@@ -214,6 +214,24 @@ class UnitFacilitator(db.Model):
         return f'<UnitFacilitator unit={self.unit_id} user={self.user_id}>'
 
 
+class UnitCoordinator(db.Model):
+    __tablename__ = "unit_coordinator"
+
+    id = db.Column(db.Integer, primary_key=True)
+    unit_id = db.Column(db.Integer, db.ForeignKey('unit.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    unit = db.relationship('Unit', backref=db.backref('unit_coordinators', cascade='all, delete-orphan', lazy=True))
+    user = db.relationship('User', backref=db.backref('coordinated_units', lazy=True))
+
+    __table_args__ = (
+        db.UniqueConstraint('unit_id', 'user_id', name='uq_coordinator_per_unit'),
+    )
+
+    def __repr__(self):
+        return f'<UnitCoordinator unit={self.unit_id} user={self.user_id}>'
+
 
 # Availability model deprecated and removed. Use Unavailability entries (date-based blocks)
 

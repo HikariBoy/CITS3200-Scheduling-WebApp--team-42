@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tab switching functionality
   const tabs = document.querySelectorAll('.admin-tab');
   const facilitatorManagement = document.querySelector('.facilitator-management');
+  const unitsManagement = document.querySelector('.units-management');
   const unitStatusCard = document.querySelector('.unit-status-card');
   const welcomeBanner = document.querySelector('.admin-welcome-banner');
 
@@ -28,13 +29,23 @@ document.addEventListener('DOMContentLoaded', () => {
       if (employeesTab) employeesTab.classList.add('active');
       if (welcomeBanner) welcomeBanner.style.display = 'none';
       if (unitStatusCard) unitStatusCard.style.display = 'none';
+      if (unitsManagement) unitsManagement.style.display = 'none';
       if (facilitatorManagement) facilitatorManagement.style.display = 'block';
       console.log('Users tab activated');
+    } else if (tabName === 'units') {
+      const unitsTab = document.querySelector('.admin-tab[data-tab="units"]');
+      if (unitsTab) unitsTab.classList.add('active');
+      if (welcomeBanner) welcomeBanner.style.display = 'none';
+      if (unitStatusCard) unitStatusCard.style.display = 'none';
+      if (facilitatorManagement) facilitatorManagement.style.display = 'none';
+      if (unitsManagement) unitsManagement.style.display = 'block';
+      console.log('Units tab activated');
     } else {
       const dashboardTab = document.querySelector('.admin-tab[data-tab="dashboard"]');
       if (dashboardTab) dashboardTab.classList.add('active');
       if (welcomeBanner) welcomeBanner.style.display = 'block';
       if (unitStatusCard) unitStatusCard.style.display = 'block';
+      if (unitsManagement) unitsManagement.style.display = 'none';
       if (facilitatorManagement) facilitatorManagement.style.display = 'none';
       console.log('Dashboard tab activated');
     }
@@ -47,6 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const activeTab = urlParams.get('tab');
     if (activeTab === 'employees') {
       showTab('employees');
+    } else if (activeTab === 'units') {
+      showTab('units');
     } else {
       showTab('dashboard');
     }
@@ -287,12 +300,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let matchesPosition = true;
       if (positionValue !== '') {
+        // Get the actual role from data-role attribute for accurate filtering
+        const roleAttribute = card.querySelector('.badge-position')?.getAttribute('data-role') || '';
+        const normalizedRole = roleAttribute.toLowerCase();
+        
         if (positionValue === 'admin') {
-          matchesPosition = positionBadge.includes('admin');
+          matchesPosition = normalizedRole === 'admin';
         } else if (positionValue === 'facilitator') {
-          matchesPosition = positionBadge.includes('facilitator');
+          matchesPosition = normalizedRole === 'facilitator';
         } else if (positionValue === 'unit_coordinator') {
-          matchesPosition = positionBadge.includes('unit') && positionBadge.includes('coordinator');
+          matchesPosition = normalizedRole === 'unit_coordinator';
         }
       }
 
@@ -734,3 +751,262 @@ async function resendSetupEmailAdmin(userId, email) {
     alert('❌ An error occurred while sending the email. Please try again.');
   }
 }
+
+// Units tab functionality
+let coordinatorSearchTimeout;
+let selectedCoordinatorId = null;
+
+// Unit filtering - initialize when DOM is ready
+function initializeUnitFilters() {
+  const unitSearchInput = document.getElementById('unitSearch');
+  const yearFilter = document.getElementById('yearFilter');
+  const semesterFilter = document.getElementById('semesterFilter');
+  const unitStatusFilter = document.getElementById('unitStatusFilter');
+
+  function filterUnits() {
+    const searchTerm = (unitSearchInput?.value || '').toLowerCase();
+    const yearValue = yearFilter?.value || '';
+    const semesterValue = semesterFilter?.value || '';
+    const statusValue = unitStatusFilter?.value || '';
+
+    // Select unit cards by data-unit-id attribute (units tab cards)
+    // Only filter cards that are within the units management section
+    const unitsManagement = document.getElementById('unitsManagement');
+    if (!unitsManagement) return;
+    
+    const unitCards = unitsManagement.querySelectorAll('[data-unit-id]');
+    let visibleCount = 0;
+
+    unitCards.forEach(card => {
+      const unitName = card.querySelector('.facilitator-name')?.textContent.toLowerCase() || '';
+      const unitYear = card.getAttribute('data-year') || '';
+      const unitSemester = card.getAttribute('data-semester') || '';
+      const unitStatus = card.getAttribute('data-status') || '';
+
+      const matchesSearch = !searchTerm || unitName.includes(searchTerm);
+      const matchesYear = !yearValue || unitYear === yearValue;
+      const matchesSemester = !semesterValue || unitSemester === semesterValue;
+      const matchesStatus = !statusValue || unitStatus === statusValue;
+
+      if (matchesSearch && matchesYear && matchesSemester && matchesStatus) {
+        card.style.display = 'flex';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    const resultsCount = document.getElementById('unitsResultsCount');
+    if (resultsCount) {
+      resultsCount.textContent = `Showing ${visibleCount} units`;
+    }
+  }
+
+  if (unitSearchInput) unitSearchInput.addEventListener('input', filterUnits);
+  if (yearFilter) yearFilter.addEventListener('change', filterUnits);
+  if (semesterFilter) semesterFilter.addEventListener('change', filterUnits);
+  if (unitStatusFilter) unitStatusFilter.addEventListener('change', filterUnits);
+}
+
+// Initialize filters when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeUnitFilters);
+} else {
+  initializeUnitFilters();
+}
+
+// Coordinator management
+function openAddCoordinatorModal(unitId) {
+  const modal = document.getElementById('addCoordinatorModal');
+  const unitIdInput = document.getElementById('coordinatorUnitId');
+  if (modal && unitIdInput) {
+    unitIdInput.value = unitId;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    selectedCoordinatorId = null;
+    document.getElementById('coordinatorSearch').value = '';
+    document.getElementById('coordinatorSearchResults').style.display = 'none';
+    document.getElementById('addCoordinatorBtn').disabled = true;
+  }
+}
+
+function closeCoordinatorModal() {
+  const modal = document.getElementById('addCoordinatorModal');
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto';
+    selectedCoordinatorId = null;
+    document.getElementById('coordinatorSearch').value = '';
+    document.getElementById('coordinatorSearchResults').style.display = 'none';
+  }
+}
+
+// Coordinator search
+const coordinatorSearchInput = document.getElementById('coordinatorSearch');
+if (coordinatorSearchInput) {
+  coordinatorSearchInput.addEventListener('input', (e) => {
+    const query = e.target.value.trim();
+    const resultsDiv = document.getElementById('coordinatorSearchResults');
+    
+    clearTimeout(coordinatorSearchTimeout);
+    
+    if (query.length < 3) {
+      resultsDiv.style.display = 'none';
+      selectedCoordinatorId = null;
+      document.getElementById('addCoordinatorBtn').disabled = true;
+      return;
+    }
+    
+    coordinatorSearchTimeout = setTimeout(async () => {
+      try {
+        const response = await fetch(`/admin/search-coordinators?email=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (data.ok && data.coordinators && data.coordinators.length > 0) {
+          resultsDiv.innerHTML = '';
+          data.coordinators.forEach(coord => {
+            const item = document.createElement('div');
+            item.innerHTML = `<strong>${coord.name}</strong><small>${coord.email}</small>`;
+            item.addEventListener('click', () => {
+              selectedCoordinatorId = coord.id;
+              coordinatorSearchInput.value = coord.email;
+              resultsDiv.style.display = 'none';
+              document.getElementById('addCoordinatorBtn').disabled = false;
+            });
+            item.addEventListener('mouseenter', () => {
+              item.style.background = '#f9fafb';
+              item.style.paddingLeft = '20px';
+            });
+            item.addEventListener('mouseleave', () => {
+              item.style.background = '';
+              item.style.paddingLeft = '';
+            });
+            resultsDiv.appendChild(item);
+          });
+          resultsDiv.style.display = 'block';
+        } else {
+          resultsDiv.innerHTML = '<div>No coordinators found</div>';
+          resultsDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error searching coordinators:', error);
+      }
+    }, 300);
+  });
+}
+
+// Add coordinator form submission
+const addCoordinatorForm = document.getElementById('addCoordinatorForm');
+if (addCoordinatorForm) {
+  addCoordinatorForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const unitId = document.getElementById('coordinatorUnitId').value;
+    if (!selectedCoordinatorId || !unitId) {
+      alert('Please select a coordinator');
+      return;
+    }
+    
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const response = await fetch(`/admin/units/${unitId}/add-coordinator`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ coordinator_id: selectedCoordinatorId })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(result.message);
+        closeCoordinatorModal();
+        location.reload(); // Reload to show updated coordinators
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error adding coordinator:', error);
+      alert('An error occurred while adding the coordinator. Please try again.');
+    }
+  });
+}
+
+// Remove coordinator
+async function removeCoordinator(unitId, coordinatorId, coordinatorName) {
+  if (!confirm(`Remove ${coordinatorName} as a coordinator for this unit?`)) {
+    return;
+  }
+  
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const response = await fetch(`/admin/units/${unitId}/remove-coordinator/${coordinatorId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      alert(result.message);
+      location.reload(); // Reload to show updated coordinators
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Error removing coordinator:', error);
+    alert('An error occurred while removing the coordinator. Please try again.');
+  }
+}
+
+// Close coordinator modal handlers
+const closeCoordinatorModalBtn = document.getElementById('closeCoordinatorModal');
+const cancelCoordinatorBtn = document.getElementById('cancelCoordinatorBtn');
+const coordinatorModal = document.getElementById('addCoordinatorModal');
+
+if (closeCoordinatorModalBtn) {
+  closeCoordinatorModalBtn.addEventListener('click', closeCoordinatorModal);
+}
+
+if (cancelCoordinatorBtn) {
+  cancelCoordinatorBtn.addEventListener('click', closeCoordinatorModal);
+}
+
+if (coordinatorModal) {
+  coordinatorModal.addEventListener('click', (e) => {
+    if (e.target === coordinatorModal) {
+      closeCoordinatorModal();
+    }
+  });
+}
+
+// Make functions globally available
+window.openAddCoordinatorModal = openAddCoordinatorModal;
+window.removeCoordinator = removeCoordinator;
+
+// Unit dropdown toggle
+function toggleUnitDropdown(unitId) {
+  const dropdown = document.getElementById(`unit-dropdown-${unitId}`);
+  const allDropdowns = document.querySelectorAll('.dropdown-menu');
+  
+  // Close all other dropdowns
+  allDropdowns.forEach(d => {
+    if (d.id !== `unit-dropdown-${unitId}`) {
+      d.style.display = 'none';
+    }
+  });
+  
+  // Toggle current dropdown
+  if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+    dropdown.style.display = 'block';
+  } else {
+    dropdown.style.display = 'none';
+  }
+}
+
+window.toggleUnitDropdown = toggleUnitDropdown;

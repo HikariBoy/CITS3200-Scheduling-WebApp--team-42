@@ -364,6 +364,15 @@ except Exception as e:
     print(f"Database initialization error: {e}")
     raise
 
+# Flask-Migrate
+try:
+    from flask_migrate import Migrate
+    migrate = Migrate(app, db)
+    print("Flask-Migrate initialized successfully")
+except Exception as e:
+    print(f"Flask-Migrate initialization error: {e}")
+    raise
+
 # Register blueprints
 app.register_blueprint(admin_bp)
 app.register_blueprint(facilitator_bp)

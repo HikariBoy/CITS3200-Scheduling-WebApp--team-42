@@ -2795,6 +2795,11 @@ function resetCreateUnitWizard() {
   if (unitIdEl) unitIdEl.value = '';
   const setupFlagEl = document.getElementById('setup_complete');
   if (setupFlagEl) setupFlagEl.value = 'false';
+  
+  // Reset coordinators
+  if (typeof resetCoordinators === 'function') {
+    resetCoordinators();
+  }
 
   // 2) Custom Semester select visuals
   const semRoot = document.querySelector('.select[data-name="semester"]');
@@ -7508,3 +7513,233 @@ function getAutoAssignWeights() {
   // Return defaults if validation failed or no saved weights
   return defaults;
 }
+
+// ===== Coordinator Management =====
+let coordinatorList = []; // Store added coordinators: [{id, email, full_name, role}]
+
+function initCoordinatorManagement() {
+  const emailInput = document.getElementById('coordinator-email-input');
+  const addBtn = document.getElementById('add-coordinator-btn');
+  const searchResults = document.getElementById('coordinator-search-results');
+  
+  if (!emailInput || !addBtn) return;
+  
+  let searchTimeout;
+  
+  // Search as user types
+  emailInput.addEventListener('input', function() {
+    const query = this.value.trim().toLowerCase();
+    
+    clearTimeout(searchTimeout);
+    
+    if (query.length < 3) {
+      searchResults.classList.add('hidden');
+      return;
+    }
+    
+    searchTimeout = setTimeout(() => {
+      searchCoordinators(query);
+    }, 300);
+  });
+  
+  // Add coordinator on button click or Enter key
+  addBtn.addEventListener('click', function() {
+    const email = emailInput.value.trim();
+    if (email) {
+      addCoordinatorByEmail(email);
+    }
+  });
+  
+  emailInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const email = emailInput.value.trim();
+      if (email) {
+        addCoordinatorByEmail(email);
+      }
+    }
+  });
+  
+  // Close search results when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!emailInput.contains(e.target) && !searchResults.contains(e.target)) {
+      searchResults.classList.add('hidden');
+    }
+  });
+}
+
+function searchCoordinators(query) {
+  const searchResults = document.getElementById('coordinator-search-results');
+  if (!searchResults) return;
+  
+  fetch(`/unitcoordinator/search-coordinators?email=${encodeURIComponent(query)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.ok || !data.coordinators || data.coordinators.length === 0) {
+        searchResults.innerHTML = '<div class="text-sm text-gray-500 p-2">No coordinators found</div>';
+        searchResults.classList.remove('hidden');
+        return;
+      }
+      
+      const html = data.coordinators.map(coord => {
+        const alreadyAdded = coordinatorList.some(c => c.id === coord.id);
+        return `
+          <div class="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 ${alreadyAdded ? 'opacity-50' : ''}" 
+               data-id="${coord.id}" 
+               data-email="${coord.email}"
+               data-name="${coord.full_name || coord.email}"
+               ${alreadyAdded ? '' : 'onclick="selectCoordinatorFromSearch(this)"'}>
+            <div class="font-medium text-sm">${coord.full_name || coord.email}</div>
+            <div class="text-xs text-gray-500">${coord.email}</div>
+            ${alreadyAdded ? '<div class="text-xs text-amber-600 mt-1">Already added</div>' : ''}
+          </div>
+        `;
+      }).join('');
+      
+      searchResults.innerHTML = `<div class="border rounded-lg bg-white shadow-lg max-h-48 overflow-y-auto">${html}</div>`;
+      searchResults.classList.remove('hidden');
+    })
+    .catch(err => {
+      console.error('Error searching coordinators:', err);
+      searchResults.innerHTML = '<div class="text-sm text-red-500 p-2">Error searching coordinators</div>';
+      searchResults.classList.remove('hidden');
+    });
+}
+
+function selectCoordinatorFromSearch(element) {
+  const id = parseInt(element.getAttribute('data-id'));
+  const email = element.getAttribute('data-email');
+  const name = element.getAttribute('data-name');
+  
+  addCoordinator({ id, email, full_name: name });
+  
+  // Clear input and hide results
+  const emailInput = document.getElementById('coordinator-email-input');
+  if (emailInput) emailInput.value = '';
+  const searchResults = document.getElementById('coordinator-search-results');
+  if (searchResults) searchResults.classList.add('hidden');
+}
+
+function addCoordinatorByEmail(email) {
+  // First try to find in search results
+  const searchResults = document.getElementById('coordinator-search-results');
+  if (searchResults && !searchResults.classList.contains('hidden')) {
+    const match = searchResults.querySelector(`[data-email="${email.toLowerCase()}"]`);
+    if (match) {
+      selectCoordinatorFromSearch(match);
+      return;
+    }
+  }
+  
+  // If not in results, search for it
+  fetch(`/unitcoordinator/search-coordinators?email=${encodeURIComponent(email)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.ok && data.coordinators && data.coordinators.length > 0) {
+        const coord = data.coordinators.find(c => c.email.toLowerCase() === email.toLowerCase());
+        if (coord) {
+          addCoordinator(coord);
+          const emailInput = document.getElementById('coordinator-email-input');
+          if (emailInput) emailInput.value = '';
+        } else {
+          alert('Coordinator not found. Please ensure the email belongs to a Unit Coordinator or Admin.');
+        }
+      } else {
+        alert('Coordinator not found. Please ensure the email belongs to a Unit Coordinator or Admin.');
+      }
+    })
+    .catch(err => {
+      console.error('Error adding coordinator:', err);
+      alert('Error adding coordinator. Please try again.');
+    });
+}
+
+function addCoordinator(coordinator) {
+  // Check if already added
+  if (coordinatorList.some(c => c.id === coordinator.id)) {
+    return;
+  }
+  
+  coordinatorList.push(coordinator);
+  updateCoordinatorsList();
+  updateCoordinatorsHiddenInput();
+}
+
+function removeCoordinator(id) {
+  coordinatorList = coordinatorList.filter(c => c.id !== id);
+  updateCoordinatorsList();
+  updateCoordinatorsHiddenInput();
+}
+
+function updateCoordinatorsList() {
+  const listContainer = document.getElementById('coordinators-list');
+  if (!listContainer) return;
+  
+  if (coordinatorList.length === 0) {
+    listContainer.innerHTML = '<div class="text-sm text-gray-500 italic">No additional coordinators added</div>';
+    return;
+  }
+  
+  const html = coordinatorList.map(coord => `
+    <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg border">
+      <div>
+        <div class="font-medium text-sm">${coord.full_name || coord.email}</div>
+        <div class="text-xs text-gray-500">${coord.email}</div>
+      </div>
+      <button 
+        type="button" 
+        onclick="removeCoordinator(${coord.id})"
+        class="text-red-600 hover:text-red-800 text-sm font-medium"
+        aria-label="Remove coordinator">
+        Remove
+      </button>
+    </div>
+  `).join('');
+  
+  listContainer.innerHTML = html;
+}
+
+function updateCoordinatorsHiddenInput() {
+  const hiddenInput = document.getElementById('additional_coordinators');
+  if (hiddenInput) {
+    const ids = coordinatorList.map(c => c.id);
+    hiddenInput.value = JSON.stringify(ids);
+  }
+}
+
+function resetCoordinators() {
+  coordinatorList = [];
+  updateCoordinatorsList();
+  updateCoordinatorsHiddenInput();
+  const emailInput = document.getElementById('coordinator-email-input');
+  if (emailInput) emailInput.value = '';
+  const searchResults = document.getElementById('coordinator-search-results');
+  if (searchResults) searchResults.classList.add('hidden');
+}
+
+// Initialize coordinator management when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  initCoordinatorManagement();
+  
+  // Reset coordinators when modal opens
+  const modal = document.getElementById('createUnitModal');
+  if (modal) {
+    const observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          if (!modal.classList.contains('hidden')) {
+            resetCoordinators();
+          }
+        }
+      });
+    });
+    observer.observe(modal, { attributes: true });
+  }
+});
+
+// Also reset in resetCreateUnitWizard
+const originalResetWizard = resetCreateUnitWizard;
+resetCreateUnitWizard = function() {
+  originalResetWizard();
+  resetCoordinators();
+};
