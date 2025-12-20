@@ -4188,6 +4188,68 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
         return jsonify({"ok": False, "error": f"Failed to assign facilitators: {str(e)}"}), 500
 
 
+@unitcoordinator_bp.delete("/units/<int:unit_id>/sessions/<int:session_id>")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def delete_unit_session(unit_id: int, session_id: int):
+    """Delete a session and unassign all facilitators."""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+    
+    try:
+        # Verify session belongs to this unit
+        session = (
+            db.session.query(Session)
+            .join(Module, Session.module_id == Module.id)
+            .filter(Session.id == session_id)
+            .filter(Module.unit_id == unit_id)
+            .first()
+        )
+        
+        if not session:
+            return jsonify({"ok": False, "error": "Session not found"}), 404
+        
+        # Store module_id before deleting session
+        module_id = session.module_id
+        
+        # Delete all assignments for this session (cascade will handle this, but explicit is better)
+        Assignment.query.filter_by(session_id=session_id).delete()
+        
+        # Delete the session
+        db.session.delete(session)
+        db.session.flush()
+        
+        # Check if module has any remaining sessions
+        remaining_sessions = Session.query.filter_by(module_id=module_id).count()
+        
+        message = "Session deleted successfully"
+        
+        if remaining_sessions == 0:
+            # No more sessions for this module - delete the module and its skills
+            module = Module.query.get(module_id)
+            if module:
+                # Delete all skill declarations for this module
+                from models import FacilitatorSkill
+                FacilitatorSkill.query.filter_by(module_id=module_id).delete()
+                
+                # Delete the module
+                db.session.delete(module)
+                message = "Session deleted successfully. Module had no remaining sessions and was also deleted (including skill declarations)."
+        
+        db.session.commit()
+        
+        return jsonify({
+            "ok": True,
+            "message": message
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Failed to delete session: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.post("/units/<int:unit_id>/publish")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
@@ -4443,6 +4505,31 @@ def publish_schedule(unit_id: int):
         return jsonify({"ok": False, "error": f"Failed to publish schedule: {str(e)}"}), 500
 
 
+@unitcoordinator_bp.get("/units/<int:unit_id>/modules")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def get_unit_modules(unit_id: int):
+    """Get all modules for a unit."""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+    
+    try:
+        modules = Module.query.filter_by(unit_id=unit_id).all()
+        
+        return jsonify({
+            "ok": True,
+            "modules": [{
+                "id": m.id,
+                "name": m.module_name,
+                "session_type": m.module_type
+            } for m in modules]
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Failed to fetch modules: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.post("/units/<int:unit_id>/sessions/manual")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
@@ -4455,15 +4542,39 @@ def create_manual_session(unit_id: int):
     
     try:
         data = request.get_json()
+        from datetime import datetime
         
-        # Validate required fields
-        required_fields = ['name', 'date', 'module_type', 'start_time', 'end_time', 'location']
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({"ok": False, "error": f"Missing required field: {field}"}), 400
+        # Check if using existing module or creating new
+        if data.get('existing_module_id'):
+            # Use existing module
+            module = Module.query.get(data['existing_module_id'])
+            if not module or module.unit_id != unit_id:
+                return jsonify({"ok": False, "error": "Invalid module selected"}), 400
+            
+            # Validate required fields for existing module
+            required_fields = ['date', 'start_time', 'end_time', 'location']
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({"ok": False, "error": f"Missing required field: {field}"}), 400
+        else:
+            # Create new module
+            required_fields = ['name', 'date', 'module_type', 'start_time', 'end_time', 'location']
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({"ok": False, "error": f"Missing required field: {field}"}), 400
+            
+            # Create a module with the session name
+            module = Module.query.filter_by(unit_id=unit_id, module_name=data['name']).first()
+            if not module:
+                module = Module(
+                    unit_id=unit_id,
+                    module_name=data['name'],
+                    module_type=data['module_type']
+                )
+                db.session.add(module)
+                db.session.flush()  # Get the ID
         
         # Parse datetime
-        from datetime import datetime
         session_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         start_time = datetime.strptime(f"{data['date']} {data['start_time']}", '%Y-%m-%d %H:%M')
         end_time = datetime.strptime(f"{data['date']} {data['end_time']}", '%Y-%m-%d %H:%M')
@@ -4472,21 +4583,10 @@ def create_manual_session(unit_id: int):
         if start_time >= end_time:
             return jsonify({"ok": False, "error": "End time must be after start time"}), 400
         
-        # Create a module with the session name
-        module = Module.query.filter_by(unit_id=unit_id, module_name=data['name']).first()
-        if not module:
-            module = Module(
-                unit_id=unit_id,
-                module_name=data['name'],
-                module_type=data['module_type']
-            )
-            db.session.add(module)
-            db.session.flush()  # Get the ID
-        
         # Create session
         session = Session(
             module_id=module.id,
-            session_type=data['module_type'],
+            session_type=module.module_type,
             start_time=start_time,
             end_time=end_time,
             location=data['location'],

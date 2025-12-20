@@ -6156,7 +6156,12 @@ function openCreateSessionModal(selectedDate = null) {
   
   document.getElementById('session-date').value = dateToSet;
   
-  // Show modal
+  // Load existing modules
+  loadExistingModules();
+  
+  // Show modal with existing module selected by default
+  toggleModuleSelection('existing');
+  
   document.getElementById('create-session-modal').style.display = 'flex';
 }
 
@@ -6171,21 +6176,91 @@ function closeCreateSessionModal() {
   document.getElementById('session-end-time').value = '';
   document.getElementById('session-location').value = '';
   document.getElementById('session-description').value = '';
+  document.getElementById('existing-module-select').value = '';
+}
+
+// Toggle between existing module and new module
+function toggleModuleSelection(mode) {
+  const existingSection = document.getElementById('existing-module-section');
+  const newSection = document.getElementById('new-module-section');
+  const existingBtn = document.getElementById('use-existing-module-btn');
+  const newBtn = document.getElementById('create-new-module-btn');
+  
+  if (mode === 'existing') {
+    existingSection.style.display = 'block';
+    newSection.style.display = 'none';
+    existingBtn.style.background = '#4f46e5';
+    existingBtn.style.color = 'white';
+    existingBtn.style.borderColor = '#4f46e5';
+    newBtn.style.background = 'white';
+    newBtn.style.color = '#6b7280';
+    newBtn.style.borderColor = '#e5e7eb';
+    
+    // Make existing module required, new module optional
+    document.getElementById('existing-module-select').required = true;
+    document.getElementById('session-name').required = false;
+    document.getElementById('session-module').required = false;
+  } else {
+    existingSection.style.display = 'none';
+    newSection.style.display = 'block';
+    newBtn.style.background = '#4f46e5';
+    newBtn.style.color = 'white';
+    newBtn.style.borderColor = '#4f46e5';
+    existingBtn.style.background = 'white';
+    existingBtn.style.color = '#6b7280';
+    existingBtn.style.borderColor = '#e5e7eb';
+    
+    // Make new module required, existing module optional
+    document.getElementById('existing-module-select').required = false;
+    document.getElementById('session-name').required = true;
+    document.getElementById('session-module').required = true;
+  }
+}
+
+// Load existing modules for the current unit
+async function loadExistingModules() {
+  const unitId = getUnitId();
+  if (!unitId) return;
+  
+  try {
+    const response = await fetch(`/unitcoordinator/units/${unitId}/modules`);
+    const result = await response.json();
+    
+    const select = document.getElementById('existing-module-select');
+    select.innerHTML = '<option value="">Select a module...</option>';
+    
+    if (result.modules && result.modules.length > 0) {
+      result.modules.forEach(module => {
+        const option = document.createElement('option');
+        option.value = module.id;
+        option.textContent = `${module.name} (${module.session_type})`;
+        select.appendChild(option);
+      });
+    } else {
+      select.innerHTML = '<option value="">No modules available - create a new one</option>';
+    }
+  } catch (error) {
+    console.error('Error loading modules:', error);
+    document.getElementById('existing-module-select').innerHTML = '<option value="">Error loading modules</option>';
+  }
 }
 
 function validateSessionForm() {
-  const requiredFields = [
-    'session-name',
-    'session-date', 
-    'session-module',
+  let isValid = true;
+  
+  // Check which mode we're in
+  const existingSection = document.getElementById('existing-module-section');
+  const isExistingMode = existingSection.style.display !== 'none';
+  
+  // Common required fields
+  const commonFields = [
+    'session-date',
     'session-start-time',
     'session-end-time',
     'session-location'
   ];
   
-  let isValid = true;
-  
-  requiredFields.forEach(fieldId => {
+  commonFields.forEach(fieldId => {
     const field = document.getElementById(fieldId);
     if (!field.value.trim()) {
       field.style.borderColor = '#ef4444';
@@ -6194,6 +6269,35 @@ function validateSessionForm() {
       field.style.borderColor = '#d1d5db';
     }
   });
+  
+  // Mode-specific validation
+  if (isExistingMode) {
+    const moduleSelect = document.getElementById('existing-module-select');
+    if (!moduleSelect.value) {
+      moduleSelect.style.borderColor = '#ef4444';
+      showSimpleNotification('Please select a module', 'error');
+      isValid = false;
+    } else {
+      moduleSelect.style.borderColor = '#d1d5db';
+    }
+  } else {
+    const nameField = document.getElementById('session-name');
+    const typeField = document.getElementById('session-module');
+    
+    if (!nameField.value.trim()) {
+      nameField.style.borderColor = '#ef4444';
+      isValid = false;
+    } else {
+      nameField.style.borderColor = '#d1d5db';
+    }
+    
+    if (!typeField.value) {
+      typeField.style.borderColor = '#ef4444';
+      isValid = false;
+    } else {
+      typeField.style.borderColor = '#d1d5db';
+    }
+  }
   
   // Validate time range
   const startTime = document.getElementById('session-start-time').value;
@@ -6208,20 +6312,48 @@ function validateSessionForm() {
   return isValid;
 }
 
+// Prevent duplicate submissions
+let isCreatingSession = false;
+
 async function createSession() {
   if (!validateSessionForm()) {
     return;
   }
   
+  // Prevent duplicate submissions
+  if (isCreatingSession) {
+    console.log('Session creation already in progress, ignoring duplicate call');
+    return;
+  }
+  
+  isCreatingSession = true;
+  
+  // Disable the submit button
+  const submitBtn = document.getElementById('create-session-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+  }
+  
+  // Check which mode we're in
+  const existingSection = document.getElementById('existing-module-section');
+  const isExistingMode = existingSection.style.display !== 'none';
+  
   const sessionData = {
-    name: document.getElementById('session-name').value.trim(),
     date: document.getElementById('session-date').value,
-    module_type: document.getElementById('session-module').value,
     start_time: document.getElementById('session-start-time').value,
     end_time: document.getElementById('session-end-time').value,
     location: document.getElementById('session-location').value.trim(),
     description: document.getElementById('session-description').value.trim()
   };
+  
+  // Add mode-specific data
+  if (isExistingMode) {
+    sessionData.existing_module_id = document.getElementById('existing-module-select').value;
+  } else {
+    sessionData.name = document.getElementById('session-name').value.trim();
+    sessionData.module_type = document.getElementById('session-module').value;
+  }
   
   try {
     // Get current unit ID
@@ -6230,6 +6362,11 @@ async function createSession() {
     
     if (!currentUnitId) {
       showSimpleNotification('No unit selected', 'error');
+      isCreatingSession = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Session';
+      }
       return;
     }
     
@@ -6263,6 +6400,13 @@ async function createSession() {
   } catch (error) {
     console.error('Error creating session:', error);
     showSimpleNotification(`Error creating session: ${error.message}`, 'error');
+  } finally {
+    // Always reset the flag and button
+    isCreatingSession = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Session';
+    }
   }
 }
 
@@ -7009,6 +7153,9 @@ function openSessionDetailsModal(sessionData) {
   
   console.log('=== MODAL DEBUG END ===');
   
+  // Store session ID for delete function
+  modal.dataset.sessionId = sessionData.id;
+  
   modal.style.display = 'flex';
 }
 
@@ -7016,6 +7163,88 @@ function closeSessionDetailsModal() {
   const modal = document.getElementById('session-details-modal');
   if (modal) {
     modal.style.display = 'none';
+    delete modal.dataset.sessionId;
+  }
+}
+
+// Delete session function
+async function deleteSession() {
+  const modal = document.getElementById('session-details-modal');
+  const sessionId = modal?.dataset?.sessionId;
+  
+  console.log('Delete session called with ID:', sessionId);
+  
+  if (!sessionId) {
+    alert('Error: No session selected');
+    return;
+  }
+  
+  // Check if it's a temporary session
+  if (String(sessionId).startsWith('temp-')) {
+    alert('Cannot delete unsaved sessions. Please save the session first or close without saving.');
+    return;
+  }
+  
+  // Confirm deletion
+  if (!confirm('Are you sure you want to delete this session? This will unassign all facilitators and cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const unitId = getUnitId();
+    if (!unitId) {
+      alert('Error: No unit selected');
+      return;
+    }
+    
+    console.log('Deleting session:', { unitId, sessionId });
+    
+    const response = await fetch(`/unitcoordinator/units/${unitId}/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN
+      }
+    });
+    
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const errorText = await response.text();
+      console.error('Non-JSON response received. Status:', response.status);
+      console.error('Response body:', errorText);
+      console.error('Request URL was:', `/unitcoordinator/units/${unitId}/sessions/${sessionId}`);
+      throw new Error(`Server error (${response.status}). Check console for details.`);
+    }
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to delete session');
+    }
+    
+    // Close modal
+    closeSessionDetailsModal();
+    
+    // Show success message
+    showSimpleNotification(result.message || 'Session deleted successfully', 'success');
+    
+    // Refresh the calendar/schedule view
+    if (typeof loadScheduleSessions === 'function') {
+      await loadScheduleSessions();
+    }
+    // Also refresh list view if it exists
+    if (typeof loadListSessionData === 'function') {
+      await loadListSessionData();
+    }
+    // Refresh calendar if it exists
+    if (window.calendar && typeof window.calendar.refetchEvents === 'function') {
+      window.calendar.refetchEvents();
+    }
+    
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    alert('Error deleting session: ' + error.message);
   }
 }
 
