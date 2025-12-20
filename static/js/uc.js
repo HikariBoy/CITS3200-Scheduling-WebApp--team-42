@@ -7009,6 +7009,9 @@ function openSessionDetailsModal(sessionData) {
   
   console.log('=== MODAL DEBUG END ===');
   
+  // Store session ID for delete function
+  modal.dataset.sessionId = sessionData.id;
+  
   modal.style.display = 'flex';
 }
 
@@ -7016,6 +7019,58 @@ function closeSessionDetailsModal() {
   const modal = document.getElementById('session-details-modal');
   if (modal) {
     modal.style.display = 'none';
+    delete modal.dataset.sessionId;
+  }
+}
+
+// Delete session function
+async function deleteSession() {
+  const modal = document.getElementById('session-details-modal');
+  const sessionId = modal?.dataset?.sessionId;
+  
+  if (!sessionId) {
+    alert('Error: No session selected');
+    return;
+  }
+  
+  // Confirm deletion
+  if (!confirm('Are you sure you want to delete this session? This will unassign all facilitators and cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const unitId = getUnitId();
+    if (!unitId) {
+      alert('Error: No unit selected');
+      return;
+    }
+    
+    const response = await fetch(`/unitcoordinator/units/${unitId}/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.csrfToken
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to delete session');
+    }
+    
+    // Close modal
+    closeSessionDetailsModal();
+    
+    // Show success message
+    showSimpleNotification(result.message || 'Session deleted successfully', 'success');
+    
+    // Refresh the calendar/schedule view
+    await loadSessions();
+    
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    alert('Error deleting session: ' + error.message);
   }
 }
 

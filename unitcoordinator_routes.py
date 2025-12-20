@@ -4188,6 +4188,46 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
         return jsonify({"ok": False, "error": f"Failed to assign facilitators: {str(e)}"}), 500
 
 
+@unitcoordinator_bp.delete("/units/<int:unit_id>/sessions/<int:session_id>")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def delete_session(unit_id: int, session_id: int):
+    """Delete a session and unassign all facilitators."""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+    
+    try:
+        # Verify session belongs to this unit
+        session = (
+            db.session.query(Session)
+            .join(Module, Session.module_id == Module.id)
+            .filter(Session.id == session_id)
+            .filter(Module.unit_id == unit_id)
+            .first()
+        )
+        
+        if not session:
+            return jsonify({"ok": False, "error": "Session not found"}), 404
+        
+        # Delete all assignments for this session (cascade will handle this, but explicit is better)
+        Assignment.query.filter_by(session_id=session_id).delete()
+        
+        # Delete the session
+        db.session.delete(session)
+        db.session.commit()
+        
+        return jsonify({
+            "ok": True,
+            "message": "Session deleted successfully"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Failed to delete session: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.post("/units/<int:unit_id>/publish")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])

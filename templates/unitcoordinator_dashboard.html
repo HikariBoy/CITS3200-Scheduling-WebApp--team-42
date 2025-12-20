@@ -2458,7 +2458,11 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </div>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+      <button class="btn-danger" onclick="deleteSession()" style="background: #ef4444; color: white;">
+        <span class="material-icons" style="font-size: 18px; vertical-align: middle;">delete</span>
+        Delete Session
+      </button>
       <button class="btn-secondary" onclick="closeSessionDetailsModal()">Close</button>
     </div>
   </div>
