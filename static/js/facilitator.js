@@ -2824,15 +2824,26 @@ function saveUnavailability() {
         // Close modal
         modal.style.display = 'none';
         
-        // Show success message with optional warning
+        // Show success message with optional conflict warning
         let message = result.message || 'Unavailability saved successfully';
-        if (result.warning) {
+        let notificationType = 'success';
+        
+        if (result.conflicts && result.conflicts.length > 0) {
+            // Show conflicts in a more detailed way
+            notificationType = 'warning';
+            message = `⚠️ Unavailability saved, but you have ${result.conflicts.length} conflicting assignment(s):\n\n`;
+            result.conflicts.forEach(conflict => {
+                message += `• ${conflict.module_name} (${conflict.session_type}) - ${conflict.start_time} to ${conflict.end_time} at ${conflict.location}\n`;
+            });
+            message += `\nPlease contact your Unit Coordinator to resolve these conflicts.`;
+        } else if (result.warning) {
+            notificationType = 'warning';
             message += '\n\n' + result.warning;
         }
         
         // Use the notification system if available, otherwise fallback to alert
         if (typeof showNotification === 'function') {
-            showNotification(message, 'success');
+            showNotification(message, notificationType);
         } else {
             alert(message);
         }
