@@ -63,6 +63,9 @@ class Unit(db.Model):
     # CSV report persistence
     csv_report_filename = db.Column(db.String(255), nullable=True)  # Stores the temp file name
     csv_report_generated_at = db.Column(db.DateTime, nullable=True)  # When it was generated
+    
+    # Published assignments snapshot (JSON string: {facilitator_id: [session_ids]})
+    published_assignments_snapshot = db.Column(db.Text, nullable=True)
 
     creator = db.relationship("User", foreign_keys=[created_by], backref="created_units")
     unpublisher = db.relationship("User", foreign_keys=[unpublished_by], backref="unpublished_units")

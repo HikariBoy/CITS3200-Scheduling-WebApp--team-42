@@ -3720,23 +3720,21 @@ def publish_preview(unit_id: int):
                     facilitator_sessions[fid]['session_count'] += 1
                     facilitator_sessions[fid]['session_ids'].add(session.id)
         
-        # Check if schedule was previously published and get old assignments
+        # Check if schedule was previously published and get snapshot of old assignments
         previously_published_sessions = {}  # {facilitator_id: set(session_ids)}
-        if unit.schedule_status and unit.schedule_status.value == 'published':
-            # Get assignments from when schedule was last published
-            # We'll compare current assignments with what was there before
-            old_assignments = (
-                db.session.query(Assignment)
-                .join(Session, Assignment.session_id == Session.id)
-                .join(Module, Session.module_id == Module.id)
-                .filter(Module.unit_id == unit_id)
-                .all()
-            )
-            for assignment in old_assignments:
-                fid = assignment.facilitator_id
-                if fid not in previously_published_sessions:
-                    previously_published_sessions[fid] = set()
-                previously_published_sessions[fid].add(assignment.session_id)
+        if unit.schedule_status and unit.schedule_status.value == 'published' and unit.published_assignments_snapshot:
+            # Load the snapshot from when schedule was last published
+            import json
+            try:
+                snapshot = json.loads(unit.published_assignments_snapshot)
+                # Convert lists back to sets for comparison
+                previously_published_sessions = {
+                    int(fid): set(session_ids) 
+                    for fid, session_ids in snapshot.items()
+                }
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"Error loading published assignments snapshot: {e}")
+                previously_published_sessions = {}
         
         # Build facilitators list for frontend
         facilitators_list = []
@@ -4072,9 +4070,27 @@ def publish_schedule(unit_id: int):
         try:
             unit.schedule_status = ScheduleStatus.PUBLISHED
             unit.published_at = datetime.utcnow()
-        except Exception:
-            # If enum not available for any reason, silently continue; sessions are still published
-            pass
+            
+            # Save snapshot of current assignments for change detection on next publish
+            import json
+            assignments_snapshot = {}  # {facilitator_id: [session_ids]}
+            all_current_assignments = (
+                db.session.query(Assignment)
+                .join(Session, Assignment.session_id == Session.id)
+                .join(Module, Session.module_id == Module.id)
+                .filter(Module.unit_id == unit_id)
+                .all()
+            )
+            for assignment in all_current_assignments:
+                fid = str(assignment.facilitator_id)  # JSON keys must be strings
+                if fid not in assignments_snapshot:
+                    assignments_snapshot[fid] = []
+                assignments_snapshot[fid].append(assignment.session_id)
+            
+            unit.published_assignments_snapshot = json.dumps(assignments_snapshot)
+        except Exception as e:
+            print(f"Warning: Could not save assignments snapshot: {e}")
+            # Continue anyway - this is not critical
         
         db.session.commit()
         
