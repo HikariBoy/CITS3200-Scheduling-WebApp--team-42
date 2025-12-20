@@ -6312,9 +6312,27 @@ function validateSessionForm() {
   return isValid;
 }
 
+// Prevent duplicate submissions
+let isCreatingSession = false;
+
 async function createSession() {
   if (!validateSessionForm()) {
     return;
+  }
+  
+  // Prevent duplicate submissions
+  if (isCreatingSession) {
+    console.log('Session creation already in progress, ignoring duplicate call');
+    return;
+  }
+  
+  isCreatingSession = true;
+  
+  // Disable the submit button
+  const submitBtn = document.getElementById('create-session-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
   }
   
   // Check which mode we're in
@@ -6344,6 +6362,11 @@ async function createSession() {
     
     if (!currentUnitId) {
       showSimpleNotification('No unit selected', 'error');
+      isCreatingSession = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Session';
+      }
       return;
     }
     
@@ -6377,6 +6400,13 @@ async function createSession() {
   } catch (error) {
     console.error('Error creating session:', error);
     showSimpleNotification(`Error creating session: ${error.message}`, 'error');
+  } finally {
+    // Always reset the flag and button
+    isCreatingSession = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Session';
+    }
   }
 }
 

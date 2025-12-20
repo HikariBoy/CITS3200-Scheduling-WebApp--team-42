@@ -4211,16 +4211,38 @@ def delete_unit_session(unit_id: int, session_id: int):
         if not session:
             return jsonify({"ok": False, "error": "Session not found"}), 404
         
+        # Store module_id before deleting session
+        module_id = session.module_id
+        
         # Delete all assignments for this session (cascade will handle this, but explicit is better)
         Assignment.query.filter_by(session_id=session_id).delete()
         
         # Delete the session
         db.session.delete(session)
+        db.session.flush()
+        
+        # Check if module has any remaining sessions
+        remaining_sessions = Session.query.filter_by(module_id=module_id).count()
+        
+        message = "Session deleted successfully"
+        
+        if remaining_sessions == 0:
+            # No more sessions for this module - delete the module and its skills
+            module = Module.query.get(module_id)
+            if module:
+                # Delete all skill declarations for this module
+                from models import FacilitatorSkill
+                FacilitatorSkill.query.filter_by(module_id=module_id).delete()
+                
+                # Delete the module
+                db.session.delete(module)
+                message = "Session deleted successfully. Module had no remaining sessions and was also deleted (including skill declarations)."
+        
         db.session.commit()
         
         return jsonify({
             "ok": True,
-            "message": "Session deleted successfully"
+            "message": message
         })
         
     except Exception as e:
