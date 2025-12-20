@@ -789,7 +789,7 @@
 
         <!-- TABS -->
         <div class="mt-6 uc-tabs-wrap">
-          <nav class="uc-tabs uc-tabs--spread" role="tablist" aria-label="Unit sections" data-unit-id="{{ unit.id }}">
+          <nav class="uc-tabs uc-tabs--spread" role="tablist" aria-label="Unit sections" data-unit-id="{{ unit.id }}" data-unit-start-date="{{ unit.start_date.strftime('%Y-%m-%d') if unit.start_date else '' }}" data-unit-end-date="{{ unit.end_date.strftime('%Y-%m-%d') if unit.end_date else '' }}">
             <button type="button" role="tab" id="tab-dashboard" class="uc-tab is-active"
                     aria-selected="true" aria-controls="panel-dashboard" tabindex="0" data-tab="dashboard">
               <span class="material-icons" aria-hidden="true">bar_chart</span>
@@ -2518,6 +2518,19 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
               <option value="lecture">Lecture</option>
               <option value="other">Other</option>
             </select>
+          </div>
+          
+          <!-- Warning message for new module -->
+          <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 12px; margin-top: 15px; color: #92400e;">
+            <div style="display: flex; gap: 10px; align-items: flex-start;">
+              <span class="material-icons" style="color: #f59e0b; flex-shrink: 0; margin-top: 2px;">warning</span>
+              <div>
+                <strong>⚠️ New Module Warning</strong>
+                <p style="margin: 6px 0 0 0; font-size: 13px; line-height: 1.5;">
+                  Creating a new module means <strong>all facilitators must declare their skills</strong> for this module before auto-scheduling can work. Consider using an existing module if available to avoid this step.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
         

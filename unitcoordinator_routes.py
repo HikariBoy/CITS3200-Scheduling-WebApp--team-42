@@ -4583,6 +4583,13 @@ def create_manual_session(unit_id: int):
         if start_time >= end_time:
             return jsonify({"ok": False, "error": "End time must be after start time"}), 400
         
+        # Validate session date is within unit's date range
+        if unit.start_date and session_date < unit.start_date:
+            return jsonify({"ok": False, "error": f"Session date cannot be before unit start date ({unit.start_date.strftime('%Y-%m-%d')})"}), 400
+        
+        if unit.end_date and session_date > unit.end_date:
+            return jsonify({"ok": False, "error": f"Session date cannot be after unit end date ({unit.end_date.strftime('%Y-%m-%d')})"}), 400
+        
         # Create session
         session = Session(
             module_id=module.id,

@@ -6140,6 +6140,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Create Session Modal Functions
 function openCreateSessionModal(selectedDate = null) {
+  // Get unit date range from the tabs nav
+  const tabsNav = document.querySelector('.uc-tabs[data-unit-id]');
+  const unitStartDate = tabsNav ? tabsNav.getAttribute('data-unit-start-date') : null;
+  const unitEndDate = tabsNav ? tabsNav.getAttribute('data-unit-end-date') : null;
+  
   // Set the selected date or today's date as default
   let dateToSet;
   if (selectedDate) {
@@ -6155,6 +6160,11 @@ function openCreateSessionModal(selectedDate = null) {
   }
   
   document.getElementById('session-date').value = dateToSet;
+  
+  // Set date input constraints
+  const dateInput = document.getElementById('session-date');
+  if (unitStartDate) dateInput.min = unitStartDate;
+  if (unitEndDate) dateInput.max = unitEndDate;
   
   // Load existing modules
   loadExistingModules();
