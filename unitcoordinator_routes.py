@@ -3790,8 +3790,9 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
         data = request.get_json()
         facilitator_ids = data.get('facilitator_ids', [])
         
-        if not facilitator_ids:
-            return jsonify({"ok": False, "error": "No facilitators provided"}), 400
+        # Allow empty list to unassign all facilitators
+        # if not facilitator_ids:
+        #     return jsonify({"ok": False, "error": "No facilitators provided"}), 400
         
         # Verify session belongs to this unit
         session = (
@@ -3898,13 +3899,22 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
             db.session.add(assignment)
         
         # Update session status
-        session.status = 'assigned'
+        if len(facilitator_ids) > 0:
+            session.status = 'assigned'
+        else:
+            session.status = 'unassigned'
         
         db.session.commit()
         
+        # Return appropriate message
+        if len(facilitator_ids) == 0:
+            message = "All facilitators unassigned from session"
+        else:
+            message = f"Assigned {len(facilitator_ids)} facilitator{'s' if len(facilitator_ids) != 1 else ''} to session"
+        
         return jsonify({
             "ok": True,
-            "message": f"Assigned {len(facilitator_ids)} facilitators to session",
+            "message": message,
             "session_id": session_id
         })
         
