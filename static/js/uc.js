@@ -7059,15 +7059,18 @@ async function deleteSession() {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': window.csrfToken
+        'X-CSRFToken': window.CSRF_TOKEN
       }
     });
     
     // Check if response is JSON
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
-      console.error('Non-JSON response received:', await response.text());
-      throw new Error('Server returned an error. Please check if you have permission to delete this session.');
+      const errorText = await response.text();
+      console.error('Non-JSON response received. Status:', response.status);
+      console.error('Response body:', errorText);
+      console.error('Request URL was:', `/unitcoordinator/units/${unitId}/sessions/${sessionId}`);
+      throw new Error(`Server error (${response.status}). Check console for details.`);
     }
     
     const result = await response.json();
