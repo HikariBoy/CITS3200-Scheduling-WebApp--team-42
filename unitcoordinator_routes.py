@@ -1764,6 +1764,7 @@ def create_unit():
     
     # Handle additional coordinators
     additional_coordinators_str = request.form.get("additional_coordinators", "").strip()
+    additional_coordinators_to_notify = []
     if additional_coordinators_str:
         try:
             import json
@@ -1785,6 +1786,7 @@ def create_unit():
                                     unit_id=new_unit.id,
                                     user_id=coordinator_id
                                 )
+                                additional_coordinators_to_notify.append(coordinator_user)
                                 db.session.add(additional_uc)
                     except (ValueError, TypeError):
                         continue  # Skip invalid IDs
@@ -1794,6 +1796,17 @@ def create_unit():
     db.session.commit()
 
     # Create default module for new unit
+    # Send email notifications to additional coordinators
+    from email_service import send_coordinator_added_email
+    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    for coordinator_user in additional_coordinators_to_notify:
+        send_coordinator_added_email(
+            recipient_email=coordinator_user.email,
+            recipient_name=coordinator_user.full_name,
+            unit_code=new_unit.unit_code,
+            unit_name=new_unit.unit_name,
+            base_url=base_url
+        )
     _get_or_create_default_module(new_unit)
     
     # Send setup emails to newly created facilitators
