@@ -2520,7 +2520,7 @@ def add_single_facilitator(unit_id: int):
             except Exception as e:
                 print(f"❌ Failed to send unit addition email to {email}: {e}")
         
-        message = f"Facilitator {email} added successfully"
+        message = f"Facilitator {email} added successfully and notified via email"
         if is_new_user:
             message += " (new account created)"
         
@@ -2944,9 +2944,20 @@ def add_unit_coordinator(unit_id: int):
     
     try:
         db.session.commit()
+        
+        # Send email notification to the coordinator
+        from email_service import send_coordinator_added_email
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+        send_coordinator_added_email(
+            recipient_email=coordinator_user.email,
+            recipient_name=coordinator_user.full_name,
+            unit_code=unit.unit_code,
+            unit_name=unit.unit_name,
+            base_url=base_url
+        )
         return jsonify({
             "ok": True,
-            "message": f"Coordinator {email} added successfully",
+            "message": f"Coordinator {email} added successfully and notified via email",
             "coordinator": {
                 "id": coordinator_user.id,
                 "email": coordinator_user.email,
