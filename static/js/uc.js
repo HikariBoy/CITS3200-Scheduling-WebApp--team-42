@@ -7886,18 +7886,24 @@ function addCoordinatorByEmail(email) {
 function addCoordinator(coordinator) {
   // Check if already added
   if (coordinatorList.some(c => c.id === coordinator.id)) {
+    showNotification('This coordinator is already added', 'warning');
     return;
   }
   
   coordinatorList.push(coordinator);
   updateCoordinatorsList();
   updateCoordinatorsHiddenInput();
+  showNotification(`${coordinator.full_name || coordinator.email} added successfully`, 'success');
 }
 
 function removeCoordinator(id) {
+  const coordinator = coordinatorList.find(c => c.id === id);
   coordinatorList = coordinatorList.filter(c => c.id !== id);
   updateCoordinatorsList();
   updateCoordinatorsHiddenInput();
+  if (coordinator) {
+    showNotification(`${coordinator.full_name || coordinator.email} removed`, 'info');
+  }
 }
 
 function updateCoordinatorsList() {
