@@ -333,6 +333,7 @@ async function removeCoordinatorInEditModal(unitId, coordinatorId, coordinatorNa
   }
   
   try {
+    console.log('Removing coordinator:', { unitId, coordinatorId, coordinatorName });
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     const response = await fetch(`/unitcoordinator/units/${unitId}/coordinators/${coordinatorId}`, {
       method: 'DELETE',
@@ -342,17 +343,20 @@ async function removeCoordinatorInEditModal(unitId, coordinatorId, coordinatorNa
       }
     });
     
+    console.log('Response status:', response.status);
     const result = await response.json();
+    console.log('Response data:', result);
     
     if (result.ok) {
       showSimpleNotification('Coordinator removed successfully', 'success');
       loadCurrentCoordinatorsInEditModal(unitId);
     } else {
+      console.error('Remove failed:', result.error);
       showSimpleNotification(result.error || 'Failed to remove coordinator', 'error');
     }
   } catch (error) {
     console.error('Error removing coordinator:', error);
-    showSimpleNotification('An error occurred', 'error');
+    showSimpleNotification(`An error occurred: ${error.message}`, 'error');
   }
 }
 
