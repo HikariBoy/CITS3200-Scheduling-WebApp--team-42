@@ -43,7 +43,7 @@ def migrate_database():
             CREATE TABLE unavailability_new (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER NOT NULL,
-                unit_id INTEGER,  -- Now nullable!
+                unit_id INTEGER,  -- Now nullable for global unavailability!
                 date DATE NOT NULL,
                 start_time TIME,
                 end_time TIME,
@@ -57,8 +57,7 @@ def migrate_database():
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES user(id),
                 FOREIGN KEY (unit_id) REFERENCES unit(id),
-                FOREIGN KEY (source_session_id) REFERENCES session(id),
-                UNIQUE (user_id, date, start_time, end_time)
+                FOREIGN KEY (source_session_id) REFERENCES session(id)
             )
         """)
         
