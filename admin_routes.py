@@ -1583,7 +1583,9 @@ def update_facilitator_availability(facilitator_id):
             date = datetime.strptime(date_str, '%Y-%m-%d').date()
             unavailability = Unavailability(
                 user_id=facilitator_id,
-                date=date            )
+                unit_id=None,  # Global unavailability
+                date=date
+            )
             db.session.add(unavailability)
 
     db.session.commit()
@@ -1595,17 +1597,15 @@ def update_facilitator_availability(facilitator_id):
 @admin_bp.get('/unavailability')
 @admin_required
 def admin_list_unavailability():
-    """List unavailability across users. Filters: user_id, unit_id, start, end (YYYY-MM-DD)."""
+    """List GLOBAL unavailability across users. Filters: user_id, start, end (YYYY-MM-DD)."""
     user_id = request.args.get('user_id', type=int)
-    unit_id = request.args.get('unit_id', type=int)
     start = request.args.get('start')
     end = request.args.get('end')
 
-    q = Unavailability.query
+    # Query GLOBAL unavailability only (unit_id is always NULL now)
+    q = Unavailability.query.filter(Unavailability.unit_id.is_(None))
     if user_id:
         q = q.filter(Unavailability.user_id == user_id)
-    if unit_id:
-        q = q.filter(Unavailability.unit_id == unit_id)
     try:
         if start:
             start_d = datetime.strptime(start, '%Y-%m-%d').date()
@@ -1711,7 +1711,7 @@ def admin_create_unavailability():
     try:
         u = Unavailability(
             user_id=owner.id,
-            unit_id=unit.id if unit else None,
+            unit_id=None,  # Always NULL - global unavailability
             date=the_date,
             is_full_day=is_full_day,
             start_time=st,
