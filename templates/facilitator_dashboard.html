@@ -540,11 +540,10 @@
     <div class="unavailability-header">
       <div>
         <h2>My Unavailability</h2>
-        <p class="unavailability-subtitle">Set your unavailable days and times for <span id="unit-date-range-display">
-          {% if current_unit and current_unit.start_date and current_unit.end_date %}
-            {{ current_unit.start_date.strftime('%d/%m/%Y') }} - {{ current_unit.end_date.strftime('%d/%m/%Y') }}
-          {% else %}No date range{% endif %}
-        </span></p>
+        <p class="unavailability-subtitle">
+          <span class="material-icons" style="font-size: 16px; vertical-align: middle; color: #3b82f6;">info</span>
+          Your unavailability applies <strong>globally across all units</strong>. Set it once and it works everywhere!
+        </p>
       </div>
       <div class="unavailability-actions">
         <button id="available-all-days-btn" class="action-btn" style="background-color: #4CAF50; color: white; margin-right: 10px;">
@@ -608,12 +607,9 @@
       <div class="unavailability-summary-section">
         <div class="recent-unavailability-card">
           <div class="recent-unavailability-header">
-            <h3>Recent Unavailability</h3>
+            <h3>Global Unavailability</h3>
             <div style="display: flex; gap: 8px;">
-              <button id="copy-unavailability-btn" class="copy-unavailability-btn" title="Copy unavailability to another unit">
-                <span class="material-icons">content_copy</span>
-                Copy Unavailability to Another Unit
-              </button>
+              <!-- Copy button removed - unavailability is now global across all units -->
               <button id="delete-all-unavailabilities-btn" class="delete-all-btn" title="Delete All Unavailabilities">
                 <span class="material-icons">delete_sweep</span>
                 Delete All
