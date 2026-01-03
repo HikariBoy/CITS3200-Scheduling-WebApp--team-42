@@ -2590,6 +2590,7 @@ async function createUnitFinal() {
     
     console.log('📤 Submitting form to finalize unit and send emails...');
     console.log('📤 URL:', form.action);
+    console.log('📤 additional_coordinators value:', formData.get('additional_coordinators'));
     
     // Submit via fetch to ensure we can handle the response
     const response = await fetch(form.action, {
@@ -7939,6 +7940,7 @@ function updateCoordinatorsHiddenInput() {
   if (hiddenInput) {
     const ids = coordinatorList.map(c => c.id);
     hiddenInput.value = JSON.stringify(ids);
+    console.log('DEBUG: Updated hidden input with coordinator IDs:', ids);
   }
 }
 
