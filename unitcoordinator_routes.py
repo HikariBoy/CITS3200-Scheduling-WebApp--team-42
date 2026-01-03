@@ -2979,19 +2979,17 @@ def remove_unit_coordinator(unit_id: int, coordinator_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 403
     
-    # Prevent removing the creator if they're the only coordinator
-    if unit.created_by == coordinator_id:
-        # Check if there are other coordinators
-        other_coordinators = UnitCoordinator.query.filter(
-            UnitCoordinator.unit_id == unit.id,
-            UnitCoordinator.user_id != coordinator_id
-        ).count()
-        
-        if other_coordinators == 0:
-            return jsonify({
-                "ok": False,
-                "error": "Cannot remove the last coordinator. Please add another coordinator first."
-            }), 400
+    
+    # Prevent removing the last coordinator
+    total_coordinators = UnitCoordinator.query.filter(
+        UnitCoordinator.unit_id == unit.id
+    ).count()
+    
+    if total_coordinators <= 1:
+        return jsonify({
+            "ok": False,
+            "error": "Cannot remove the last coordinator. Please add another coordinator first."
+        }), 400
     
     # Find and remove the coordinator link
     uc_link = UnitCoordinator.query.filter_by(

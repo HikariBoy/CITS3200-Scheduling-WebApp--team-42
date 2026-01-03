@@ -334,7 +334,7 @@ async function removeCoordinatorInEditModal(unitId, coordinatorId, coordinatorNa
   
   try {
     console.log('Removing coordinator:', { unitId, coordinatorId, coordinatorName });
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const csrfToken = window.CSRF_TOKEN || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     const response = await fetch(`/unitcoordinator/units/${unitId}/coordinators/${coordinatorId}`, {
       method: 'DELETE',
       headers: {
