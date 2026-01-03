@@ -953,7 +953,7 @@ def dashboard():
             .join(Unavailability, 
                   db.and_(
                       Unavailability.user_id == Assignment.facilitator_id,
-                      Unavailability.unit_id == current_unit.id,
+                      Unavailability.unit_id.is_(None),  # Check GLOBAL unavailability only
                       db.func.date(Session.start_time) == Unavailability.date
                   )
             )
@@ -1004,7 +1004,7 @@ def dashboard():
             # 2. Have marked themselves as "Available All Days" for this unit
             has_unavailability = (
                 db.session.query(Unavailability.id)
-                .filter(Unavailability.user_id == f.id, Unavailability.unit_id == current_unit.id)
+                .filter(Unavailability.user_id == f.id, Unavailability.unit_id.is_(None))  # Global unavailability
                 .limit(1)
                 .first()
                 is not None
@@ -1305,7 +1305,7 @@ def admin_dashboard():
             .join(Unavailability, 
                   db.and_(
                       Unavailability.user_id == Assignment.facilitator_id,
-                      Unavailability.unit_id == current_unit.id,
+                      Unavailability.unit_id.is_(None),  # Check GLOBAL unavailability only
                       db.func.date(Session.start_time) == Unavailability.date
                   )
             )
@@ -1356,7 +1356,7 @@ def admin_dashboard():
             # 2. Have marked themselves as "Available All Days" for this unit
             has_unavailability = (
                 db.session.query(Unavailability.id)
-                .filter(Unavailability.user_id == f.id, Unavailability.unit_id == current_unit.id)
+                .filter(Unavailability.user_id == f.id, Unavailability.unit_id.is_(None))  # Global unavailability
                 .limit(1)
                 .first()
                 is not None
@@ -5705,7 +5705,7 @@ def get_schedule_conflicts(unit_id: int):
             .join(Unavailability, 
                   db.and_(
                       Unavailability.user_id == Assignment.facilitator_id,
-                      Unavailability.unit_id == unit.id,
+                      Unavailability.unit_id.is_(None),  # Check GLOBAL unavailability only
                       db.func.date(Session.start_time) == Unavailability.date
                   )
             )
