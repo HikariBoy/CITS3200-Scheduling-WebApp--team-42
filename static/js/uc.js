@@ -7886,14 +7886,14 @@ function addCoordinatorByEmail(email) {
 function addCoordinator(coordinator) {
   // Check if already added
   if (coordinatorList.some(c => c.id === coordinator.id)) {
-    showNotification('This coordinator is already added', 'warning');
+    showSimpleNotification('This coordinator is already added', 'warning');
     return;
   }
   
   coordinatorList.push(coordinator);
   updateCoordinatorsList();
   updateCoordinatorsHiddenInput();
-  showNotification(`${coordinator.full_name || coordinator.email} added successfully`, 'success');
+  showSimpleNotification(`${coordinator.full_name || coordinator.email} added successfully`, 'success');
 }
 
 function removeCoordinator(id) {
@@ -7902,7 +7902,7 @@ function removeCoordinator(id) {
   updateCoordinatorsList();
   updateCoordinatorsHiddenInput();
   if (coordinator) {
-    showNotification(`${coordinator.full_name || coordinator.email} removed`, 'info');
+    showSimpleNotification(`${coordinator.full_name || coordinator.email} removed`, 'info');
   }
 }
 
