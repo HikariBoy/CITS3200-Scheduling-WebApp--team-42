@@ -279,9 +279,81 @@ function openEditUnitModal() {
       step3Hint.innerHTML = 'You can optionally upload additional facilitators or update your facilitators list (CSV with a single header: <code>facilitator_email</code>).';
     }
     
+    // Load coordinators for this unit
+    loadCurrentCoordinatorsInEditModal(currentUnitId);
+    
     // Skip to step 1 (Unit Information) since we're editing
     setStep(1);
   }, 200);
+}
+
+// Load coordinators into the edit unit modal
+async function loadCurrentCoordinatorsInEditModal(unitId) {
+  const container = document.getElementById('coordinators-list');
+  if (!container) return;
+  
+  try {
+    const response = await fetch(`/unitcoordinator/units/${unitId}/coordinators`);
+    const data = await response.json();
+    
+    if (!data.ok || !data.coordinators || data.coordinators.length === 0) {
+      container.innerHTML = '<div class="text-sm text-gray-500 italic">No additional coordinators</div>';
+      return;
+    }
+    
+    const html = data.coordinators.map(coord => `
+      <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg border">
+        <div>
+          <div class="font-medium text-sm">${coord.full_name || coord.email}</div>
+          <div class="text-xs text-gray-500">${coord.email}</div>
+        </div>
+        ${data.coordinators.length > 1 ? `
+          <button 
+            type="button" 
+            onclick="removeCoordinatorInEditModal(${unitId}, ${coord.id}, '${(coord.full_name || coord.email).replace(/'/g, "\\'")}')"
+            class="text-red-600 hover:text-red-800 text-sm font-medium"
+            aria-label="Remove coordinator">
+            Remove
+          </button>
+        ` : '<span class="text-xs text-gray-500 italic">Primary</span>'}
+      </div>
+    `).join('');
+    
+    container.innerHTML = html;
+  } catch (error) {
+    console.error('Error loading coordinators:', error);
+    container.innerHTML = '<div class="text-sm text-red-500">Error loading coordinators</div>';
+  }
+}
+
+// Remove coordinator from edit modal
+async function removeCoordinatorInEditModal(unitId, coordinatorId, coordinatorName) {
+  if (!confirm(`Remove ${coordinatorName} as a coordinator?`)) {
+    return;
+  }
+  
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const response = await fetch(`/unitcoordinator/units/${unitId}/coordinators/${coordinatorId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.ok) {
+      showSimpleNotification('Coordinator removed successfully', 'success');
+      loadCurrentCoordinatorsInEditModal(unitId);
+    } else {
+      showSimpleNotification(result.error || 'Failed to remove coordinator', 'error');
+    }
+  } catch (error) {
+    console.error('Error removing coordinator:', error);
+    showSimpleNotification('An error occurred', 'error');
+  }
 }
 
 // Also add this to handle clicking outside the modal
