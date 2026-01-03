@@ -1056,3 +1056,198 @@ def send_unit_addition_email(recipient_email, recipient_name, unit_code, unit_na
     except Exception as e:
         print(f"Unexpected error sending unit addition email: {str(e)}")
         return False
+
+
+def send_coordinator_added_email(recipient_email, recipient_name, unit_code, unit_name, base_url=None, use_mock=False):
+    """
+    Send an email to a unit coordinator when they're added as a coordinator to a unit.
+    
+    Args:
+        recipient_email: Email address of the coordinator
+        recipient_name: Name of the coordinator
+        unit_code: Code of the unit (e.g., "CITS3200")
+        unit_name: Name of the unit
+        base_url: Base URL for the application
+        use_mock: If True, print email instead of sending
+    
+    Returns:
+        bool: True if email sent successfully, False otherwise
+    """
+    # Validate email
+    if not valid_email(recipient_email):
+        print(f"Invalid recipient email: {recipient_email}")
+        return False
+    
+    # Get configuration
+    sender_email = os.environ.get('SES_SENDER_EMAIL', 'noreply@example.com')
+    if not base_url:
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    
+    # Email subject
+    subject = f"You've Been Added as a Coordinator for {unit_code}"
+    
+    # Email body (HTML)
+    body_html = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+            }}
+            .header {{
+                background-color: #003087;
+                color: white;
+                padding: 20px;
+                text-align: center;
+                border-radius: 5px 5px 0 0;
+            }}
+            .content {{
+                background-color: #f9f9f9;
+                padding: 30px;
+                border-radius: 0 0 5px 5px;
+            }}
+            .button {{
+                display: inline-block;
+                padding: 12px 24px;
+                background-color: #003087;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                margin: 20px 0;
+            }}
+            .unit-info {{
+                background-color: #e8f4f8;
+                padding: 15px;
+                border-left: 4px solid: #003087;
+                margin: 20px 0;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 30px;
+                font-size: 12px;
+                color: #666;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Unit Coordinator Assignment</h1>
+            </div>
+            <div class="content">
+                <p>Hello {recipient_name},</p>
+                
+                <p>You have been added as a <strong>Unit Coordinator</strong> for the following unit:</p>
+                
+                <div class="unit-info">
+                    <strong>{unit_code}</strong> - {unit_name}
+                </div>
+                
+                <p>As a Unit Coordinator, you can now:</p>
+                <ul>
+                    <li>Manage facilitators for this unit</li>
+                    <li>Create and edit session schedules</li>
+                    <li>Assign facilitators to sessions</li>
+                    <li>Publish and manage the unit schedule</li>
+                    <li>View facilitator availability and skills</li>
+                </ul>
+                
+                <p>Log in to the scheduling system to get started:</p>
+                
+                <center>
+                    <a href="{base_url}/login" class="button">Log In to Dashboard</a>
+                </center>
+                
+                <p>If you have any questions about your coordinator role, please contact the system administrator.</p>
+                
+                <p>Best regards,<br>
+                Scheduling System Team</p>
+            </div>
+            <div class="footer">
+                <p>This is an automated message from the Scheduling System.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Email body (plain text fallback)
+    body_text = f"""
+    Hello {recipient_name},
+    
+    You have been added as a Unit Coordinator for {unit_code} - {unit_name}.
+    
+    As a Unit Coordinator, you can now:
+    - Manage facilitators for this unit
+    - Create and edit session schedules
+    - Assign facilitators to sessions
+    - Publish and manage the unit schedule
+    - View facilitator availability and skills
+    
+    Log in to the scheduling system to get started:
+    {base_url}/login
+    
+    If you have any questions about your coordinator role, please contact the system administrator.
+    
+    Best regards,
+    Scheduling System Team
+    
+    ---
+    This is an automated message from the Scheduling System.
+    """
+    
+    # If in mock mode, just print the email
+    if use_mock:
+        print("=" * 60)
+        print("MOCK EMAIL - Coordinator Added")
+        print("=" * 60)
+        print(f"To: {recipient_email}")
+        print(f"From: {sender_email}")
+        print(f"Subject: {subject}")
+        print("-" * 60)
+        print(body_text)
+        print("=" * 60)
+        return True
+    
+    # Send email via AWS SES
+    try:
+        aws_key = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY')
+        aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('AWS_SECRET_KEY')
+        region = os.environ.get('SES_REGION', 'ap-southeast-1')
+        
+        ses_client = boto3.client(
+            'ses',
+            region_name=region,
+            aws_access_key_id=aws_key,
+            aws_secret_access_key=aws_secret
+        )
+        
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [recipient_email]},
+            Message={
+                'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                'Body': {
+                    'Text': {'Data': body_text, 'Charset': 'UTF-8'},
+                    'Html': {'Data': body_html, 'Charset': 'UTF-8'}
+                }
+            }
+        )
+        
+        print(f"Coordinator added email sent successfully to {recipient_email}")
+        print(f"Message ID: {response['MessageId']}")
+        return True
+        
+    except ClientError as e:
+        print(f"Error sending coordinator added email: {e.response['Error']['Message']}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error sending coordinator added email: {str(e)}")
+        return False

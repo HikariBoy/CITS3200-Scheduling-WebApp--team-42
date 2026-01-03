@@ -238,7 +238,7 @@ class UnitCoordinator(db.Model):
 class Unavailability(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    unit_id = db.Column(db.Integer, db.ForeignKey('unit.id'), nullable=False)
+    unit_id = db.Column(db.Integer, db.ForeignKey('unit.id'), nullable=True)  # Now nullable for global unavailability
     date = db.Column(db.Date, nullable=False)  # Specific date instead of day_of_week
     start_time = db.Column(db.Time, nullable=True)  # Nullable for full day unavailability
     end_time = db.Column(db.Time, nullable=True)  # Nullable for full day unavailability
@@ -256,16 +256,17 @@ class Unavailability(db.Model):
     unit = db.relationship('Unit', backref='unavailabilities')
     source_session = db.relationship('Session', backref='generated_unavailabilities', foreign_keys=[source_session_id])
     
-    # Constraints
+    # Constraints - removed unit_id from unique constraint for global unavailability
     __table_args__ = (
-        db.UniqueConstraint('user_id', 'unit_id', 'date', 'start_time', 'end_time', name='unique_unavailability_slot'),
+        db.UniqueConstraint('user_id', 'date', 'start_time', 'end_time', name='unique_unavailability_slot'),
     )
     
     def __repr__(self):
+        unit_info = self.unit.unit_code if self.unit else 'Global'
         if self.is_full_day:
-            return f'<Unavailability {self.user.email} - {self.unit.unit_code} - {self.date} (Full Day)>'
+            return f'<Unavailability {self.user.email} - {unit_info} - {self.date} (Full Day)>'
         else:
-            return f'<Unavailability {self.user.email} - {self.unit.unit_code} - {self.date} ({self.start_time}-{self.end_time})>'
+            return f'<Unavailability {self.user.email} - {unit_info} - {self.date} ({self.start_time}-{self.end_time})>'
     
     @property
     def is_recurring(self):

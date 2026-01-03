@@ -2734,8 +2734,44 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
   </div>
 </div>
 
+<!-- Add Coordinator Modal -->
+<div class="modal-overlay" id="addCoordinatorModal" style="display: none;">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h2 class="modal-title">Manage Unit Coordinators</h2>
+      <button class="modal-close" id="closeCoordinatorModal">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Current Coordinators List -->
+      <div class="mb-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-3">Current Coordinators</h3>
+        <div id="currentCoordinatorsList" class="space-y-2">
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
+      
+      <!-- Add New Coordinator -->
+      <form id="addCoordinatorForm">
+        <input type="hidden" id="coordinatorUnitId" name="unit_id">
+        <div class="form-group">
+          <label for="coordinatorSearch" class="form-label">Add Coordinator by Email</label>
+          <input type="text" id="coordinatorSearch" class="form-input" placeholder="Type email to search..." autocomplete="off">
+          <div id="coordinatorSearchResults" style="display: none;"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" id="cancelCoordinatorBtn">Close</button>
+          <button type="submit" class="btn-primary" disabled id="addCoordinatorBtn">Add Coordinator</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- External JS -->
 <script src="{{ url_for('static', filename='js/uc.js') }}"></script>
+<script src="{{ url_for('static', filename='js/uc_coordinator_modal.js') }}"></script>
 <script src="{{ url_for('static', filename='js/facilitator_review.js') }}"></script>
 
 

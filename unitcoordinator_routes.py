@@ -953,7 +953,7 @@ def dashboard():
             .join(Unavailability, 
                   db.and_(
                       Unavailability.user_id == Assignment.facilitator_id,
-                      Unavailability.unit_id == current_unit.id,
+                      Unavailability.unit_id.is_(None),  # Check GLOBAL unavailability only
                       db.func.date(Session.start_time) == Unavailability.date
                   )
             )
@@ -1004,7 +1004,7 @@ def dashboard():
             # 2. Have marked themselves as "Available All Days" for this unit
             has_unavailability = (
                 db.session.query(Unavailability.id)
-                .filter(Unavailability.user_id == f.id, Unavailability.unit_id == current_unit.id)
+                .filter(Unavailability.user_id == f.id, Unavailability.unit_id.is_(None))  # Global unavailability
                 .limit(1)
                 .first()
                 is not None
@@ -1305,7 +1305,7 @@ def admin_dashboard():
             .join(Unavailability, 
                   db.and_(
                       Unavailability.user_id == Assignment.facilitator_id,
-                      Unavailability.unit_id == current_unit.id,
+                      Unavailability.unit_id.is_(None),  # Check GLOBAL unavailability only
                       db.func.date(Session.start_time) == Unavailability.date
                   )
             )
@@ -1356,7 +1356,7 @@ def admin_dashboard():
             # 2. Have marked themselves as "Available All Days" for this unit
             has_unavailability = (
                 db.session.query(Unavailability.id)
-                .filter(Unavailability.user_id == f.id, Unavailability.unit_id == current_unit.id)
+                .filter(Unavailability.user_id == f.id, Unavailability.unit_id.is_(None))  # Global unavailability
                 .limit(1)
                 .first()
                 is not None
@@ -1764,6 +1764,7 @@ def create_unit():
     
     # Handle additional coordinators
     additional_coordinators_str = request.form.get("additional_coordinators", "").strip()
+    additional_coordinators_to_notify = []
     if additional_coordinators_str:
         try:
             import json
@@ -1785,6 +1786,7 @@ def create_unit():
                                     unit_id=new_unit.id,
                                     user_id=coordinator_id
                                 )
+                                additional_coordinators_to_notify.append(coordinator_user)
                                 db.session.add(additional_uc)
                     except (ValueError, TypeError):
                         continue  # Skip invalid IDs
@@ -1794,6 +1796,17 @@ def create_unit():
     db.session.commit()
 
     # Create default module for new unit
+    # Send email notifications to additional coordinators
+    from email_service import send_coordinator_added_email
+    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    for coordinator_user in additional_coordinators_to_notify:
+        send_coordinator_added_email(
+            recipient_email=coordinator_user.email,
+            recipient_name=coordinator_user.full_name,
+            unit_code=new_unit.unit_code,
+            unit_name=new_unit.unit_name,
+            base_url=base_url
+        )
     _get_or_create_default_module(new_unit)
     
     # Send setup emails to newly created facilitators
@@ -2507,7 +2520,7 @@ def add_single_facilitator(unit_id: int):
             except Exception as e:
                 print(f"❌ Failed to send unit addition email to {email}: {e}")
         
-        message = f"Facilitator {email} added successfully"
+        message = f"Facilitator {email} added successfully and notified via email"
         if is_new_user:
             message += " (new account created)"
         
@@ -2931,9 +2944,20 @@ def add_unit_coordinator(unit_id: int):
     
     try:
         db.session.commit()
+        
+        # Send email notification to the coordinator
+        from email_service import send_coordinator_added_email
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+        send_coordinator_added_email(
+            recipient_email=coordinator_user.email,
+            recipient_name=coordinator_user.full_name,
+            unit_code=unit.unit_code,
+            unit_name=unit.unit_name,
+            base_url=base_url
+        )
         return jsonify({
             "ok": True,
-            "message": f"Coordinator {email} added successfully",
+            "message": f"Coordinator {email} added successfully and notified via email",
             "coordinator": {
                 "id": coordinator_user.id,
                 "email": coordinator_user.email,
@@ -2955,19 +2979,17 @@ def remove_unit_coordinator(unit_id: int, coordinator_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 403
     
-    # Prevent removing the creator if they're the only coordinator
-    if unit.created_by == coordinator_id:
-        # Check if there are other coordinators
-        other_coordinators = UnitCoordinator.query.filter(
-            UnitCoordinator.unit_id == unit.id,
-            UnitCoordinator.user_id != coordinator_id
-        ).count()
-        
-        if other_coordinators == 0:
-            return jsonify({
-                "ok": False,
-                "error": "Cannot remove the last coordinator. Please add another coordinator first."
-            }), 400
+    
+    # Prevent removing the last coordinator
+    total_coordinators = UnitCoordinator.query.filter(
+        UnitCoordinator.unit_id == unit.id
+    ).count()
+    
+    if total_coordinators <= 1:
+        return jsonify({
+            "ok": False,
+            "error": "Cannot remove the last coordinator. Please add another coordinator first."
+        }), 400
     
     # Find and remove the coordinator link
     uc_link = UnitCoordinator.query.filter_by(
@@ -5683,7 +5705,7 @@ def get_schedule_conflicts(unit_id: int):
             .join(Unavailability, 
                   db.and_(
                       Unavailability.user_id == Assignment.facilitator_id,
-                      Unavailability.unit_id == unit.id,
+                      Unavailability.unit_id.is_(None),  # Check GLOBAL unavailability only
                       db.func.date(Session.start_time) == Unavailability.date
                   )
             )

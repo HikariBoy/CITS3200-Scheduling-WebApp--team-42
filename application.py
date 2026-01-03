@@ -183,11 +183,11 @@ def signup():
                 return render_template("signup.html", email=email, token=token, role_name=role_name,
                                      first_name=first, last_name=last, phone=phone, staff_number=staff_number)
         
-        # Phone validation - Australian mobile format (04XX XXX XXX)
+        # Phone validation - any 10-digit number
         # Remove spaces and check format
         phone_clean = phone.replace(" ", "").replace("-", "")
-        if not re.match(r'^04\d{8}$', phone_clean):
-            flash("Phone number must be in format 04XXXXXXXX (10 digits starting with 04)!")
+        if not re.match(r'^\d{10}$', phone_clean):
+            flash("Phone number must be 10 digits!")
             return render_template("signup.html", email=email, token=token, role_name=role_name,
                                  first_name=first, last_name=last, phone=phone, staff_number=staff_number)
         

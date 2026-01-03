@@ -2246,14 +2246,7 @@ function initUnavailabilityView() {
         });
     }
     
-    // Copy Unavailability button handler
-    const copyBtn = document.getElementById('copy-unavailability-btn');
-    if (copyBtn) {
-        copyBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            showCopyUnavailabilityModal();
-        });
-    }
+    // Copy Unavailability button removed - unavailability is now global
     
 }
 
@@ -2337,15 +2330,10 @@ function updateUnitInfo() {
 }
 
 function loadUnavailabilityData() {
-    const currentUnitId = window.currentUnitId;
-    console.log('[DEBUG] loadUnavailabilityData called, currentUnitId:', currentUnitId);
-    if (!currentUnitId) {
-        console.error('No current unit ID available');
-        return;
-    }
+    console.log('[DEBUG] loadUnavailabilityData called - loading GLOBAL unavailability');
     
-    console.log('[DEBUG] Fetching unavailability for unit:', currentUnitId);
-    const url = addUserIdToUrl(`/facilitator/unavailability?unit_id=${currentUnitId}`);
+    // Load GLOBAL unavailability (no unit_id needed anymore)
+    const url = addUserIdToUrl(`/facilitator/unavailability`);
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -2803,7 +2791,7 @@ function saveUnavailability() {
     }
     
     const data = {
-        unit_id: window.currentUnitId,
+        // unit_id removed - unavailability is now global
         date: date,
         is_full_day: isFullDay,
         start_time: startTime,
@@ -3165,9 +3153,8 @@ function deleteUnavailability(unavailabilityId) {
 }
 
 function clearAllUnavailability() {
-    const requestData = addUserIdIfNeeded({
-        unit_id: currentUnitId
-    });
+    // No unit_id needed - clearing global unavailability
+    const requestData = addUserIdIfNeeded({});
     
     fetch('/facilitator/unavailability/clear-all', {
         method: 'POST',
@@ -4288,140 +4275,5 @@ function deleteAllUnavailabilities() {
     });
 }
 
-// Copy unavailability to another unit
-function showCopyUnavailabilityModal() {
-    const currentUnitId = window.currentUnitId;
-    
-    if (!currentUnitId) {
-        alert('No unit selected');
-        return;
-    }
-    
-    // Check if there are any unavailabilities to copy
-    if (!unavailabilityData || unavailabilityData.length === 0) {
-        alert('No unavailability to copy. Please set some unavailability first.');
-        return;
-    }
-    
-    // Get all other units (exclude current unit)
-    const otherUnits = Object.values(window.units || {}).filter(u => u.id !== currentUnitId);
-    
-    if (otherUnits.length === 0) {
-        alert('You are not assigned to any other units.');
-        return;
-    }
-    
-    // Build dropdown options
-    let options = '<option value="">Select a unit...</option>';
-    otherUnits.forEach(unit => {
-        options += `<option value="${unit.id}">${unit.code} - ${unit.name} (${unit.semester} ${unit.year})</option>`;
-    });
-    
-    // Create a simple modal using prompt (or we can create a proper modal)
-    const modal = document.createElement('div');
-    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
-    modal.innerHTML = `
-        <div style="background: white; padding: 24px; border-radius: 8px; max-width: 500px; width: 90%;">
-            <h3 style="margin: 0 0 16px 0;">Copy Unavailability to Another Unit</h3>
-            <p style="margin: 0 0 16px 0; color: #6b7280;">This will copy all ${unavailabilityData.length} unavailability entries from the current unit to the selected unit.</p>
-            <select id="copy-target-unit" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; margin-bottom: 16px;">
-                ${options}
-            </select>
-            <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                <button id="copy-cancel-btn" style="padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: white; cursor: pointer;">Cancel</button>
-                <button id="copy-confirm-btn" style="padding: 8px 16px; border: none; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer;">Copy</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Handle cancel
-    document.getElementById('copy-cancel-btn').addEventListener('click', () => {
-        document.body.removeChild(modal);
-    });
-    
-    // Handle confirm
-    document.getElementById('copy-confirm-btn').addEventListener('click', () => {
-        const targetUnitId = document.getElementById('copy-target-unit').value;
-        if (!targetUnitId) {
-            alert('Please select a unit');
-            return;
-        }
-        
-        document.body.removeChild(modal);
-        copyUnavailabilityToUnit(parseInt(targetUnitId));
-    });
-}
-
-function copyUnavailabilityToUnit(targetUnitId) {
-    const currentUnitId = window.currentUnitId;
-    
-    if (!currentUnitId || !targetUnitId) {
-        alert('Invalid unit selection');
-        return;
-    }
-    
-    // Show loading state
-    const copyBtn = document.getElementById('copy-unavailability-btn');
-    if (copyBtn) {
-        copyBtn.disabled = true;
-        copyBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Copying...';
-    }
-    
-    // Get user_id if UC is editing
-    const requestData = {
-        source_unit_id: currentUnitId,
-        target_unit_id: targetUnitId
-    };
-    
-    // If UC is editing, include user_id
-    if (window.isUCEditing && window.facilitatorUserId) {
-        requestData.user_id = window.facilitatorUserId;
-    }
-    
-    // Send request to backend
-    fetch('/facilitator/unavailability/copy', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': window.csrfToken
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(response => response.json())
-    .then(result => {
-        if (result.error) {
-            alert('Error: ' + result.error);
-            return;
-        }
-        
-        // Update target unit's availability_configured status
-        if (window.units && window.units[targetUnitId]) {
-            window.units[targetUnitId].availability_configured = true;
-        }
-        
-        // Update nav tab warnings
-        if (window.units && window.currentUnitId && window.units[window.currentUnitId]) {
-            updateNavTabWarnings(window.units[window.currentUnitId]);
-        }
-        
-        const message = result.message || 'Unavailability copied successfully!';
-        if (typeof showNotification === 'function') {
-            showNotification(message, 'success');
-        } else {
-            alert(message);
-        }
-    })
-    .catch(error => {
-        console.error('Error copying unavailability:', error);
-        alert('Error copying unavailability');
-    })
-    .finally(() => {
-        // Reset button state
-        if (copyBtn) {
-            copyBtn.disabled = false;
-            copyBtn.innerHTML = '<span class="material-icons">content_copy</span> Copy Unavailability to Another Unit';
-        }
-    });
-}
+// Copy unavailability functions removed - unavailability is now global across all units
+// No need to copy between units anymore!

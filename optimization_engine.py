@@ -122,10 +122,10 @@ def batch_load_unavailability(facilitator_ids, unit_id):
     if not facilitator_ids or not unit_id:
         return {}
     
-    # Single query to get all unavailabilities for all facilitators in this unit
+    # Single query to get all GLOBAL unavailabilities for all facilitators
     unavailabilities = Unavailability.query.filter(
         Unavailability.user_id.in_(facilitator_ids),
-        Unavailability.unit_id == unit_id
+        Unavailability.unit_id.is_(None)  # Global unavailability only
     ).all()
     
     # Organize by facilitator_id for quick lookup
@@ -176,10 +176,10 @@ def check_availability(facilitator, session, unavailability_map=None):
         if not module:
             return 1.0
         
-        unit_id = module.unit_id
+        # Query global unavailability only
         unavailabilities = Unavailability.query.filter_by(
             user_id=facilitator_id,
-            unit_id=unit_id,
+            unit_id=None,  # Global unavailability
             date=session_date
         ).all()
     
@@ -874,8 +874,8 @@ def generate_schedule_report_csv(assignments, unit_name="Unit", total_facilitato
     facilitator_unavailabilities = {}
     
     for fac_id in facilitator_ids:
-        # Get unavailabilities for this facilitator
-        unavailabilities = Unavailability.query.filter_by(user_id=fac_id).all()
+        # Get GLOBAL unavailabilities for this facilitator
+        unavailabilities = Unavailability.query.filter_by(user_id=fac_id, unit_id=None).all()
         facilitator_unavailabilities[fac_id] = unavailabilities
     
     # Build facilitator statistics
