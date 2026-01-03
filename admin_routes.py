@@ -1945,9 +1945,21 @@ def add_unit_coordinator_admin(unit_id):
         db.session.add(unit_coordinator)
         db.session.commit()
         
+        # Send email notification to the coordinator
+        from email_service import send_coordinator_added_email
+        import os
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+        send_coordinator_added_email(
+            recipient_email=coordinator.email,
+            recipient_name=coordinator.full_name,
+            unit_code=unit.unit_code,
+            unit_name=unit.unit_name,
+            base_url=base_url
+        )
+        
         return jsonify({
             'success': True,
-            'message': f'{coordinator.full_name} has been added as a coordinator for {unit.unit_code}',
+            'message': f'{coordinator.full_name} has been added as a coordinator for {unit.unit_code} and notified via email',
             'coordinator': {
                 'id': coordinator.id,
                 'name': coordinator.full_name,
