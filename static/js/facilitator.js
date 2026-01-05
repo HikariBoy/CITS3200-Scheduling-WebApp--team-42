@@ -2539,8 +2539,10 @@ function updateCalendarDisplay() {
         }
         if (unavailabilityType === 'full') {
             dayElement.classList.add('unavailable-full');
+            console.log('[DEBUG] Added unavailable-full class to', date, '- classes:', dayElement.className);
         } else if (unavailabilityType === 'partial') {
             dayElement.classList.add('unavailable-partial');
+            console.log('[DEBUG] Added unavailable-partial class to', date, '- classes:', dayElement.className);
         } else if (unavailabilityType === 'auto') {
             dayElement.classList.add('auto-unavailable');
         } else if (unavailabilityType === 'mixed') {
