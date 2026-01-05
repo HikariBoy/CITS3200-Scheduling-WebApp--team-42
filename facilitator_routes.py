@@ -1390,13 +1390,13 @@ def generate_recurring_unavailability():
                 db.session.add(unavailability)
                 created_count += 1
     
-    # Mark availability as configured since facilitator is setting unavailability
-    unit_facilitator = UnitFacilitator.query.filter_by(
-        user_id=user.id,
-        unit_id=unit_id
-    ).first()
+    # Mark availability as configured for ALL units the facilitator is in
+    # (Since unavailability is now global, mark all units)
+    unit_facilitators = UnitFacilitator.query.filter_by(
+        user_id=user.id
+    ).all()
     
-    if unit_facilitator:
+    for unit_facilitator in unit_facilitators:
         unit_facilitator.availability_configured = True
     
     db.session.commit()
