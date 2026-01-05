@@ -808,31 +808,39 @@ def get_unavailability():
 @facilitator_bp.route('/unavailability', methods=['POST'])
 @login_required
 def create_unavailability():
-    """Create or update unavailability for a specific unit"""
+    """Create GLOBAL unavailability (unit_id is optional for backwards compatibility)"""
     current_user = get_current_user()
     data = request.get_json()
     
+    # unit_id is now OPTIONAL - unavailability is global!
+    # If provided (for backwards compatibility), we ignore it
     unit_id = data.get('unit_id')
-    if not unit_id:
-        return jsonify({"error": "unit_id is required"}), 400
     
     # Get the target user (facilitator being edited)
     # If 'user_id' is provided, UC is editing on behalf of facilitator
     target_user_id = data.get('user_id', current_user.id)
     
-    # Check permission: either editing own data or UC editing facilitator's data
-    if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
-        return jsonify({"error": "forbidden"}), 403
+    # Permission check: user can edit their own data, or UC/admin can edit facilitator's data
+    if target_user_id != current_user.id:
+        # Someone else is editing - must be UC or admin
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
+            return jsonify({"error": "forbidden"}), 403
     
-    # Verify target user has access to this unit
+    # For global unavailability, we don't need to verify unit access
+    # Just check that the user exists and is a facilitator
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({"error": "user not found"}), 404
+    
+    # Get ANY unit the facilitator is in (for date range validation)
     access = (
         db.session.query(Unit)
         .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
+        .filter(UnitFacilitator.user_id == target_user_id)
         .first()
     )
     if not access:
-        return jsonify({"error": "facilitator not linked to this unit"}), 403
+        return jsonify({"error": "facilitator not linked to any unit"}), 403
     
     # Note: We allow editing unavailability even if schedule is published
     # Auto-generated unavailability from published schedules is protected separately
@@ -843,10 +851,8 @@ def create_unavailability():
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
     
-    if access.start_date and unavailability_date < access.start_date:
-        return jsonify({"error": "Date is before unit start date"}), 400
-    if access.end_date and unavailability_date > access.end_date:
-        return jsonify({"error": "Date is after unit end date"}), 400
+    # Skip date range validation for global unavailability
+    # Users can set unavailability for any future date
     
     # Parse time data
     start_time = None
@@ -924,15 +930,13 @@ def create_unavailability():
     if existing:
         return jsonify({"error": "Unavailability already exists for this date and time"}), 409
     
-    # Check for conflicts with existing assignments
+    # Check for conflicts with existing assignments across ALL units
     conflicts = []
     assignments = (
         db.session.query(Assignment)
         .join(Session, Assignment.session_id == Session.id)
-        .join(Module, Session.module_id == Module.id)
         .filter(
             Assignment.facilitator_id == target_user_id,
-            Module.unit_id == unit_id,
             db.func.date(Session.start_time) == unavailability_date
         )
         .all()
@@ -994,18 +998,12 @@ def create_unavailability():
             except:
                 preferences = {}
         
-        # Remove availability status for this unit since user is now setting specific unavailability
-        if 'availability_status' in preferences and str(unit_id) in preferences['availability_status']:
-            del preferences['availability_status'][str(unit_id)]
-            target_user.preferences = json.dumps(preferences)
+        # Mark availability as configured for ALL units the facilitator is in
+        unit_facilitators = UnitFacilitator.query.filter_by(
+            user_id=target_user_id
+        ).all()
         
-        # Mark availability as configured in UnitFacilitator
-        unit_facilitator = UnitFacilitator.query.filter_by(
-            user_id=target_user_id,
-            unit_id=unit_id
-        ).first()
-        
-        if unit_facilitator:
+        for unit_facilitator in unit_facilitators:
             unit_facilitator.availability_configured = True
         
         db.session.commit()

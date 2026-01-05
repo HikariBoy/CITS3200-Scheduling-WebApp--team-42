@@ -2237,15 +2237,10 @@ function initUnavailabilityView() {
         deleteAllBtn.addEventListener('click', function(e) {
             e.preventDefault();
             
-            // Show strong confirmation dialog
-            const confirmed = confirm('⚠️ WARNING: Delete ALL unavailability?\n\nThis will permanently delete all your unavailability entries across all units.\n\nThis action CANNOT be undone!');
+            // Show confirmation dialog
+            const confirmed = confirm('Are you sure you want to delete all your unavailabilities? This action cannot be undone.');
             
-            if (!confirmed) return;
-            
-            // Second confirmation for safety
-            const doubleCheck = confirm('Are you absolutely sure?\n\nClick OK to permanently delete everything.');
-            
-            if (doubleCheck) {
+            if (confirmed) {
                 deleteAllUnavailabilities();
             }
         });
@@ -2374,17 +2369,13 @@ function initUnavailabilityCalendar() {
             const date = dayElement.dataset.date;
             if (!date) return;
             
-            // Check if date is in the past (prevent setting unavailability for past dates)
-            const selectedDate = new Date(date);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            if (selectedDate < today) {
-                alert('You cannot set unavailability for past dates');
+            // Check if date is within unit period
+            if (!isDateInUnitPeriod(date)) {
+                alert('You can only set unavailability for dates within the unit period');
                 return;
             }
             
-            // Open modal for this date (no unit period restriction - unavailability is global!)
+            // Open modal for this date
             openUnavailabilityModal(date);
         });
         
@@ -2401,11 +2392,13 @@ function generateCalendar() {
     const calendarDays = document.getElementById('unavailability-calendar-days');
     if (!calendarDays) return;
     
-    // Get current calendar state - always start with current month for better UX
+    // Get current calendar state - use unit start date if not set
     if (!window.calendarCurrentDate) {
-        // Start with current month instead of unit start date
-        // This is more intuitive for users setting global unavailability
-        window.calendarCurrentDate = new Date();
+        if (window.currentUnit && window.currentUnit.start_date) {
+            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
+        } else {
+            window.calendarCurrentDate = new Date();
+        }
     }
     
     const currentDate = window.calendarCurrentDate;
@@ -2444,12 +2437,11 @@ function generateCalendar() {
         const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         dayElement.dataset.date = dateString;
         
-        // Check if date is in ANY unit period (for visual reference only)
-        if (isDateInAnyUnitPeriod(dateString)) {
+        // Check if date is in unit period
+        if (isDateInUnitPeriod(dateString)) {
             dayElement.classList.add('unit-period');
         } else {
-            // Don't mark as outside-period - unavailability is global!
-            // Users can set unavailability for any future date
+            dayElement.classList.add('outside-period');
         }
         
         // Check if date has unavailability and apply appropriate class
@@ -2478,36 +2470,19 @@ function generateCalendar() {
     updateCalendarDisplay();
 }
 
-// Check if date is within ANY unit period (for visual reference)
-function isDateInAnyUnitPeriod(dateString) {
-    // Check all units the facilitator is enrolled in
-    if (!window.unitsData || window.unitsData.length === 0) {
-        console.log('[DEBUG] isDateInAnyUnitPeriod: No units data available');
+function isDateInUnitPeriod(dateString) {
+    const unit = window.currentUnit || currentUnit;
+    if (!unit || !unit.start_date || !unit.end_date) {
+        console.log('[DEBUG] isDateInUnitPeriod: No unit data available', unit);
         return false;
     }
     
     const date = new Date(dateString);
+    const startDate = new Date(unit.start_date);
+    const endDate = new Date(unit.end_date);
     
-    // Check if date falls within ANY unit's period
-    for (const unit of window.unitsData) {
-        if (unit.start_date && unit.end_date) {
-            const startDate = new Date(unit.start_date);
-            const endDate = new Date(unit.end_date);
-            
-            if (date >= startDate && date <= endDate) {
-                console.log('[DEBUG] Date', dateString, 'is within unit', unit.code, 'period');
-                return true;
-            }
-        }
-    }
-    
-    console.log('[DEBUG] Date', dateString, 'is not within any unit period');
-    return false;
-}
-
-// Legacy function for backward compatibility (now checks ANY unit)
-function isDateInUnitPeriod(dateString) {
-    return isDateInAnyUnitPeriod(dateString);
+    console.log('[DEBUG] Checking date:', dateString, 'Range:', startDate, 'to', endDate);
+    return date >= startDate && date <= endDate;
 }
 
 function hasUnavailability(dateString) {
@@ -2764,7 +2739,8 @@ function saveUnavailability() {
     const date = modal.dataset.currentDate;
     const editingId = modal.dataset.editingId ? parseInt(modal.dataset.editingId, 10) : null;
     
-    if (!date || !currentUnitId) return;
+    // No unit_id check - unavailability is global!
+    if (!date) return;
     
     // Check full-day checkbox state first - this takes priority
     const fullDayCheckbox = document.getElementById('full-day-toggle');
@@ -4239,7 +4215,12 @@ function hideNotification() {
 
 // Delete all unavailabilities function
 function deleteAllUnavailabilities() {
-    // No unit_id needed - unavailability is global!
+    const currentUnitId = window.currentUnitId;
+    
+    if (!currentUnitId) {
+        alert('No unit selected');
+        return;
+    }
     
     // Show loading state
     const deleteBtn = document.getElementById('delete-all-unavailabilities-btn');
@@ -4254,7 +4235,9 @@ function deleteAllUnavailabilities() {
             'Content-Type': 'application/json',
             'X-CSRFToken': window.csrfToken
         },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+            unit_id: currentUnitId
+        })
     })
     .then(response => response.json())
     .then(result => {
