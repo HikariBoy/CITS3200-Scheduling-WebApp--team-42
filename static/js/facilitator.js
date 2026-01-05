@@ -2843,7 +2843,15 @@ function saveUnavailability() {
         data.user_id = window.TARGET_USER_ID;
     }
     
-    console.log('[DEBUG] Saving unavailability:', { editingId, endpoint, method, data });
+    console.log('[DEBUG] Saving unavailability:', { 
+        editingId, 
+        editingIds: modal.dataset.editingIds,
+        endpoint, 
+        method, 
+        data,
+        isRecurring,
+        timeRangesArray
+    });
     
     // Validate editingId if we're editing
     if (editingId && (isNaN(editingId) || editingId <= 0)) {
@@ -2900,9 +2908,10 @@ function saveUnavailability() {
             updateNavTabWarnings(window.units[window.currentUnitId]);
         }
         
-        // Close modal and clear editing ID
+        // Close modal and clear editing IDs
         modal.style.display = 'none';
         delete modal.dataset.editingId;
+        delete modal.dataset.editingIds;
         
         // Show success message with optional conflict warning
         let message = result.message || 'Unavailability saved successfully';
