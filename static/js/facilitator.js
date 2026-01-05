@@ -2369,14 +2369,27 @@ function initUnavailabilityCalendar() {
             const date = dayElement.dataset.date;
             if (!date) return;
             
-            // Check if date is within unit period
-            if (!isDateInUnitPeriod(date)) {
-                alert('You can only set unavailability for dates within the unit period');
+            // Check if date is in the past (prevent setting unavailability for past dates)
+            const selectedDate = new Date(date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            if (selectedDate < today) {
+                alert('You cannot set unavailability for past dates');
                 return;
             }
             
-            // Open modal for this date
-            openUnavailabilityModal(date);
+            // Check if this date already has unavailability
+            const existingUnavailability = unavailabilityData.filter(u => u.date === date && !u.is_auto_generated);
+            
+            if (existingUnavailability.length > 0) {
+                // Date has existing unavailability - open modal with data pre-filled
+                const unav = existingUnavailability[0]; // Use first one
+                openUnavailabilityModalForEdit(unav);
+            } else {
+                // No existing unavailability - open empty modal
+                openUnavailabilityModal(date);
+            }
         });
         
         calendarDays.setAttribute('data-listeners-added', 'true');
@@ -3123,6 +3136,11 @@ function editUnavailability(unavailabilityId) {
         populateUnavailabilityForm(unav);
         console.log('[DEBUG] Form populated, editingId:', modal.dataset.editingId, 'Record ID:', recordId);
     }, 100);
+}
+
+// Alias function for opening modal with existing unavailability data
+function openUnavailabilityModalForEdit(unav) {
+    editUnavailability(unav.id);
 }
 
 function deleteUnavailability(unavailabilityId) {
