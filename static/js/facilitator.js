@@ -2863,9 +2863,17 @@ function saveUnavailability() {
     .then(response => {
         console.log('[DEBUG] Response status:', response.status, 'for endpoint:', endpoint);
         if (!response.ok) {
-            return response.json().then(err => {
-                console.error('[DEBUG] Error response:', err);
-                throw new Error(err.error || `HTTP ${response.status}`);
+            // Try to parse as JSON, but handle HTML error pages
+            return response.text().then(text => {
+                try {
+                    const err = JSON.parse(text);
+                    console.error('[DEBUG] Error response:', err);
+                    throw new Error(err.error || `HTTP ${response.status}`);
+                } catch (e) {
+                    // Not JSON - probably HTML error page
+                    console.error('[DEBUG] Non-JSON error response:', text.substring(0, 200));
+                    throw new Error(`Server error (${response.status}). Please check the console for details.`);
+                }
             });
         }
         return response.json();
