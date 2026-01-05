@@ -2589,8 +2589,7 @@ function resetUnavailabilityForm() {
     
     document.getElementById('full-day-toggle').checked = false;
     document.getElementById('recurring-toggle').checked = false;
-    document.getElementById('repeat-every').value = 'weekly';
-    document.getElementById('custom-recurrence').style.display = 'none';
+    document.getElementById('repeat-every').value = '1';  // Default to 1 week
     document.getElementById('recurring-options').style.display = 'none';
     document.getElementById('until-date').value = '';
     
@@ -2670,18 +2669,7 @@ function initUnavailabilityModal() {
         });
     }
     
-    // Repeat every select functionality
-    if (repeatEverySelect) {
-        repeatEverySelect.addEventListener('change', function() {
-            const customRecurrence = document.getElementById('custom-recurrence');
-            
-            if (this.value === 'custom') {
-                customRecurrence.style.display = 'block';
-            } else {
-                customRecurrence.style.display = 'none';
-            }
-        });
-    }
+    // Repeat every is now just a number input - no change handler needed
     
     // Add time range functionality
     if (addTimeRangeBtn) {
@@ -2840,13 +2828,12 @@ function saveUnavailability() {
         method = 'PUT';
     } else if (isRecurring) {
         // Only use recurring endpoint for new entries
-        data.recurring_pattern = document.getElementById('repeat-every').value;
+        data.recurring_pattern = 'weekly';  // Always weekly pattern
         data.recurring_end_date = document.getElementById('until-date').value;
         
-        const customInterval = document.getElementById('custom-interval');
-        if (customInterval && customInterval.value) {
-            data.recurring_interval = parseInt(customInterval.value);
-        }
+        // Get interval from the repeat-every input (now a number input)
+        const intervalInput = document.getElementById('repeat-every');
+        data.recurring_interval = intervalInput ? parseInt(intervalInput.value) : 1;
         
         endpoint = '/facilitator/unavailability/generate-recurring';
     }
@@ -3336,8 +3323,11 @@ function populateUnavailabilityForm(unav) {
         const recurringOptions = document.getElementById('recurring-options');
         if (recurringOptions) recurringOptions.style.display = 'block';
         
-        const repeatSelect = document.getElementById('repeat-every');
-        if (repeatSelect) repeatSelect.value = unav.recurring_pattern;
+        // Set interval (now a number input)
+        const repeatInput = document.getElementById('repeat-every');
+        if (repeatInput && unav.recurring_interval) {
+            repeatInput.value = unav.recurring_interval;
+        }
         
         const untilDate = document.getElementById('until-date');
         if (untilDate && unav.recurring_end_date) {
