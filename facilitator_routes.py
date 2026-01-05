@@ -1401,9 +1401,17 @@ def generate_recurring_unavailability():
     
     db.session.commit()
     
+    # Build message
+    if created_count == len(dates) * len(time_ranges_to_create):
+        message = f"Created {created_count} recurring unavailability entries"
+    else:
+        skipped = (len(dates) * len(time_ranges_to_create)) - created_count
+        message = f"Created {created_count} recurring unavailability entries ({skipped} already existed)"
+    
     response_data = {
-        "message": f"Created {created_count} recurring unavailability entries",
+        "message": message,
         "total_dates": len(dates),
+        "total_time_ranges": len(time_ranges_to_create),
         "created_count": created_count,
         "availability_configured": True
     }
