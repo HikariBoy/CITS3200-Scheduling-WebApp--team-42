@@ -2383,9 +2383,8 @@ function initUnavailabilityCalendar() {
             const existingUnavailability = unavailabilityData.filter(u => u.date === date && !u.is_auto_generated);
             
             if (existingUnavailability.length > 0) {
-                // Date has existing unavailability - open modal with data pre-filled
-                const unav = existingUnavailability[0]; // Use first one
-                openUnavailabilityModalForEdit(unav);
+                // Date has existing unavailability - open modal with ALL time ranges pre-filled
+                openUnavailabilityModalForEditMultiple(date, existingUnavailability);
             } else {
                 // No existing unavailability - open empty modal
                 openUnavailabilityModal(date);
@@ -2772,32 +2771,42 @@ function saveUnavailability() {
     let startTime = null;
     let endTime = null;
     
+    let timeRangesArray = [];
+    
     if (isFullDay) {
         // Full-day: explicitly set times to null
         startTime = null;
         endTime = null;
     } else {
-        // Partial-day: require time ranges
+        // Partial-day: collect ALL time ranges
         if (hasTimeRanges) {
-            // For now, just use the first time range
-            const firstRange = timeRanges[0];
-            const startInput = firstRange.querySelector('input[type="time"]');
-            const endInput = firstRange.querySelectorAll('input[type="time"]')[1];
-            
-            if (!startInput || !endInput) {
-                alert('Please fill in both start and end times');
-                return;
-            }
-            
-            startTime = startInput.value.trim();
-            endTime = endInput.value.trim();
-            
-            // Validate time format (should be HH:MM)
             const timeFormat = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
-            if (!timeFormat.test(startTime) || !timeFormat.test(endTime)) {
-                alert('Invalid time format. Please use 24-hour format (HH:MM, e.g., 10:00 or 14:30)');
-                return;
+            
+            // Collect all time ranges
+            for (const range of timeRanges) {
+                const startInput = range.querySelector('input[type="time"]');
+                const endInput = range.querySelectorAll('input[type="time"]')[1];
+                
+                if (!startInput || !endInput) {
+                    alert('Please fill in both start and end times for all ranges');
+                    return;
+                }
+                
+                const start = startInput.value.trim();
+                const end = endInput.value.trim();
+                
+                // Validate time format
+                if (!timeFormat.test(start) || !timeFormat.test(end)) {
+                    alert('Invalid time format. Please use 24-hour format (HH:MM, e.g., 10:00 or 14:30)');
+                    return;
+                }
+                
+                timeRangesArray.push({ start_time: start, end_time: end });
             }
+            
+            // For backwards compatibility, set first range as primary
+            startTime = timeRangesArray[0].start_time;
+            endTime = timeRangesArray[0].end_time;
         } else {
             alert('Please either check "Full day unavailability" or add at least one time range');
             return;
@@ -2809,7 +2818,8 @@ function saveUnavailability() {
         date: date,
         is_full_day: isFullDay,
         start_time: startTime,
-        end_time: endTime
+        end_time: endTime,
+        time_ranges: timeRangesArray.length > 1 ? timeRangesArray : null  // Send array if multiple
     };
     
     // Determine which endpoint and method to use
@@ -3141,6 +3151,87 @@ function editUnavailability(unavailabilityId) {
 // Alias function for opening modal with existing unavailability data
 function openUnavailabilityModalForEdit(unav) {
     editUnavailability(unav.id);
+}
+
+// Open modal with multiple time ranges for the same date
+function openUnavailabilityModalForEditMultiple(date, unavailabilityRecords) {
+    const modal = document.getElementById('unavailability-modal');
+    if (!modal) return;
+    
+    // Open modal for this date
+    openUnavailabilityModal(date);
+    
+    // Store ALL IDs for deletion later (comma-separated)
+    const ids = unavailabilityRecords.map(u => u.id).join(',');
+    modal.dataset.editingIds = ids;
+    
+    // Pre-populate with all time ranges
+    setTimeout(() => {
+        const container = document.getElementById('time-ranges-container');
+        if (!container) return;
+        
+        // Clear container
+        container.innerHTML = '';
+        
+        // Add each time range
+        unavailabilityRecords.forEach((unav, index) => {
+            if (!unav.is_full_day && unav.start_time && unav.end_time) {
+                const startTime = formatTimeForInput(unav.start_time);
+                const endTime = formatTimeForInput(unav.end_time);
+                
+                const timeRangeDiv = document.createElement('div');
+                timeRangeDiv.className = 'time-range-item';
+                timeRangeDiv.dataset.unavailabilityId = unav.id;  // Store ID for deletion
+                
+                timeRangeDiv.innerHTML = `
+                    <div class="time-range-controls">
+                        <div class="time-input-group">
+                            <label>Start Time</label>
+                            <input type="time" class="time-input" value="${startTime}">
+                        </div>
+                        <div class="time-input-group">
+                            <label>End Time</label>
+                            <input type="time" class="time-input" value="${endTime}">
+                        </div>
+                        <button class="remove-time-range" type="button">
+                            <span class="material-icons">delete</span>
+                        </button>
+                    </div>
+                `;
+                
+                container.appendChild(timeRangeDiv);
+                
+                // Add remove handler
+                const removeBtn = timeRangeDiv.querySelector('.remove-time-range');
+                if (removeBtn) {
+                    removeBtn.addEventListener('click', function() {
+                        timeRangeDiv.remove();
+                        // If no more ranges, show empty state
+                        if (container.querySelectorAll('.time-range-item').length === 0) {
+                            container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
+                        }
+                    });
+                }
+            }
+        });
+        
+        // Show container and add button
+        container.style.display = 'block';
+        const addBtn = document.getElementById('add-time-range');
+        if (addBtn) addBtn.style.display = 'block';
+    }, 100);
+}
+
+// Helper function to format time for input
+function formatTimeForInput(timeStr) {
+    if (!timeStr) return '';
+    if (/^\d{2}:\d{2}$/.test(timeStr)) return timeStr;
+    if (/^\d{2}:\d{2}:\d{2}/.test(timeStr)) return timeStr.substring(0, 5);
+    if (timeStr.includes('T')) {
+        const timePart = timeStr.split('T')[1];
+        return timePart.substring(0, 5);
+    }
+    return timeStr.substring(0, 5);
 }
 
 function deleteUnavailability(unavailabilityId) {

@@ -949,22 +949,61 @@ def create_unavailability():
                         'location': session.location or 'TBA'
                     })
     
-    # Create GLOBAL unavailability record
-    unavailability = Unavailability(
-        user_id=target_user_id,
-        unit_id=None,  # Global unavailability
-        date=unavailability_date,
-        start_time=start_time,
-        end_time=end_time,
-        is_full_day=is_full_day,
-        recurring_pattern=recurring_pattern,
-        recurring_end_date=recurring_end_date,
-        recurring_interval=recurring_interval,
-        reason=reason if reason else None
-    )
+    # Check if multiple time ranges were provided
+    time_ranges = data.get('time_ranges')
+    unavailabilities_created = []
+    
+    if time_ranges and len(time_ranges) > 1:
+        # Multiple time ranges - create separate record for each
+        for time_range in time_ranges:
+            try:
+                range_start = datetime.strptime(time_range['start_time'], '%H:%M').time()
+                range_end = datetime.strptime(time_range['end_time'], '%H:%M').time()
+            except (ValueError, KeyError) as e:
+                return jsonify({"error": f"Invalid time range format: {str(e)}"}), 400
+            
+            # Check for existing record with same time
+            existing = Unavailability.query.filter_by(
+                user_id=target_user_id,
+                unit_id=None,
+                date=unavailability_date,
+                start_time=range_start,
+                end_time=range_end
+            ).first()
+            
+            if not existing:
+                unavailability = Unavailability(
+                    user_id=target_user_id,
+                    unit_id=None,
+                    date=unavailability_date,
+                    start_time=range_start,
+                    end_time=range_end,
+                    is_full_day=False,  # Multiple ranges = not full day
+                    recurring_pattern=recurring_pattern,
+                    recurring_end_date=recurring_end_date,
+                    recurring_interval=recurring_interval,
+                    reason=reason if reason else None
+                )
+                db.session.add(unavailability)
+                unavailabilities_created.append(unavailability)
+    else:
+        # Single time range or full day - create one record
+        unavailability = Unavailability(
+            user_id=target_user_id,
+            unit_id=None,  # Global unavailability
+            date=unavailability_date,
+            start_time=start_time,
+            end_time=end_time,
+            is_full_day=is_full_day,
+            recurring_pattern=recurring_pattern,
+            recurring_end_date=recurring_end_date,
+            recurring_interval=recurring_interval,
+            reason=reason if reason else None
+        )
+        db.session.add(unavailability)
+        unavailabilities_created.append(unavailability)
     
     try:
-        db.session.add(unavailability)
         
         # Get target user object for preferences
         target_user = User.query.get(target_user_id)
@@ -988,18 +1027,26 @@ def create_unavailability():
         
         db.session.commit()
         
+        # Build response with all created unavailabilities
+        unavailability_list = []
+        for unav in unavailabilities_created:
+            unavailability_list.append({
+                "id": unav.id,
+                "date": unav.date.isoformat(),
+                "is_full_day": unav.is_full_day,
+                "start_time": unav.start_time.isoformat() if unav.start_time else None,
+                "end_time": unav.end_time.isoformat() if unav.end_time else None,
+                "recurring_pattern": unav.recurring_pattern.value if unav.recurring_pattern else None,
+                "reason": unav.reason
+            })
+        
+        count_msg = f"{len(unavailabilities_created)} unavailability record(s)" if len(unavailabilities_created) > 1 else "Unavailability"
+        
         response_data = {
-            "message": "Unavailability created successfully",
+            "message": f"{count_msg} created successfully",
             "availability_configured": True,
-            "unavailability": {
-                "id": unavailability.id,
-                "date": unavailability.date.isoformat(),
-                "is_full_day": unavailability.is_full_day,
-                "start_time": unavailability.start_time.isoformat() if unavailability.start_time else None,
-                "end_time": unavailability.end_time.isoformat() if unavailability.end_time else None,
-                "recurring_pattern": unavailability.recurring_pattern.value if unavailability.recurring_pattern else None,
-                "reason": unavailability.reason
-            }
+            "unavailability": unavailability_list[0] if len(unavailability_list) == 1 else unavailability_list,
+            "count": len(unavailabilities_created)
         }
         
         # Include conflicts if any exist
