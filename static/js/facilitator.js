@@ -2345,6 +2345,7 @@ function loadUnavailabilityData() {
             
             unavailabilityData = data.unavailabilities || [];
             console.log('[DEBUG] Unavailability data array length:', unavailabilityData.length);
+            console.log('[DEBUG] Unavailability dates:', unavailabilityData.map(u => u.date));
             updateCalendarDisplay();
             updateRecentUnavailabilityList();
         })
