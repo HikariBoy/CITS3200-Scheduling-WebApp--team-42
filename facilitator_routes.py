@@ -765,6 +765,10 @@ def get_unavailability():
         unit_id=None  # Global unavailability
     ).all()
     
+    print(f"[DEBUG] GET unavailability - user_id={target_user_id}, found {len(unavailabilities)} records")
+    for u in unavailabilities:
+        print(f"[DEBUG]   - ID={u.id}, date={u.date}, recurring_pattern={u.recurring_pattern}")
+    
     # Serialize unavailability data
     unavailability_data = []
     for unav in unavailabilities:
@@ -1388,7 +1392,10 @@ def generate_recurring_unavailability():
                     reason=data.get('reason')
                 )
                 db.session.add(unavailability)
+                print(f"[DEBUG] RECURRING - Creating record: user_id={user.id}, unit_id=None, date={date}, recurring_pattern={recurring_pattern}")
                 created_count += 1
+            else:
+                print(f"[DEBUG] RECURRING - Skipping duplicate: date={date}, start={start_time}, end={end_time}")
     
     # Mark availability as configured for ALL units the facilitator is in
     # (Since unavailability is now global, mark all units)
