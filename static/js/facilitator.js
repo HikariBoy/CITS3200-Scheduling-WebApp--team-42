@@ -2405,13 +2405,9 @@ function generateCalendar() {
     const calendarDays = document.getElementById('unavailability-calendar-days');
     if (!calendarDays) return;
     
-    // Get current calendar state - use unit start date if not set
+    // Get current calendar state - ALWAYS start at current month for unavailability
     if (!window.calendarCurrentDate) {
-        if (window.currentUnit && window.currentUnit.start_date) {
-            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
-        } else {
-            window.calendarCurrentDate = new Date();
-        }
+        window.calendarCurrentDate = new Date();
     }
     
     const currentDate = window.calendarCurrentDate;
