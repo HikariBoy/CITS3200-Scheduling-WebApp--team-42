@@ -71,46 +71,38 @@ def generate_unavailability_from_schedule(unit_id):
         session_start_time = session.start_time.time()
         session_end_time = session.end_time.time()
         
-        # Get all OTHER units this facilitator is assigned to
-        other_unit_ids = db.session.query(UnitFacilitator.unit_id).filter(
-            UnitFacilitator.user_id == facilitator_id,
-            UnitFacilitator.unit_id != unit_id
-        ).all()
+        # Check if GLOBAL unavailability already exists for this session
+        existing = Unavailability.query.filter_by(
+            user_id=facilitator_id,
+            unit_id=None,  # Global unavailability
+            date=session_date,
+            start_time=session_start_time,
+            end_time=session_end_time,
+            source_session_id=session.id
+        ).first()
         
-        # Create unavailability in each other unit
-        for (other_unit_id,) in other_unit_ids:
-            # Check if unavailability already exists
-            existing = Unavailability.query.filter_by(
-                user_id=facilitator_id,
-                unit_id=other_unit_id,
-                date=session_date,
-                start_time=session_start_time,
-                end_time=session_end_time,
-                source_session_id=session.id
-            ).first()
-            
-            if existing:
-                continue  # Already exists
-            
-            # Create reason text
-            module_name = session.module.module_name if session.module else "Session"
-            session_type = session.session_type or "Session"
-            reason = f"Scheduled: {unit.unit_code} - {module_name} ({session_type})"
-            
-            # Create unavailability
-            unavail = Unavailability(
-                user_id=facilitator_id,
-                unit_id=other_unit_id,
-                date=session_date,
-                start_time=session_start_time,
-                end_time=session_end_time,
-                is_full_day=False,
-                reason=reason,
-                source_session_id=session.id
-            )
-            
-            db.session.add(unavail)
-            created_count += 1
+        if existing:
+            continue  # Already exists
+        
+        # Create reason text
+        module_name = session.module.module_name if session.module else "Session"
+        session_type = session.session_type or "Session"
+        reason = f"Scheduled: {unit.unit_code} - {module_name} ({session_type})"
+        
+        # Create GLOBAL unavailability (not tied to any specific unit)
+        unavail = Unavailability(
+            user_id=facilitator_id,
+            unit_id=None,  # Global unavailability
+            date=session_date,
+            start_time=session_start_time,
+            end_time=session_end_time,
+            is_full_day=False,
+            reason=reason,
+            source_session_id=session.id
+        )
+        
+        db.session.add(unavail)
+        created_count += 1
     
     try:
         db.session.commit()

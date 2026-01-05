@@ -546,10 +546,6 @@
         </p>
       </div>
       <div class="unavailability-actions">
-        <button id="available-all-days-btn" class="action-btn" style="background-color: #4CAF50; color: white; margin-right: 10px;">
-          <span class="material-icons">check_circle</span>
-          Available All Days
-        </button>
         <button id="refresh-unavailability" class="action-btn">
           <span class="material-icons">refresh</span>
           Refresh
@@ -571,19 +567,23 @@
         
         <div class="calendar-legend" style="display: flex; gap: 16px; margin: 12px 0; font-size: 0.875rem; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 6px;">
-            <div style="width: 20px; height: 20px; background: #fee2e2; border: 2px solid #dc2626; border-radius: 4px;"></div>
-            <span>Your Unavailability</span>
+            <div style="width: 24px; height: 24px; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 4px;"></div>
+            <span style="color: #64748b;">Unit Period (Available)</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
-            <div style="width: 20px; height: 20px; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 4px;"></div>
-            <span style="display: flex; align-items: center; gap: 4px;">
-              <span class="material-icons" style="font-size: 16px; color: #3b82f6;">lock</span>
-              Scheduled Commitment
+            <div style="width: 24px; height: 24px; background: #fee2e2; border: 2px solid #dc2626; border-radius: 4px;"></div>
+            <span style="color: #dc2626; font-weight: 500;">Your Unavailability</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <div style="width: 24px; height: 24px; background: #fed7aa; border: 2px solid #f97316; border-radius: 4px;"></div>
+            <span style="display: flex; align-items: center; gap: 4px; color: #f97316; font-weight: 500;">
+              <span class="material-icons" style="font-size: 16px;">lock</span>
+              Published Schedule (Locked)
             </span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
-            <div style="width: 20px; height: 20px; background: linear-gradient(135deg, #fee2e2 50%, #dbeafe 50%); border: 2px solid #7c3aed; border-radius: 4px;"></div>
-            <span>Both</span>
+            <div style="width: 24px; height: 24px; background: linear-gradient(135deg, #fee2e2 50%, #fed7aa 50%); border: 2px solid #dc2626; border-radius: 4px;"></div>
+            <span style="color: #dc2626; font-weight: 500;">Both (Manual + Scheduled)</span>
           </div>
         </div>
         
@@ -668,19 +668,11 @@
       <div id="recurring-options" class="recurring-options" style="display: none;">
         <div class="form-group">
           <label for="repeat-every">Repeat every</label>
-          <select id="repeat-every">
-            <option value="weekly">Week</option>
-            <option value="monthly">Month</option>
-            <option value="custom">Custom</option>
-          </select>
-        </div>
-        
-        <div id="custom-recurrence" class="custom-recurrence" style="display: none;">
-          <div class="form-group">
-            <label for="custom-interval">Every</label>
-            <input type="number" id="custom-interval" min="1" max="52" value="1">
-            <span>weeks</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="number" id="repeat-every" min="1" max="52" value="1" style="width: 80px;">
+            <span>week(s)</span>
           </div>
+          <small style="color: #64748b; font-size: 0.875rem;">e.g., 1 = every week, 2 = every 2 weeks</small>
         </div>
         
         <div class="form-group">

@@ -746,12 +746,9 @@ def get_unit_info():
 @facilitator_bp.route('/unavailability', methods=['GET'])
 @facilitator_required
 def get_unavailability():
-    """Get unavailability for a specific unit"""
+    """Get GLOBAL unavailability (unit_id optional for backwards compatibility)"""
     current_user = get_current_user()
-    unit_id = request.args.get('unit_id', type=int)
-    
-    if not unit_id:
-        return jsonify({"error": "unit_id is required"}), 400
+    unit_id = request.args.get('unit_id', type=int)  # Optional now
     
     # Get the target user (facilitator being viewed)
     # If 'user_id' is provided, UC/admin is viewing on behalf of facilitator
@@ -759,24 +756,18 @@ def get_unavailability():
     
     # Check permission: either viewing own data or UC/admin viewing facilitator's data
     if target_user_id != current_user.id:
-        if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
             return jsonify({"error": "forbidden"}), 403
-    
-    # Verify target user has access to this unit
-    access = (
-        db.session.query(Unit)
-        .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
-        .first()
-    )
-    if not access:
-        return jsonify({"error": "forbidden"}), 403
     
     # Get GLOBAL unavailability records for this user
     unavailabilities = Unavailability.query.filter_by(
         user_id=target_user_id, 
         unit_id=None  # Global unavailability
     ).all()
+    
+    print(f"[DEBUG] GET unavailability - user_id={target_user_id}, found {len(unavailabilities)} records")
+    for u in unavailabilities:
+        print(f"[DEBUG]   - ID={u.id}, date={u.date}, recurring_pattern={u.recurring_pattern}")
     
     # Serialize unavailability data
     unavailability_data = []
@@ -795,44 +786,45 @@ def get_unavailability():
         })
     
     return jsonify({
-        'unit': {
-            'id': access.id,
-            'code': access.unit_code,
-            'name': access.unit_name,
-            'start_date': access.start_date.isoformat() if access.start_date else None,
-            'end_date': access.end_date.isoformat() if access.end_date else None
-        },
         'unavailabilities': unavailability_data
     })
 
 @facilitator_bp.route('/unavailability', methods=['POST'])
 @login_required
 def create_unavailability():
-    """Create or update unavailability for a specific unit"""
+    """Create GLOBAL unavailability (unit_id is optional for backwards compatibility)"""
     current_user = get_current_user()
     data = request.get_json()
     
+    # unit_id is now OPTIONAL - unavailability is global!
+    # If provided (for backwards compatibility), we ignore it
     unit_id = data.get('unit_id')
-    if not unit_id:
-        return jsonify({"error": "unit_id is required"}), 400
     
     # Get the target user (facilitator being edited)
     # If 'user_id' is provided, UC is editing on behalf of facilitator
     target_user_id = data.get('user_id', current_user.id)
     
-    # Check permission: either editing own data or UC editing facilitator's data
-    if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
-        return jsonify({"error": "forbidden"}), 403
+    # Permission check: user can edit their own data, or UC/admin can edit facilitator's data
+    if target_user_id != current_user.id:
+        # Someone else is editing - must be UC or admin
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
+            return jsonify({"error": "forbidden"}), 403
     
-    # Verify target user has access to this unit
+    # For global unavailability, we don't need to verify unit access
+    # Just check that the user exists and is a facilitator
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({"error": "user not found"}), 404
+    
+    # Get ANY unit the facilitator is in (for date range validation)
     access = (
         db.session.query(Unit)
         .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
+        .filter(UnitFacilitator.user_id == target_user_id)
         .first()
     )
     if not access:
-        return jsonify({"error": "facilitator not linked to this unit"}), 403
+        return jsonify({"error": "facilitator not linked to any unit"}), 403
     
     # Note: We allow editing unavailability even if schedule is published
     # Auto-generated unavailability from published schedules is protected separately
@@ -843,10 +835,8 @@ def create_unavailability():
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
     
-    if access.start_date and unavailability_date < access.start_date:
-        return jsonify({"error": "Date is before unit start date"}), 400
-    if access.end_date and unavailability_date > access.end_date:
-        return jsonify({"error": "Date is after unit end date"}), 400
+    # Skip date range validation for global unavailability
+    # Users can set unavailability for any future date
     
     # Parse time data
     start_time = None
@@ -913,26 +903,26 @@ def create_unavailability():
         return jsonify({"error": "Reason must be 500 characters or less"}), 400
     
     # Check for existing GLOBAL unavailability on the same date and time
-    existing = Unavailability.query.filter_by(
-        user_id=target_user_id,
-        unit_id=None,  # Global unavailability
-        date=unavailability_date,
-        start_time=start_time,
-        end_time=end_time
-    ).first()
+    # (Skip this check when creating multiple time ranges OR when delete_existing_for_date is set)
+    if not data.get('time_ranges') and not data.get('delete_existing_for_date'):
+        existing = Unavailability.query.filter_by(
+            user_id=target_user_id,
+            unit_id=None,  # Global unavailability
+            date=unavailability_date,
+            start_time=start_time,
+            end_time=end_time
+        ).first()
+        
+        if existing:
+            return jsonify({"error": "Unavailability already exists for this date and time"}), 409
     
-    if existing:
-        return jsonify({"error": "Unavailability already exists for this date and time"}), 409
-    
-    # Check for conflicts with existing assignments
+    # Check for conflicts with existing assignments across ALL units
     conflicts = []
     assignments = (
         db.session.query(Assignment)
         .join(Session, Assignment.session_id == Session.id)
-        .join(Module, Session.module_id == Module.id)
         .filter(
             Assignment.facilitator_id == target_user_id,
-            Module.unit_id == unit_id,
             db.func.date(Session.start_time) == unavailability_date
         )
         .all()
@@ -965,22 +955,71 @@ def create_unavailability():
                         'location': session.location or 'TBA'
                     })
     
-    # Create GLOBAL unavailability record
-    unavailability = Unavailability(
-        user_id=target_user_id,
-        unit_id=None,  # Global unavailability
-        date=unavailability_date,
-        start_time=start_time,
-        end_time=end_time,
-        is_full_day=is_full_day,
-        recurring_pattern=recurring_pattern,
-        recurring_end_date=recurring_end_date,
-        recurring_interval=recurring_interval,
-        reason=reason if reason else None
-    )
+    # Check if we need to delete existing records for this date first (when editing multiple)
+    if data.get('delete_existing_for_date'):
+        # Delete all manual unavailability for this user on this date
+        Unavailability.query.filter(
+            Unavailability.user_id == target_user_id,
+            Unavailability.unit_id.is_(None),
+            Unavailability.date == unavailability_date,
+            Unavailability.source_session_id.is_(None)  # Only manual
+        ).delete(synchronize_session=False)
+    
+    # Check if multiple time ranges were provided
+    time_ranges = data.get('time_ranges')
+    unavailabilities_created = []
+    
+    if time_ranges and len(time_ranges) > 1:
+        # Multiple time ranges - create separate record for each
+        for time_range in time_ranges:
+            try:
+                range_start = datetime.strptime(time_range['start_time'], '%H:%M').time()
+                range_end = datetime.strptime(time_range['end_time'], '%H:%M').time()
+            except (ValueError, KeyError) as e:
+                return jsonify({"error": f"Invalid time range format: {str(e)}"}), 400
+            
+            # Check for existing record with same time
+            existing = Unavailability.query.filter_by(
+                user_id=target_user_id,
+                unit_id=None,
+                date=unavailability_date,
+                start_time=range_start,
+                end_time=range_end
+            ).first()
+            
+            if not existing:
+                unavailability = Unavailability(
+                    user_id=target_user_id,
+                    unit_id=None,
+                    date=unavailability_date,
+                    start_time=range_start,
+                    end_time=range_end,
+                    is_full_day=False,  # Multiple ranges = not full day
+                    recurring_pattern=recurring_pattern,
+                    recurring_end_date=recurring_end_date,
+                    recurring_interval=recurring_interval,
+                    reason=reason if reason else None
+                )
+                db.session.add(unavailability)
+                unavailabilities_created.append(unavailability)
+    else:
+        # Single time range or full day - create one record
+        unavailability = Unavailability(
+            user_id=target_user_id,
+            unit_id=None,  # Global unavailability
+            date=unavailability_date,
+            start_time=start_time,
+            end_time=end_time,
+            is_full_day=is_full_day,
+            recurring_pattern=recurring_pattern,
+            recurring_end_date=recurring_end_date,
+            recurring_interval=recurring_interval,
+            reason=reason if reason else None
+        )
+        db.session.add(unavailability)
+        unavailabilities_created.append(unavailability)
     
     try:
-        db.session.add(unavailability)
         
         # Get target user object for preferences
         target_user = User.query.get(target_user_id)
@@ -994,34 +1033,36 @@ def create_unavailability():
             except:
                 preferences = {}
         
-        # Remove availability status for this unit since user is now setting specific unavailability
-        if 'availability_status' in preferences and str(unit_id) in preferences['availability_status']:
-            del preferences['availability_status'][str(unit_id)]
-            target_user.preferences = json.dumps(preferences)
+        # Mark availability as configured for ALL units the facilitator is in
+        unit_facilitators = UnitFacilitator.query.filter_by(
+            user_id=target_user_id
+        ).all()
         
-        # Mark availability as configured in UnitFacilitator
-        unit_facilitator = UnitFacilitator.query.filter_by(
-            user_id=target_user_id,
-            unit_id=unit_id
-        ).first()
-        
-        if unit_facilitator:
+        for unit_facilitator in unit_facilitators:
             unit_facilitator.availability_configured = True
         
         db.session.commit()
         
+        # Build response with all created unavailabilities
+        unavailability_list = []
+        for unav in unavailabilities_created:
+            unavailability_list.append({
+                "id": unav.id,
+                "date": unav.date.isoformat(),
+                "is_full_day": unav.is_full_day,
+                "start_time": unav.start_time.isoformat() if unav.start_time else None,
+                "end_time": unav.end_time.isoformat() if unav.end_time else None,
+                "recurring_pattern": unav.recurring_pattern.value if unav.recurring_pattern else None,
+                "reason": unav.reason
+            })
+        
+        count_msg = f"{len(unavailabilities_created)} unavailability record(s)" if len(unavailabilities_created) > 1 else "Unavailability"
+        
         response_data = {
-            "message": "Unavailability created successfully",
+            "message": f"{count_msg} created successfully",
             "availability_configured": True,
-            "unavailability": {
-                "id": unavailability.id,
-                "date": unavailability.date.isoformat(),
-                "is_full_day": unavailability.is_full_day,
-                "start_time": unavailability.start_time.isoformat() if unavailability.start_time else None,
-                "end_time": unavailability.end_time.isoformat() if unavailability.end_time else None,
-                "recurring_pattern": unavailability.recurring_pattern.value if unavailability.recurring_pattern else None,
-                "reason": unavailability.reason
-            }
+            "unavailability": unavailability_list[0] if len(unavailability_list) == 1 else unavailability_list,
+            "count": len(unavailabilities_created)
         }
         
         # Include conflicts if any exist
@@ -1040,7 +1081,7 @@ def create_unavailability():
 @facilitator_bp.route('/unavailability/<int:unavailability_id>', methods=['PUT'])
 @facilitator_required
 def update_unavailability(unavailability_id):
-    """Update an existing unavailability record"""
+    """Update an existing GLOBAL unavailability record"""
     current_user = get_current_user()
     data = request.get_json()
     
@@ -1052,13 +1093,13 @@ def update_unavailability(unavailability_id):
     
     # Check permission: either owner or UC/admin editing on behalf of facilitator
     if unavailability.user_id != current_user.id:
-        if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
+        # For global unavailability, just check role (no unit needed)
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
             return jsonify({"error": "forbidden"}), 403
     
-    # Get the unit to check schedule status
-    unit = Unit.query.get(unavailability.unit_id)
-    if unit and unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    # Prevent editing auto-generated unavailability
+    if unavailability.source_session_id is not None:
+        return jsonify({"error": "Cannot edit auto-generated unavailability from published schedules."}), 403
     
     # Update fields - always update is_full_day first to handle time clearing
     if 'is_full_day' in data:
@@ -1132,7 +1173,7 @@ def update_unavailability(unavailability_id):
 @facilitator_bp.route('/unavailability/<int:unavailability_id>', methods=['DELETE'])
 @login_required
 def delete_unavailability(unavailability_id):
-    """Delete an unavailability record"""
+    """Delete a GLOBAL unavailability record"""
     current_user = get_current_user()
     
     # Get the unavailability record
@@ -1141,18 +1182,14 @@ def delete_unavailability(unavailability_id):
     if not unavailability:
         return jsonify({"error": "Unavailability not found"}), 404
     
-    # Check permission
-    if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
-        return jsonify({"error": "forbidden"}), 403
+    # Check permission: either owner or UC/admin
+    if unavailability.user_id != current_user.id:
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
+            return jsonify({"error": "forbidden"}), 403
     
     # Prevent deletion of auto-generated unavailability
     if unavailability.source_session_id is not None:
         return jsonify({"error": "Cannot delete auto-generated unavailability from published schedules. Contact your unit coordinator if this needs to be changed."}), 403
-    
-    # Get the unit to check schedule status
-    unit = Unit.query.get(unavailability.unit_id)
-    if unit and unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
     
     db.session.delete(unavailability)
     db.session.commit()
@@ -1191,11 +1228,12 @@ def clear_all_unavailability():
     # Auto-generated unavailability from published schedules is protected separately
     
     try:
-        # Delete all GLOBAL unavailability records for this user
-        deleted_count = Unavailability.query.filter_by(
-            user_id=target_user_id,
-            unit_id=None  # Global unavailability
-        ).delete()
+        # Delete all MANUAL global unavailability (NOT auto-generated from schedules)
+        deleted_count = Unavailability.query.filter(
+            Unavailability.user_id == target_user_id,
+            Unavailability.unit_id.is_(None),  # Global unavailability
+            Unavailability.source_session_id.is_(None)  # Only manual (not auto-generated)
+        ).delete(synchronize_session=False)
         
         # Get target user object
         target_user = User.query.get(target_user_id)
@@ -1238,26 +1276,32 @@ def clear_all_unavailability():
 @facilitator_bp.route('/unavailability/generate-recurring', methods=['POST'])
 @facilitator_required
 def generate_recurring_unavailability():
-    """Generate recurring unavailability entries based on pattern"""
-    user = get_current_user()
+    """Generate recurring GLOBAL unavailability entries based on pattern"""
+    current_user = get_current_user()
     data = request.get_json()
     
-    unit_id = data.get('unit_id')
-    if not unit_id:
-        return jsonify({"error": "unit_id is required"}), 400
+    # unit_id is now optional - unavailability is global
+    unit_id = data.get('unit_id')  # Ignored, kept for backwards compatibility
     
-    # Verify user has access to this unit
-    access = (
-        db.session.query(Unit)
-        .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == user.id)
-        .first()
-    )
-    if not access:
-        return jsonify({"error": "forbidden"}), 403
+    # Get the target user (facilitator being edited)
+    # If 'user_id' is provided, UC is editing on behalf of facilitator
+    target_user_id = data.get('user_id', current_user.id)
     
-    # Note: We allow generating recurring unavailability even if schedule is published
-    # Auto-generated unavailability from published schedules is protected separately
+    # Permission check: user can edit their own data, or UC/admin can edit facilitator's data
+    if target_user_id != current_user.id:
+        # Someone else is editing - must be UC or admin
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
+            return jsonify({"error": "forbidden"}), 403
+    
+    # Get the target user object
+    user = User.query.get(target_user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    # Check if user is a facilitator in at least one unit
+    has_units = UnitFacilitator.query.filter_by(user_id=user.id).first()
+    if not has_units:
+        return jsonify({"error": "You must be assigned to at least one unit to set unavailability"}), 403
     
     # Parse the base unavailability data
     base_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
@@ -1266,13 +1310,9 @@ def generate_recurring_unavailability():
     recurring_interval = data.get('recurring_interval', 1)
     
     # Generate all dates for the recurring pattern
-    # IMPORTANT: Always respect unit end date - never generate unavailability beyond unit end date
+    # For global unavailability, use the user-specified end date
     effective_end_date = recurring_end_date
     message = None
-    
-    if access.end_date and recurring_end_date > access.end_date:
-        effective_end_date = access.end_date
-        message = f"Recurring pattern will end on {access.end_date.strftime('%d/%m/%Y')} instead of {recurring_end_date.strftime('%d/%m/%Y')} (unit end date)"
     
     dates = []
     current_date = base_date
@@ -1297,10 +1337,21 @@ def generate_recurring_unavailability():
             except ValueError:
                 current_date = current_date.replace(year=year, month=month, day=1) - timedelta(days=1)
     
-    # Create unavailability records for each date
-    created_count = 0
-    for date in dates:
-        # Parse time data for this iteration
+    # Check if multiple time ranges provided
+    time_ranges = data.get('time_ranges')
+    time_ranges_to_create = []
+    
+    if time_ranges and len(time_ranges) > 1:
+        # Multiple time ranges - validate and prepare them
+        for time_range in time_ranges:
+            try:
+                range_start = datetime.strptime(time_range['start_time'], '%H:%M').time()
+                range_end = datetime.strptime(time_range['end_time'], '%H:%M').time()
+                time_ranges_to_create.append((range_start, range_end))
+            except (ValueError, KeyError) as e:
+                return jsonify({"error": f"Invalid time range format: {str(e)}"}), 400
+    else:
+        # Single time range - parse as before
         start_time = None
         end_time = None
         if not data.get('is_full_day', False):
@@ -1327,50 +1378,67 @@ def generate_recurring_unavailability():
             else:
                 end_time = None
         
-        # Check if GLOBAL unavailability already exists for this date and time combination
-        existing = Unavailability.query.filter_by(
-            user_id=user.id,
-            unit_id=None,  # Global unavailability
-            date=date,
-            start_time=start_time,
-            end_time=end_time
-        ).first()
-        
-        if not existing:
-            unavailability = Unavailability(
+        time_ranges_to_create.append((start_time, end_time))
+    
+    # Create unavailability records for each date and each time range
+    created_count = 0
+    for date in dates:
+        for start_time, end_time in time_ranges_to_create:
+            # Check if GLOBAL unavailability already exists for this date and time combination
+            existing = Unavailability.query.filter_by(
                 user_id=user.id,
                 unit_id=None,  # Global unavailability
                 date=date,
                 start_time=start_time,
-                end_time=end_time,
-                is_full_day=data.get('is_full_day', False),
-                recurring_pattern=recurring_pattern,
-                recurring_end_date=recurring_end_date,
-                recurring_interval=recurring_interval,
-                reason=data.get('reason')
-            )
-            db.session.add(unavailability)
-            created_count += 1
+                end_time=end_time
+            ).first()
+            
+            if not existing:
+                unavailability = Unavailability(
+                    user_id=user.id,
+                    unit_id=None,  # Global unavailability
+                    date=date,
+                    start_time=start_time,
+                    end_time=end_time,
+                    is_full_day=data.get('is_full_day', False),
+                    recurring_pattern=recurring_pattern,
+                    recurring_end_date=recurring_end_date,
+                    recurring_interval=recurring_interval,
+                    reason=data.get('reason')
+                )
+                db.session.add(unavailability)
+                print(f"[DEBUG] RECURRING - Creating record: user_id={user.id}, unit_id=None, date={date}, recurring_pattern={recurring_pattern}")
+                created_count += 1
+            else:
+                print(f"[DEBUG] RECURRING - Skipping duplicate: date={date}, start={start_time}, end={end_time}")
     
-    # Mark availability as configured since facilitator is setting unavailability
-    unit_facilitator = UnitFacilitator.query.filter_by(
-        user_id=user.id,
-        unit_id=unit_id
-    ).first()
+    # Mark availability as configured for ALL units the facilitator is in
+    # (Since unavailability is now global, mark all units)
+    unit_facilitators = UnitFacilitator.query.filter_by(
+        user_id=user.id
+    ).all()
     
-    if unit_facilitator:
+    for unit_facilitator in unit_facilitators:
         unit_facilitator.availability_configured = True
     
     db.session.commit()
     
+    # Build message
+    if created_count == len(dates) * len(time_ranges_to_create):
+        message = f"Created {created_count} recurring unavailability entries"
+    else:
+        skipped = (len(dates) * len(time_ranges_to_create)) - created_count
+        message = f"Created {created_count} recurring unavailability entries ({skipped} already existed)"
+    
     response_data = {
-        "message": f"Created {created_count} recurring unavailability entries",
+        "message": message,
         "total_dates": len(dates),
+        "total_time_ranges": len(time_ranges_to_create),
         "created_count": created_count,
         "availability_configured": True
     }
     
-    # Add warning message if end date was adjusted
+    return jsonify(response_data), 201
 
 @facilitator_bp.post("/copy-unavailability")
 @login_required
@@ -2095,12 +2163,15 @@ def _parse_hhmm(val: str):
         return None
 
 
-def can_edit_facilitator_data(current_user, target_user_id, unit_id):
+def can_edit_facilitator_data(current_user, target_user_id, unit_id=None):
     """
-    Check if current_user can edit data for target_user_id in the given unit.
+    Check if current_user can edit data for target_user_id.
+    For global unavailability (unit_id=None), just checks role.
+    For unit-specific data, checks unit permissions.
+    
     Returns True if:
     - current_user IS the target user (facilitator editing their own data), OR
-    - current_user is a UC/ADMIN for the unit
+    - current_user is a UC/ADMIN
     """
     # Case 1: User editing their own data
     if current_user.id == target_user_id:
@@ -2108,6 +2179,11 @@ def can_edit_facilitator_data(current_user, target_user_id, unit_id):
     
     # Case 2: UC or Admin editing facilitator's data
     if current_user.role in [UserRole.UNIT_COORDINATOR, UserRole.ADMIN]:
+        # For global unavailability (unit_id=None), any UC/Admin can edit
+        if unit_id is None:
+            return True
+        
+        # For unit-specific data, check unit permissions
         # Admins can always edit
         if current_user.role == UserRole.ADMIN:
             # Verify target user is a facilitator in this unit
