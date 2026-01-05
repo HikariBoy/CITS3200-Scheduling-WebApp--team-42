@@ -4449,25 +4449,25 @@ textarea::placeholder {
 
 /* Auto-generated unavailability from published schedules */
 .unavailability-calendar-section .calendar-day.auto-unavailable {
-  background-color: #dbeafe !important; /* Light blue for auto-generated */
-  border-color: #3b82f6 !important;
-  color: #1e40af !important;
+  background-color: #fed7aa !important; /* Light orange for auto-generated (distinct from unit-period blue) */
+  border-color: #f97316 !important;
+  color: #c2410c !important;
 }
 
 .unavailability-calendar-section .calendar-day.auto-unavailable:hover {
-  background-color: #bfdbfe !important; /* Slightly darker blue on hover */
-  border-color: #2563eb !important;
+  background-color: #fdba74 !important; /* Slightly darker orange on hover */
+  border-color: #ea580c !important;
 }
 
 /* Mixed: both manual and auto-generated on same day */
 .unavailability-calendar-section .calendar-day.mixed-unavailable {
-  background: linear-gradient(135deg, #fee2e2 50%, #dbeafe 50%) !important;
+  background: linear-gradient(135deg, #fee2e2 50%, #fed7aa 50%) !important; /* Red + Orange gradient */
   border-color: #7c3aed !important; /* Purple border for mixed */
   color: #6b21a8 !important;
 }
 
 .unavailability-calendar-section .calendar-day.mixed-unavailable:hover {
-  background: linear-gradient(135deg, #fecaca 50%, #bfdbfe 50%) !important;
+  background: linear-gradient(135deg, #fecaca 50%, #fdba74 50%) !important; /* Darker red + orange on hover */
   border-color: #6d28d9 !important;
 }
 
