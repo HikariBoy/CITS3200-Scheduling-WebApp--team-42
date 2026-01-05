@@ -2346,8 +2346,11 @@ function loadUnavailabilityData() {
             unavailabilityData = data.unavailabilities || [];
             console.log('[DEBUG] Unavailability data array length:', unavailabilityData.length);
             console.log('[DEBUG] Unavailability dates:', unavailabilityData.map(u => u.date));
+            console.log('[DEBUG] About to call updateCalendarDisplay');
             updateCalendarDisplay();
+            console.log('[DEBUG] About to call updateRecentUnavailabilityList');
             updateRecentUnavailabilityList();
+            console.log('[DEBUG] Display updates complete');
         })
         .catch(error => {
             console.error('Error loading unavailability data:', error);
@@ -2518,6 +2521,9 @@ function getUnavailabilityType(dateString) {
 
 function updateCalendarDisplay() {
     const calendarDays = document.querySelectorAll('.calendar-day');
+    console.log('[DEBUG] updateCalendarDisplay - found', calendarDays.length, 'calendar days');
+    
+    let updatedCount = 0;
     calendarDays.forEach(dayElement => {
         const date = dayElement.dataset.date;
         if (!date) return;
@@ -2527,6 +2533,10 @@ function updateCalendarDisplay() {
         
         // Apply appropriate unavailability class
         const unavailabilityType = getUnavailabilityType(date);
+        if (unavailabilityType) {
+            console.log('[DEBUG] Date', date, 'has unavailability type:', unavailabilityType);
+            updatedCount++;
+        }
         if (unavailabilityType === 'full') {
             dayElement.classList.add('unavailable-full');
         } else if (unavailabilityType === 'partial') {
@@ -2537,6 +2547,7 @@ function updateCalendarDisplay() {
             dayElement.classList.add('mixed-unavailable');
         }
     });
+    console.log('[DEBUG] Updated', updatedCount, 'days with unavailability');
 }
 
 function openUnavailabilityModal(date) {
