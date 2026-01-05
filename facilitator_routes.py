@@ -1018,7 +1018,7 @@ def create_unavailability():
 @facilitator_bp.route('/unavailability/<int:unavailability_id>', methods=['PUT'])
 @facilitator_required
 def update_unavailability(unavailability_id):
-    """Update an existing unavailability record"""
+    """Update an existing GLOBAL unavailability record"""
     current_user = get_current_user()
     data = request.get_json()
     
@@ -1030,13 +1030,13 @@ def update_unavailability(unavailability_id):
     
     # Check permission: either owner or UC/admin editing on behalf of facilitator
     if unavailability.user_id != current_user.id:
-        if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
+        # For global unavailability, just check role (no unit needed)
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
             return jsonify({"error": "forbidden"}), 403
     
-    # Get the unit to check schedule status
-    unit = Unit.query.get(unavailability.unit_id)
-    if unit and unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
+    # Prevent editing auto-generated unavailability
+    if unavailability.source_session_id is not None:
+        return jsonify({"error": "Cannot edit auto-generated unavailability from published schedules."}), 403
     
     # Update fields - always update is_full_day first to handle time clearing
     if 'is_full_day' in data:
@@ -1110,7 +1110,7 @@ def update_unavailability(unavailability_id):
 @facilitator_bp.route('/unavailability/<int:unavailability_id>', methods=['DELETE'])
 @login_required
 def delete_unavailability(unavailability_id):
-    """Delete an unavailability record"""
+    """Delete a GLOBAL unavailability record"""
     current_user = get_current_user()
     
     # Get the unavailability record
@@ -1119,18 +1119,14 @@ def delete_unavailability(unavailability_id):
     if not unavailability:
         return jsonify({"error": "Unavailability not found"}), 404
     
-    # Check permission
-    if not can_edit_facilitator_data(current_user, unavailability.user_id, unavailability.unit_id):
-        return jsonify({"error": "forbidden"}), 403
+    # Check permission: either owner or UC/admin
+    if unavailability.user_id != current_user.id:
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
+            return jsonify({"error": "forbidden"}), 403
     
     # Prevent deletion of auto-generated unavailability
     if unavailability.source_session_id is not None:
         return jsonify({"error": "Cannot delete auto-generated unavailability from published schedules. Contact your unit coordinator if this needs to be changed."}), 403
-    
-    # Get the unit to check schedule status
-    unit = Unit.query.get(unavailability.unit_id)
-    if unit and unit.schedule_status and unit.schedule_status == ScheduleStatus.PUBLISHED:
-        return jsonify({"error": "This unit's schedule has been published. Editing unavailability is disabled."}), 403
     
     db.session.delete(unavailability)
     db.session.commit()
@@ -1217,26 +1213,17 @@ def clear_all_unavailability():
 @facilitator_bp.route('/unavailability/generate-recurring', methods=['POST'])
 @facilitator_required
 def generate_recurring_unavailability():
-    """Generate recurring unavailability entries based on pattern"""
+    """Generate recurring GLOBAL unavailability entries based on pattern"""
     user = get_current_user()
     data = request.get_json()
     
-    unit_id = data.get('unit_id')
-    if not unit_id:
-        return jsonify({"error": "unit_id is required"}), 400
+    # unit_id is now optional - unavailability is global
+    unit_id = data.get('unit_id')  # Ignored, kept for backwards compatibility
     
-    # Verify user has access to this unit
-    access = (
-        db.session.query(Unit)
-        .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == user.id)
-        .first()
-    )
-    if not access:
-        return jsonify({"error": "forbidden"}), 403
-    
-    # Note: We allow generating recurring unavailability even if schedule is published
-    # Auto-generated unavailability from published schedules is protected separately
+    # Check if user is a facilitator in at least one unit
+    has_units = UnitFacilitator.query.filter_by(user_id=user.id).first()
+    if not has_units:
+        return jsonify({"error": "You must be assigned to at least one unit to set unavailability"}), 403
     
     # Parse the base unavailability data
     base_date = datetime.strptime(data.get('date'), '%Y-%m-%d').date()
@@ -2074,12 +2061,15 @@ def _parse_hhmm(val: str):
         return None
 
 
-def can_edit_facilitator_data(current_user, target_user_id, unit_id):
+def can_edit_facilitator_data(current_user, target_user_id, unit_id=None):
     """
-    Check if current_user can edit data for target_user_id in the given unit.
+    Check if current_user can edit data for target_user_id.
+    For global unavailability (unit_id=None), just checks role.
+    For unit-specific data, checks unit permissions.
+    
     Returns True if:
     - current_user IS the target user (facilitator editing their own data), OR
-    - current_user is a UC/ADMIN for the unit
+    - current_user is a UC/ADMIN
     """
     # Case 1: User editing their own data
     if current_user.id == target_user_id:
@@ -2087,6 +2077,11 @@ def can_edit_facilitator_data(current_user, target_user_id, unit_id):
     
     # Case 2: UC or Admin editing facilitator's data
     if current_user.role in [UserRole.UNIT_COORDINATOR, UserRole.ADMIN]:
+        # For global unavailability (unit_id=None), any UC/Admin can edit
+        if unit_id is None:
+            return True
+        
+        # For unit-specific data, check unit permissions
         # Admins can always edit
         if current_user.role == UserRole.ADMIN:
             # Verify target user is a facilitator in this unit
