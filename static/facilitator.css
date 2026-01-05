@@ -4462,13 +4462,13 @@ textarea::placeholder {
 /* Mixed: both manual and auto-generated on same day */
 .unavailability-calendar-section .calendar-day.mixed-unavailable {
   background: linear-gradient(135deg, #fee2e2 50%, #fed7aa 50%) !important; /* Red + Orange */
-  border-color: #7c3aed !important; /* Purple border for mixed */
-  color: #6b21a8 !important;
+  border-color: #dc2626 !important; /* Red border */
+  color: #dc2626 !important;
 }
 
 .unavailability-calendar-section .calendar-day.mixed-unavailable:hover {
   background: linear-gradient(135deg, #fecaca 50%, #fdba74 50%) !important; /* Darker red + orange */
-  border-color: #6d28d9 !important;
+  border-color: #b91c1c !important;
 }
 
 .calendar-container {
