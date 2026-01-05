@@ -1191,11 +1191,12 @@ def clear_all_unavailability():
     # Auto-generated unavailability from published schedules is protected separately
     
     try:
-        # Delete all GLOBAL unavailability records for this user
-        deleted_count = Unavailability.query.filter_by(
-            user_id=target_user_id,
-            unit_id=None  # Global unavailability
-        ).delete()
+        # Delete all MANUAL global unavailability (NOT auto-generated from schedules)
+        deleted_count = Unavailability.query.filter(
+            Unavailability.user_id == target_user_id,
+            Unavailability.unit_id.is_(None),  # Global unavailability
+            Unavailability.source_session_id.is_(None)  # Only manual (not auto-generated)
+        ).delete(synchronize_session=False)
         
         # Get target user object
         target_user = User.query.get(target_user_id)

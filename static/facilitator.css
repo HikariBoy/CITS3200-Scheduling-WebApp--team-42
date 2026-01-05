@@ -4449,25 +4449,25 @@ textarea::placeholder {
 
 /* Auto-generated unavailability from published schedules */
 .unavailability-calendar-section .calendar-day.auto-unavailable {
-  background-color: #fed7aa !important; /* Light orange for auto-generated (distinct from unit-period blue) */
-  border-color: #f97316 !important;
-  color: #c2410c !important;
+  background-color: #dbeafe !important; /* Light blue for auto-generated */
+  border-color: #3b82f6 !important;
+  color: #1e40af !important;
 }
 
 .unavailability-calendar-section .calendar-day.auto-unavailable:hover {
-  background-color: #fdba74 !important; /* Slightly darker orange on hover */
-  border-color: #ea580c !important;
+  background-color: #bfdbfe !important; /* Slightly darker blue on hover */
+  border-color: #2563eb !important;
 }
 
 /* Mixed: both manual and auto-generated on same day */
 .unavailability-calendar-section .calendar-day.mixed-unavailable {
-  background: linear-gradient(135deg, #fee2e2 50%, #fed7aa 50%) !important; /* Red + Orange gradient */
+  background: linear-gradient(135deg, #fee2e2 50%, #dbeafe 50%) !important;
   border-color: #7c3aed !important; /* Purple border for mixed */
   color: #6b21a8 !important;
 }
 
 .unavailability-calendar-section .calendar-day.mixed-unavailable:hover {
-  background: linear-gradient(135deg, #fecaca 50%, #fdba74 50%) !important; /* Darker red + orange on hover */
+  background: linear-gradient(135deg, #fecaca 50%, #bfdbfe 50%) !important;
   border-color: #6d28d9 !important;
 }
 
@@ -5458,10 +5458,15 @@ textarea::placeholder {
 .fac-dropdown-item.danger { color: var(--status-red); }
 .fac-dropdown-item.danger .material-icons { color: var(--status-red); }
 
-/* Hide All Units button on specific tabs */
+/* Hide All Units and Switch Unit buttons on specific tabs */
 .unavailability-view-active .all-units-btn,
 .skills-view-active .all-units-btn,
 .swaps-view-active .all-units-btn {
+  display: none !important;
+}
+
+/* Hide Switch Unit button in unavailability view (unavailability is global!) */
+.unavailability-view-active .unit-dropdown-wrapper {
   display: none !important;
 }
 
