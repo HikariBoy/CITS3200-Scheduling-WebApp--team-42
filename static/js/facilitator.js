@@ -2369,13 +2369,17 @@ function initUnavailabilityCalendar() {
             const date = dayElement.dataset.date;
             if (!date) return;
             
-            // Check if date is within unit period
-            if (!isDateInUnitPeriod(date)) {
-                alert('You can only set unavailability for dates within the unit period');
+            // Check if date is in the past (prevent setting unavailability for past dates)
+            const selectedDate = new Date(date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            if (selectedDate < today) {
+                alert('You cannot set unavailability for past dates');
                 return;
             }
             
-            // Open modal for this date
+            // Open modal for this date (no unit period restriction - unavailability is global!)
             openUnavailabilityModal(date);
         });
         
@@ -2392,13 +2396,11 @@ function generateCalendar() {
     const calendarDays = document.getElementById('unavailability-calendar-days');
     if (!calendarDays) return;
     
-    // Get current calendar state - use unit start date if not set
+    // Get current calendar state - always start with current month for better UX
     if (!window.calendarCurrentDate) {
-        if (window.currentUnit && window.currentUnit.start_date) {
-            window.calendarCurrentDate = new Date(window.currentUnit.start_date);
-        } else {
-            window.calendarCurrentDate = new Date();
-        }
+        // Start with current month instead of unit start date
+        // This is more intuitive for users setting global unavailability
+        window.calendarCurrentDate = new Date();
     }
     
     const currentDate = window.calendarCurrentDate;
@@ -2437,11 +2439,12 @@ function generateCalendar() {
         const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         dayElement.dataset.date = dateString;
         
-        // Check if date is in unit period
-        if (isDateInUnitPeriod(dateString)) {
+        // Check if date is in ANY unit period (for visual reference only)
+        if (isDateInAnyUnitPeriod(dateString)) {
             dayElement.classList.add('unit-period');
         } else {
-            dayElement.classList.add('outside-period');
+            // Don't mark as outside-period - unavailability is global!
+            // Users can set unavailability for any future date
         }
         
         // Check if date has unavailability and apply appropriate class
@@ -2470,19 +2473,36 @@ function generateCalendar() {
     updateCalendarDisplay();
 }
 
-function isDateInUnitPeriod(dateString) {
-    const unit = window.currentUnit || currentUnit;
-    if (!unit || !unit.start_date || !unit.end_date) {
-        console.log('[DEBUG] isDateInUnitPeriod: No unit data available', unit);
+// Check if date is within ANY unit period (for visual reference)
+function isDateInAnyUnitPeriod(dateString) {
+    // Check all units the facilitator is enrolled in
+    if (!window.unitsData || window.unitsData.length === 0) {
+        console.log('[DEBUG] isDateInAnyUnitPeriod: No units data available');
         return false;
     }
     
     const date = new Date(dateString);
-    const startDate = new Date(unit.start_date);
-    const endDate = new Date(unit.end_date);
     
-    console.log('[DEBUG] Checking date:', dateString, 'Range:', startDate, 'to', endDate);
-    return date >= startDate && date <= endDate;
+    // Check if date falls within ANY unit's period
+    for (const unit of window.unitsData) {
+        if (unit.start_date && unit.end_date) {
+            const startDate = new Date(unit.start_date);
+            const endDate = new Date(unit.end_date);
+            
+            if (date >= startDate && date <= endDate) {
+                console.log('[DEBUG] Date', dateString, 'is within unit', unit.code, 'period');
+                return true;
+            }
+        }
+    }
+    
+    console.log('[DEBUG] Date', dateString, 'is not within any unit period');
+    return false;
+}
+
+// Legacy function for backward compatibility (now checks ANY unit)
+function isDateInUnitPeriod(dateString) {
+    return isDateInAnyUnitPeriod(dateString);
 }
 
 function hasUnavailability(dateString) {
