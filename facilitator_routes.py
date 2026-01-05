@@ -1318,10 +1318,21 @@ def generate_recurring_unavailability():
             except ValueError:
                 current_date = current_date.replace(year=year, month=month, day=1) - timedelta(days=1)
     
-    # Create unavailability records for each date
-    created_count = 0
-    for date in dates:
-        # Parse time data for this iteration
+    # Check if multiple time ranges provided
+    time_ranges = data.get('time_ranges')
+    time_ranges_to_create = []
+    
+    if time_ranges and len(time_ranges) > 1:
+        # Multiple time ranges - validate and prepare them
+        for time_range in time_ranges:
+            try:
+                range_start = datetime.strptime(time_range['start_time'], '%H:%M').time()
+                range_end = datetime.strptime(time_range['end_time'], '%H:%M').time()
+                time_ranges_to_create.append((range_start, range_end))
+            except (ValueError, KeyError) as e:
+                return jsonify({"error": f"Invalid time range format: {str(e)}"}), 400
+    else:
+        # Single time range - parse as before
         start_time = None
         end_time = None
         if not data.get('is_full_day', False):
@@ -1348,30 +1359,36 @@ def generate_recurring_unavailability():
             else:
                 end_time = None
         
-        # Check if GLOBAL unavailability already exists for this date and time combination
-        existing = Unavailability.query.filter_by(
-            user_id=user.id,
-            unit_id=None,  # Global unavailability
-            date=date,
-            start_time=start_time,
-            end_time=end_time
-        ).first()
-        
-        if not existing:
-            unavailability = Unavailability(
+        time_ranges_to_create.append((start_time, end_time))
+    
+    # Create unavailability records for each date and each time range
+    created_count = 0
+    for date in dates:
+        for start_time, end_time in time_ranges_to_create:
+            # Check if GLOBAL unavailability already exists for this date and time combination
+            existing = Unavailability.query.filter_by(
                 user_id=user.id,
                 unit_id=None,  # Global unavailability
                 date=date,
                 start_time=start_time,
-                end_time=end_time,
-                is_full_day=data.get('is_full_day', False),
-                recurring_pattern=recurring_pattern,
-                recurring_end_date=recurring_end_date,
-                recurring_interval=recurring_interval,
-                reason=data.get('reason')
-            )
-            db.session.add(unavailability)
-            created_count += 1
+                end_time=end_time
+            ).first()
+            
+            if not existing:
+                unavailability = Unavailability(
+                    user_id=user.id,
+                    unit_id=None,  # Global unavailability
+                    date=date,
+                    start_time=start_time,
+                    end_time=end_time,
+                    is_full_day=data.get('is_full_day', False),
+                    recurring_pattern=recurring_pattern,
+                    recurring_end_date=recurring_end_date,
+                    recurring_interval=recurring_interval,
+                    reason=data.get('reason')
+                )
+                db.session.add(unavailability)
+                created_count += 1
     
     # Mark availability as configured since facilitator is setting unavailability
     unit_facilitator = UnitFacilitator.query.filter_by(
