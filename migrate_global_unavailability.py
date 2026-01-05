@@ -17,7 +17,7 @@ import shutil
 from datetime import datetime
 import os
 
-DB_PATH = 'instance/dev.db'
+DB_PATH = 'instance/dev.db'  # Confirmed: this is the active database on AWS
 
 def backup_database():
     """Create a timestamped backup of the database."""
