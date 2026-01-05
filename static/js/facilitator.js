@@ -3190,7 +3190,20 @@ function openUnavailabilityModalForEditMultiple(date, unavailabilityRecords) {
     // Pre-populate with all time ranges
     setTimeout(() => {
         const container = document.getElementById('time-ranges-container');
+        const fullDayToggle = document.getElementById('full-day-toggle');
         if (!container) return;
+        
+        // Check if ALL records are full-day
+        const allFullDay = unavailabilityRecords.every(u => u.is_full_day);
+        
+        if (allFullDay) {
+            // All are full-day - check the toggle and hide time ranges
+            if (fullDayToggle) fullDayToggle.checked = true;
+            container.style.display = 'none';
+            const addBtn = document.getElementById('add-time-range');
+            if (addBtn) addBtn.style.display = 'none';
+            return;
+        }
         
         // Clear container
         container.innerHTML = '';

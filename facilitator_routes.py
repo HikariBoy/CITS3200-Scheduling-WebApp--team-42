@@ -899,8 +899,8 @@ def create_unavailability():
         return jsonify({"error": "Reason must be 500 characters or less"}), 400
     
     # Check for existing GLOBAL unavailability on the same date and time
-    # (Skip this check when creating multiple time ranges - handled separately)
-    if not data.get('time_ranges'):
+    # (Skip this check when creating multiple time ranges OR when delete_existing_for_date is set)
+    if not data.get('time_ranges') and not data.get('delete_existing_for_date'):
         existing = Unavailability.query.filter_by(
             user_id=target_user_id,
             unit_id=None,  # Global unavailability
