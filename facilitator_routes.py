@@ -1277,11 +1277,26 @@ def clear_all_unavailability():
 @facilitator_required
 def generate_recurring_unavailability():
     """Generate recurring GLOBAL unavailability entries based on pattern"""
-    user = get_current_user()
+    current_user = get_current_user()
     data = request.get_json()
     
     # unit_id is now optional - unavailability is global
     unit_id = data.get('unit_id')  # Ignored, kept for backwards compatibility
+    
+    # Get the target user (facilitator being edited)
+    # If 'user_id' is provided, UC is editing on behalf of facilitator
+    target_user_id = data.get('user_id', current_user.id)
+    
+    # Permission check: user can edit their own data, or UC/admin can edit facilitator's data
+    if target_user_id != current_user.id:
+        # Someone else is editing - must be UC or admin
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
+            return jsonify({"error": "forbidden"}), 403
+    
+    # Get the target user object
+    user = User.query.get(target_user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
     
     # Check if user is a facilitator in at least one unit
     has_units = UnitFacilitator.query.filter_by(user_id=user.id).first()
