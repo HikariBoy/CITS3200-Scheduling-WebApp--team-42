@@ -2237,10 +2237,15 @@ function initUnavailabilityView() {
         deleteAllBtn.addEventListener('click', function(e) {
             e.preventDefault();
             
-            // Show confirmation dialog
-            const confirmed = confirm('Are you sure you want to delete all your unavailabilities? This action cannot be undone.');
+            // Show strong confirmation dialog
+            const confirmed = confirm('⚠️ WARNING: Delete ALL unavailability?\n\nThis will permanently delete all your unavailability entries across all units.\n\nThis action CANNOT be undone!');
             
-            if (confirmed) {
+            if (!confirmed) return;
+            
+            // Second confirmation for safety
+            const doubleCheck = confirm('Are you absolutely sure?\n\nClick OK to permanently delete everything.');
+            
+            if (doubleCheck) {
                 deleteAllUnavailabilities();
             }
         });
@@ -4234,12 +4239,7 @@ function hideNotification() {
 
 // Delete all unavailabilities function
 function deleteAllUnavailabilities() {
-    const currentUnitId = window.currentUnitId;
-    
-    if (!currentUnitId) {
-        alert('No unit selected');
-        return;
-    }
+    // No unit_id needed - unavailability is global!
     
     // Show loading state
     const deleteBtn = document.getElementById('delete-all-unavailabilities-btn');
@@ -4254,9 +4254,7 @@ function deleteAllUnavailabilities() {
             'Content-Type': 'application/json',
             'X-CSRFToken': window.csrfToken
         },
-        body: JSON.stringify({
-            unit_id: currentUnitId
-        })
+        body: JSON.stringify({})
     })
     .then(response => response.json())
     .then(result => {
