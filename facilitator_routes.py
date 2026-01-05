@@ -746,12 +746,9 @@ def get_unit_info():
 @facilitator_bp.route('/unavailability', methods=['GET'])
 @facilitator_required
 def get_unavailability():
-    """Get unavailability for a specific unit"""
+    """Get GLOBAL unavailability (unit_id optional for backwards compatibility)"""
     current_user = get_current_user()
-    unit_id = request.args.get('unit_id', type=int)
-    
-    if not unit_id:
-        return jsonify({"error": "unit_id is required"}), 400
+    unit_id = request.args.get('unit_id', type=int)  # Optional now
     
     # Get the target user (facilitator being viewed)
     # If 'user_id' is provided, UC/admin is viewing on behalf of facilitator
@@ -759,18 +756,8 @@ def get_unavailability():
     
     # Check permission: either viewing own data or UC/admin viewing facilitator's data
     if target_user_id != current_user.id:
-        if not can_edit_facilitator_data(current_user, target_user_id, unit_id):
+        if current_user.role not in [UserRole.ADMIN, UserRole.UNIT_COORDINATOR]:
             return jsonify({"error": "forbidden"}), 403
-    
-    # Verify target user has access to this unit
-    access = (
-        db.session.query(Unit)
-        .join(UnitFacilitator, Unit.id == UnitFacilitator.unit_id)
-        .filter(Unit.id == unit_id, UnitFacilitator.user_id == target_user_id)
-        .first()
-    )
-    if not access:
-        return jsonify({"error": "forbidden"}), 403
     
     # Get GLOBAL unavailability records for this user
     unavailabilities = Unavailability.query.filter_by(
@@ -795,13 +782,6 @@ def get_unavailability():
         })
     
     return jsonify({
-        'unit': {
-            'id': access.id,
-            'code': access.unit_code,
-            'name': access.unit_name,
-            'start_date': access.start_date.isoformat() if access.start_date else None,
-            'end_date': access.end_date.isoformat() if access.end_date else None
-        },
         'unavailabilities': unavailability_data
     })
 
