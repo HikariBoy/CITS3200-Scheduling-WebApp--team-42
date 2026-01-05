@@ -899,16 +899,18 @@ def create_unavailability():
         return jsonify({"error": "Reason must be 500 characters or less"}), 400
     
     # Check for existing GLOBAL unavailability on the same date and time
-    existing = Unavailability.query.filter_by(
-        user_id=target_user_id,
-        unit_id=None,  # Global unavailability
-        date=unavailability_date,
-        start_time=start_time,
-        end_time=end_time
-    ).first()
-    
-    if existing:
-        return jsonify({"error": "Unavailability already exists for this date and time"}), 409
+    # (Skip this check when creating multiple time ranges - handled separately)
+    if not data.get('time_ranges'):
+        existing = Unavailability.query.filter_by(
+            user_id=target_user_id,
+            unit_id=None,  # Global unavailability
+            date=unavailability_date,
+            start_time=start_time,
+            end_time=end_time
+        ).first()
+        
+        if existing:
+            return jsonify({"error": "Unavailability already exists for this date and time"}), 409
     
     # Check for conflicts with existing assignments across ALL units
     conflicts = []
@@ -948,6 +950,16 @@ def create_unavailability():
                         'end_time': session.end_time.strftime('%I:%M %p'),
                         'location': session.location or 'TBA'
                     })
+    
+    # Check if we need to delete existing records for this date first (when editing multiple)
+    if data.get('delete_existing_for_date'):
+        # Delete all manual unavailability for this user on this date
+        Unavailability.query.filter(
+            Unavailability.user_id == target_user_id,
+            Unavailability.unit_id.is_(None),
+            Unavailability.date == unavailability_date,
+            Unavailability.source_session_id.is_(None)  # Only manual
+        ).delete(synchronize_session=False)
     
     # Check if multiple time ranges were provided
     time_ranges = data.get('time_ranges')

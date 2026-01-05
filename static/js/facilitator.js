@@ -2822,12 +2822,20 @@ function saveUnavailability() {
         time_ranges: timeRangesArray.length > 1 ? timeRangesArray : null  // Send array if multiple
     };
     
+    // Check if we're editing multiple records (from clicking a red date with multiple ranges)
+    const editingIds = modal.dataset.editingIds;
+    
     // Determine which endpoint and method to use
     let endpoint = '/facilitator/unavailability';
     let method = 'POST';
     
-    // If editing an existing entry, use PUT instead of POST
-    if (editingId) {
+    // If editing multiple records, delete old ones first then create new
+    if (editingIds) {
+        // Delete all old records for this date, then create new ones
+        data.delete_existing_for_date = true;
+        method = 'POST';  // Create new records
+    } else if (editingId) {
+        // Single record edit
         endpoint = `/facilitator/unavailability/${editingId}`;
         method = 'PUT';
     } else if (isRecurring) {
