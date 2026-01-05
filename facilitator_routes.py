@@ -1408,7 +1408,7 @@ def generate_recurring_unavailability():
         "availability_configured": True
     }
     
-    # Add warning message if end date was adjusted
+    return jsonify(response_data), 201
 
 @facilitator_bp.post("/copy-unavailability")
 @login_required
