@@ -2383,12 +2383,12 @@ function initUnavailabilityCalendar() {
                 return;
             }
             
-            // Check if this date already has unavailability
-            const existingUnavailability = unavailabilityData.filter(u => u.date === date && !u.is_auto_generated);
+            // Check if this date already has unavailability (including auto-generated)
+            const allUnavailability = unavailabilityData.filter(u => u.date === date);
             
-            if (existingUnavailability.length > 0) {
+            if (allUnavailability.length > 0) {
                 // Date has existing unavailability - open modal with ALL time ranges pre-filled
-                openUnavailabilityModalForEditMultiple(date, existingUnavailability);
+                openUnavailabilityModalForEditMultiple(date, allUnavailability);
             } else {
                 // No existing unavailability - open empty modal
                 openUnavailabilityModal(date);
@@ -3183,8 +3183,9 @@ function openUnavailabilityModalForEditMultiple(date, unavailabilityRecords) {
     // Open modal for this date
     openUnavailabilityModal(date);
     
-    // Store ALL IDs for deletion later (comma-separated)
-    const ids = unavailabilityRecords.map(u => u.id).join(',');
+    // Store only EDITABLE IDs for deletion later (exclude auto-generated)
+    const editableRecords = unavailabilityRecords.filter(u => !u.is_auto_generated);
+    const ids = editableRecords.map(u => u.id).join(',');
     modal.dataset.editingIds = ids;
     
     // Pre-populate with all time ranges
@@ -3213,39 +3214,63 @@ function openUnavailabilityModalForEditMultiple(date, unavailabilityRecords) {
             if (!unav.is_full_day && unav.start_time && unav.end_time) {
                 const startTime = formatTimeForInput(unav.start_time);
                 const endTime = formatTimeForInput(unav.end_time);
+                const isLocked = unav.is_auto_generated;
                 
                 const timeRangeDiv = document.createElement('div');
-                timeRangeDiv.className = 'time-range-item';
+                timeRangeDiv.className = isLocked ? 'time-range-item locked-time-range' : 'time-range-item';
                 timeRangeDiv.dataset.unavailabilityId = unav.id;  // Store ID for deletion
                 
-                timeRangeDiv.innerHTML = `
-                    <div class="time-range-controls">
-                        <div class="time-input-group">
-                            <label>Start Time</label>
-                            <input type="time" class="time-input" value="${startTime}">
+                if (isLocked) {
+                    // Locked (auto-generated) - read-only with lock icon
+                    timeRangeDiv.innerHTML = `
+                        <div class="time-range-controls locked">
+                            <span class="material-icons lock-icon" style="color: #f97316; font-size: 20px;">lock</span>
+                            <div class="time-input-group">
+                                <label>Start Time</label>
+                                <input type="time" class="time-input" value="${startTime}" disabled>
+                            </div>
+                            <div class="time-input-group">
+                                <label>End Time</label>
+                                <input type="time" class="time-input" value="${endTime}" disabled>
+                            </div>
+                            <span class="locked-label" style="color: #f97316; font-size: 0.875rem; font-style: italic;">
+                                ${unav.reason || 'Scheduled commitment'}
+                            </span>
                         </div>
-                        <div class="time-input-group">
-                            <label>End Time</label>
-                            <input type="time" class="time-input" value="${endTime}">
+                    `;
+                } else {
+                    // Editable (manual) - normal with delete button
+                    timeRangeDiv.innerHTML = `
+                        <div class="time-range-controls">
+                            <div class="time-input-group">
+                                <label>Start Time</label>
+                                <input type="time" class="time-input" value="${startTime}">
+                            </div>
+                            <div class="time-input-group">
+                                <label>End Time</label>
+                                <input type="time" class="time-input" value="${endTime}">
+                            </div>
+                            <button class="remove-time-range" type="button">
+                                <span class="material-icons">delete</span>
+                            </button>
                         </div>
-                        <button class="remove-time-range" type="button">
-                            <span class="material-icons">delete</span>
-                        </button>
-                    </div>
-                `;
+                    `;
+                }
                 
                 container.appendChild(timeRangeDiv);
                 
-                // Add remove handler
-                const removeBtn = timeRangeDiv.querySelector('.remove-time-range');
-                if (removeBtn) {
-                    removeBtn.addEventListener('click', function() {
-                        timeRangeDiv.remove();
-                        // If no more ranges, show empty state
-                        if (container.querySelectorAll('.time-range-item').length === 0) {
-                            container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
-                        }
-                    });
+                // Add remove handler only for editable ranges
+                if (!isLocked) {
+                    const removeBtn = timeRangeDiv.querySelector('.remove-time-range');
+                    if (removeBtn) {
+                        removeBtn.addEventListener('click', function() {
+                            timeRangeDiv.remove();
+                            // If no more ranges, show empty state
+                            if (container.querySelectorAll('.time-range-item').length === 0) {
+                                container.innerHTML = '<div class="no-time-ranges"><span class="material-icons">schedule</span><p>No specific time ranges set. Click \'Add Time Range\' to specify unavailable hours</p></div>';
+                            }
+                        });
+                    }
                 }
             }
         });
