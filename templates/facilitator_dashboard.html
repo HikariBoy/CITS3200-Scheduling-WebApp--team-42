@@ -539,10 +539,10 @@
   <div class="unavailability-container">
     <div class="unavailability-header">
       <div>
-        <h2>My Unavailability</h2>
+        <h2>Unavailability Calendar</h2>
         <p class="unavailability-subtitle">
           <span class="material-icons" style="font-size: 16px; vertical-align: middle; color: #3b82f6;">info</span>
-          Your unavailability applies <strong>globally across all units</strong>. Set it once and it works everywhere!
+          Manage your availability across <strong>all units</strong>. Changes sync automatically to prevent scheduling conflicts.
         </p>
       </div>
       <div class="unavailability-actions">
@@ -785,8 +785,8 @@
       <p class="swaps-subtitle">Request shift swaps when you cannot attend scheduled sessions.</p>
     </div>
     
-    <!-- Unit Information Card -->
-    <div class="unit-info-card">
+    <!-- Unit Information Card (hidden in unavailability view since it's global) -->
+    <div class="unit-info-card" id="unit-info-card">
       <div class="unit-info-content">
         <span class="material-icons unit-icon">swap_horiz</span>
         <div class="unit-details">

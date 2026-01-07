@@ -61,6 +61,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.body.classList.remove('swaps-view-active');
                 // Show unit selector in unavailability view
                 if (unitSelector) unitSelector.style.display = 'block';
+                // Hide unit info card (unavailability is global, not unit-specific)
+                const unitInfoCard = document.getElementById('unit-info-card');
+                if (unitInfoCard) unitInfoCard.style.display = 'none';
                 // Hide unavailability alert in unavailability view
                 const unavailabilityAlert = document.getElementById('unavailability-alert');
                 if (unavailabilityAlert) unavailabilityAlert.style.display = 'none';
