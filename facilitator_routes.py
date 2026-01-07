@@ -1390,6 +1390,9 @@ def generate_recurring_unavailability():
     
     # Create unavailability records for each date and each time range
     created_count = 0
+    skipped_count = 0
+    skipped_dates = []
+    
     for date in dates:
         for start_time, end_time in time_ranges_to_create:
             # Check if GLOBAL unavailability already exists for this date and time combination
@@ -1401,24 +1404,52 @@ def generate_recurring_unavailability():
                 end_time=end_time
             ).first()
             
-            if not existing:
-                unavailability = Unavailability(
-                    user_id=user.id,
-                    unit_id=None,  # Global unavailability
-                    date=date,
-                    start_time=start_time,
-                    end_time=end_time,
-                    is_full_day=data.get('is_full_day', False),
-                    recurring_pattern=recurring_pattern,
-                    recurring_end_date=recurring_end_date,
-                    recurring_interval=recurring_interval,
-                    reason=data.get('reason')
-                )
-                db.session.add(unavailability)
-                print(f"[DEBUG] RECURRING - Creating record: user_id={user.id}, unit_id=None, date={date}, recurring_pattern={recurring_pattern}")
-                created_count += 1
-            else:
+            if existing:
                 print(f"[DEBUG] RECURRING - Skipping duplicate: date={date}, start={start_time}, end={end_time}")
+                continue
+            
+            # Check for conflicts with auto-generated (scheduled) unavailability
+            # Skip creating unavailability if it would conflict with a scheduled session
+            auto_generated_on_date = Unavailability.query.filter(
+                Unavailability.user_id == user.id,
+                Unavailability.unit_id.is_(None),
+                Unavailability.date == date,
+                Unavailability.source_session_id.isnot(None)  # Auto-generated
+            ).all()
+            
+            has_conflict = False
+            if not data.get('is_full_day') and start_time and end_time:
+                # Check for time overlap with scheduled sessions
+                for auto_unav in auto_generated_on_date:
+                    if auto_unav.start_time and auto_unav.end_time:
+                        # Check overlap
+                        if (start_time < auto_unav.end_time and end_time > auto_unav.start_time):
+                            has_conflict = True
+                            if date not in skipped_dates:
+                                skipped_dates.append(date)
+                            print(f"[DEBUG] RECURRING - Skipping {date} due to conflict with scheduled session")
+                            break
+            
+            if has_conflict:
+                skipped_count += 1
+                continue
+            
+            # Create the unavailability record
+            unavailability = Unavailability(
+                user_id=user.id,
+                unit_id=None,  # Global unavailability
+                date=date,
+                start_time=start_time,
+                end_time=end_time,
+                is_full_day=data.get('is_full_day', False),
+                recurring_pattern=recurring_pattern,
+                recurring_end_date=recurring_end_date,
+                recurring_interval=recurring_interval,
+                reason=data.get('reason')
+            )
+            db.session.add(unavailability)
+            print(f"[DEBUG] RECURRING - Creating record: user_id={user.id}, unit_id=None, date={date}, recurring_pattern={recurring_pattern}")
+            created_count += 1
     
     # Mark availability as configured for ALL units the facilitator is in
     # (Since unavailability is now global, mark all units)
@@ -1432,17 +1463,24 @@ def generate_recurring_unavailability():
     db.session.commit()
     
     # Build message
-    if created_count == len(dates) * len(time_ranges_to_create):
+    total_expected = len(dates) * len(time_ranges_to_create)
+    duplicates = total_expected - created_count - skipped_count
+    
+    if skipped_count > 0:
+        skipped_dates_str = ', '.join([d.strftime('%b %d') for d in sorted(skipped_dates)])
+        message = f"Created {created_count} recurring unavailability entries. Skipped {skipped_count} date(s) due to scheduled commitments ({skipped_dates_str})"
+    elif created_count == total_expected:
         message = f"Created {created_count} recurring unavailability entries"
     else:
-        skipped = (len(dates) * len(time_ranges_to_create)) - created_count
-        message = f"Created {created_count} recurring unavailability entries ({skipped} already existed)"
+        message = f"Created {created_count} recurring unavailability entries ({duplicates} already existed)"
     
     response_data = {
         "message": message,
         "total_dates": len(dates),
         "total_time_ranges": len(time_ranges_to_create),
         "created_count": created_count,
+        "skipped_count": skipped_count,
+        "skipped_dates": [d.isoformat() for d in skipped_dates],
         "availability_configured": True
     }
     
