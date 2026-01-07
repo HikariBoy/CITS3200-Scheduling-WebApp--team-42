@@ -958,12 +958,20 @@ def create_unavailability():
     # Check if we need to delete existing records for this date first (when editing multiple)
     if data.get('delete_existing_for_date'):
         # Delete all manual unavailability for this user on this date
-        Unavailability.query.filter(
+        deleted_count = Unavailability.query.filter(
             Unavailability.user_id == target_user_id,
             Unavailability.unit_id.is_(None),
             Unavailability.date == unavailability_date,
             Unavailability.source_session_id.is_(None)  # Only manual
         ).delete(synchronize_session=False)
+        
+        # If no time ranges provided, user is clearing unavailability - just delete and return
+        if not data.get('time_ranges') and not data.get('is_full_day'):
+            db.session.commit()
+            return jsonify({
+                "message": f"Deleted {deleted_count} unavailability record(s)",
+                "deleted_count": deleted_count
+            }), 200
     
     # Check if multiple time ranges were provided
     time_ranges = data.get('time_ranges')
