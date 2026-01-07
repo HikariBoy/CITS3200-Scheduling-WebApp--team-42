@@ -2806,8 +2806,18 @@ function saveUnavailability() {
             startTime = timeRangesArray[0].start_time;
             endTime = timeRangesArray[0].end_time;
         } else {
-            alert('Please either check "Full day unavailability" or add at least one time range');
-            return;
+            // No time ranges - if editing, this means DELETE all unavailability for this day
+            const editingIds = modal.dataset.editingIds;
+            if (editingIds) {
+                // User is clearing unavailability - delete all records for this date
+                deleteMultipleUnavailability(editingIds);
+                modal.style.display = 'none';
+                return;
+            } else {
+                // Creating new unavailability without time ranges - show error
+                alert('Please either check "Full day unavailability" or add at least one time range');
+                return;
+            }
         }
     }
     
@@ -3320,6 +3330,42 @@ function deleteUnavailability(unavailabilityId) {
         console.error('Error deleting unavailability:', error);
         alert('Error deleting unavailability');
     });
+}
+
+function deleteMultipleUnavailability(idsString) {
+    // Delete multiple unavailability records (when clearing all for a day)
+    const ids = idsString.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    
+    if (ids.length === 0) {
+        console.log('No unavailability to delete');
+        return;
+    }
+    
+    // Delete each record
+    const deletePromises = ids.map(id => {
+        return fetch(`/facilitator/unavailability/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': window.csrfToken
+            }
+        }).then(response => response.json());
+    });
+    
+    Promise.all(deletePromises)
+        .then(results => {
+            const errors = results.filter(r => r.error);
+            if (errors.length > 0) {
+                console.error('Some deletions failed:', errors);
+            }
+            
+            // Reload unavailability data
+            loadUnavailabilityData();
+            console.log(`Deleted ${ids.length} unavailability records`);
+        })
+        .catch(error => {
+            console.error('Error deleting unavailability:', error);
+            alert('Error deleting unavailability');
+        });
 }
 
 function clearAllUnavailability() {
