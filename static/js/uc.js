@@ -6710,18 +6710,16 @@ function renderFacilitatorList() {
     html += availableFacilitators.map((facilitator) => {
       // Use selectedFacilitators to determine checked state (preserves user's selections during search)
       const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
-      const isNoInterest = facilitator.skill_level === 'no_interest';
-      const isDisabled = isNoInterest;
       
       return `
-        <div class="facilitator-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}" style="${isDisabled ? 'opacity: 0.6; cursor: not-allowed;' : ''}">
-          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)" style="${isDisabled ? 'cursor: not-allowed;' : ''}">
-          <div class="facilitator-avatar" style="${isDisabled ? 'background: #9ca3af;' : ''}">
+        <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
+          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
+          <div class="facilitator-avatar">
             ${getFacilitatorInitials(facilitator.name)}
           </div>
           <div class="facilitator-info">
-            <div class="facilitator-name" style="${isDisabled ? 'color: #6b7280;' : ''}">${facilitator.name}</div>
-            <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px; ${isDisabled ? 'color: #6b7280;' : ''}">
+            <div class="facilitator-name">${facilitator.name}</div>
+            <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
               ${facilitator.email}
               ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
             </div>
