@@ -7761,6 +7761,9 @@ async function confirmUnpublish() {
     
     const result = await response.json();
     
+    console.log('Unpublish response:', result);
+    console.log('emails_sent from backend:', result.emails_sent);
+    
     if (response.ok && result.ok) {
       // Show success message
       const emailMsg = result.emails_sent > 0 ? `\n- Sent ${result.emails_sent} email notification(s)` : '\n- No emails sent (checkbox was unchecked)';
