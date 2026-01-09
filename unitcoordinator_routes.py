@@ -4156,11 +4156,8 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
         
         # Create new assignments
         for facilitator_id in facilitator_ids:
-            # Verify facilitator exists and belongs to this unit
-            facilitator = User.query.filter_by(
-                id=facilitator_id, 
-                role=UserRole.FACILITATOR
-            ).first()
+            # Verify facilitator exists (allow any role - UC/Admin can also facilitate)
+            facilitator = User.query.get(facilitator_id)
             
             if not facilitator:
                 continue
