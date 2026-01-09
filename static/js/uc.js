@@ -5694,6 +5694,31 @@ function updateConflictsBanner(conflicts) {
           </div>
         </li>
       `;
+    } else if (conflict.type === 'skill_conflict' && conflict.session) {
+      const date = new Date(conflict.session.start_time).toLocaleDateString('en-AU', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      const timeStart = conflict.session.start_time.substring(11, 16);
+      const timeEnd = conflict.session.end_time.substring(11, 16);
+      
+      html += `
+        <li style="margin-bottom: 16px; padding: 12px; background: white; border-radius: 6px; border-left: 3px solid #f59e0b;">
+          <div style="margin-bottom: 8px;">
+            <strong style="color: #92400e; font-size: 0.9375rem;">${conflict.facilitator_name}</strong>
+            <span style="color: #6b7280; font-size: 0.875rem;"> • ${date}</span>
+          </div>
+          <div style="padding: 8px; background: #fef3c7; border-radius: 4px; font-size: 0.875rem;">
+            <div style="font-weight: 600; color: #92400e; margin-bottom: 4px;">${conflict.session.module}</div>
+            <div style="color: #6b7280; font-size: 0.8125rem; margin-bottom: 6px;">⏰ ${timeStart} - ${timeEnd}</div>
+            <div style="display: flex; align-items: center; gap: 6px; color: #92400e;">
+              <span style="font-size: 1rem;">✗</span>
+              <span style="font-weight: 600;">Marked as "No Interest"</span>
+            </div>
+          </div>
+        </li>
+      `;
     } else {
       // Fallback for unexpected conflict format
       html += `
@@ -7508,7 +7533,44 @@ async function confirmPublish() {
     const result = await response.json();
     
     if (result.ok) {
-      showSimpleNotification(`Schedule published! ${result.facilitators_notified} facilitators notified via email.`, 'success');
+      // Check for unpublish conflicts warning
+      if (result.unpublish_conflicts && result.unpublish_conflicts.length > 0) {
+        let warningHTML = `
+          <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              <span style="font-size: 24px;">⚠️</span>
+              <strong style="color: #92400e; font-size: 1.1rem;">Warning: New Unavailability Detected</strong>
+            </div>
+            <p style="color: #92400e; margin-bottom: 12px;">
+              ${result.unpublish_conflicts.length} facilitator(s) added unavailability since the schedule was unpublished:
+            </p>
+            <ul style="margin: 0; padding-left: 20px; color: #92400e;">
+        `;
+        
+        result.unpublish_conflicts.forEach(conflict => {
+          const date = new Date(conflict.session.start_time).toLocaleDateString('en-AU', { 
+            weekday: 'short', month: 'short', day: 'numeric' 
+          });
+          warningHTML += `
+            <li style="margin-bottom: 8px;">
+              <strong>${conflict.facilitator_name}</strong> - ${conflict.session.module} (${date})
+            </li>
+          `;
+        });
+        
+        warningHTML += `
+            </ul>
+            <p style="color: #92400e; margin-top: 12px; font-size: 0.9rem;">
+              These facilitators may no longer be available for their assigned sessions. Please review and reassign if necessary.
+            </p>
+          </div>
+        `;
+        
+        showConflictPopup('Schedule Published with Warnings', warningHTML);
+      } else {
+        showSimpleNotification(`Schedule published! ${result.facilitators_notified} facilitators notified via email.`, 'success');
+      }
+      
       closePublishConfirmation();
       
       // Change button text to "Re-publish"

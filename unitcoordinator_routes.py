@@ -18,7 +18,7 @@ from auth import login_required, get_current_user
 from utils import role_required
 from models import db
 
-from models import db, UserRole, Unit, User, Venue, UnitFacilitator, UnitCoordinator, UnitVenue, Module, Session, Assignment, Unavailability, Facilitator, SwapRequest, SwapStatus, FacilitatorSkill, Notification
+from models import db, UserRole, Unit, User, Venue, UnitFacilitator, UnitCoordinator, UnitVenue, Module, Session, Assignment, Unavailability, Facilitator, SwapRequest, SwapStatus, FacilitatorSkill, SkillLevel, Notification
 
 # ------------------------------------------------------------------------------
 # Setup
@@ -4281,6 +4281,54 @@ def publish_schedule(unit_id: int):
     data = request.get_json() or {}
     notify_facilitator_ids = data.get('notify_facilitator_ids', None)  # None means notify all
     
+    # Check for new unavailability added during unpublish window
+    unpublish_conflicts = []
+    if unit.unpublished_at:
+        # Get all facilitators assigned to sessions in this unit
+        facilitator_ids = set()
+        for module in unit.modules:
+            for session in module.sessions:
+                for assignment in session.assignments:
+                    facilitator_ids.add(assignment.facilitator_id)
+        
+        # Check for new unavailability created since unpublish
+        new_unavailability = (
+            db.session.query(Unavailability, User, Session, Assignment)
+            .join(User, User.id == Unavailability.user_id)
+            .join(Assignment, Assignment.facilitator_id == User.id)
+            .join(Session, Session.id == Assignment.session_id)
+            .join(Module, Module.id == Session.module_id)
+            .filter(
+                Module.unit_id == unit_id,
+                Unavailability.user_id.in_(facilitator_ids),
+                Unavailability.created_at > unit.unpublished_at,
+                Unavailability.unit_id.is_(None),  # Global unavailability only
+                db.func.date(Session.start_time) == Unavailability.date
+            )
+            .all()
+        )
+        
+        for unavail, facilitator, session, assignment in new_unavailability:
+            unpublish_conflicts.append({
+                'facilitator_id': facilitator.id,
+                'facilitator_name': f"{facilitator.first_name} {facilitator.last_name}".strip(),
+                'session': {
+                    'id': session.id,
+                    'module': session.module.module_name,
+                    'start_time': session.start_time.isoformat(),
+                    'end_time': session.end_time.isoformat()
+                },
+                'unavailability': {
+                    'date': unavail.date.isoformat(),
+                    'created_at': unavail.created_at.isoformat(),
+                    'reason': unavail.reason
+                }
+            })
+        
+        # If conflicts found, return warning (don't block, just warn)
+        if unpublish_conflicts:
+            logger.warning(f"Found {len(unpublish_conflicts)} new unavailability conflicts since unpublish for unit {unit_id}")
+    
     try:
         # Get all sessions for this unit that have facilitators assigned
         # Check for sessions with any assignments, regardless of status
@@ -4507,7 +4555,7 @@ def publish_schedule(unit_id: int):
             print(f"Warning: Could not generate CSV report: {csv_error}")
             traceback.print_exc()
         
-        return jsonify({
+        response_data = {
             "ok": True,
             "message": f"Schedule published successfully. {emails_sent} facilitators notified via email.",
             "sessions_published": len(sessions),
@@ -4515,7 +4563,14 @@ def publish_schedule(unit_id: int):
             "notifications_created": notifications_created,
             "auto_unavailability_created": auto_unavail_count,
             "csv_download_url": csv_download_url
-        })
+        }
+        
+        # Add unpublish conflicts if any were found
+        if unpublish_conflicts:
+            response_data["unpublish_conflicts"] = unpublish_conflicts
+            response_data["warning"] = f"{len(unpublish_conflicts)} facilitator(s) added unavailability since unpublish"
+        
+        return jsonify(response_data)
         
     except Exception as e:
         db.session.rollback()
@@ -5869,6 +5924,41 @@ def get_schedule_conflicts(unit_id: int):
                     'is_full_day': unavailability.is_full_day,
                     'reason': unavailability.reason
                 }
+            }
+            conflicts.append(conflict)
+        
+        # Check for skill conflicts (facilitators marked as "no_interest" but assigned)
+        skill_conflicts_query = (
+            db.session.query(Assignment, Session, User, FacilitatorSkill)
+            .join(Session, Session.id == Assignment.session_id)
+            .join(Module, Module.id == Session.module_id)
+            .join(User, User.id == Assignment.facilitator_id)
+            .join(FacilitatorSkill, 
+                  db.and_(
+                      FacilitatorSkill.facilitator_id == Assignment.facilitator_id,
+                      FacilitatorSkill.module_id == Session.module_id
+                  )
+            )
+            .filter(
+                Module.unit_id == unit.id,
+                FacilitatorSkill.skill_level == SkillLevel.NO_INTEREST
+            )
+            .all()
+        )
+        
+        for assignment, session, facilitator, skill in skill_conflicts_query:
+            conflict = {
+                'type': 'skill_conflict',
+                'facilitator_id': facilitator.id,
+                'facilitator_name': f"{facilitator.first_name} {facilitator.last_name}".strip(),
+                'session': {
+                    'id': session.id,
+                    'module': session.module.module_name,
+                    'start_time': session.start_time.isoformat(),
+                    'end_time': session.end_time.isoformat()
+                },
+                'skill_level': 'no_interest',
+                'message': f"{facilitator.first_name} {facilitator.last_name} is marked as 'No Interest' for {session.module.module_name}"
             }
             conflicts.append(conflict)
         
