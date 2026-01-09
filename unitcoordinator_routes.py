@@ -4648,11 +4648,14 @@ def unpublish_schedule(unit_id: int):
         
         db.session.commit()
         
-        # 7. Create in-app notifications for facilitators (if enabled)
+        # 7. Send notifications to facilitators (if enabled)
         notifications_sent = 0
+        emails_sent = 0
         if send_notifications:
             try:
                 from models import Notification
+                from email_service import send_schedule_unpublished_email
+                
                 facilitator_ids = set()
                 # Get all sessions through modules
                 for module in unit.modules:
@@ -4661,6 +4664,11 @@ def unpublish_schedule(unit_id: int):
                             facilitator_ids.add(assignment.facilitator_id)
                 
                 for facilitator_id in facilitator_ids:
+                    facilitator = User.query.get(facilitator_id)
+                    if not facilitator:
+                        continue
+                    
+                    # Create in-app notification
                     notification = Notification(
                         user_id=facilitator_id,
                         message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished.",
@@ -4668,6 +4676,20 @@ def unpublish_schedule(unit_id: int):
                     )
                     db.session.add(notification)
                     notifications_sent += 1
+                    
+                    # Send email
+                    try:
+                        email_sent = send_schedule_unpublished_email(
+                            recipient_email=facilitator.email,
+                            recipient_name=facilitator.full_name or facilitator.email,
+                            unit_code=unit.unit_code,
+                            unit_name=unit.unit_name
+                        )
+                        if email_sent:
+                            emails_sent += 1
+                            logger.info(f"Unpublish email sent to {facilitator.email}")
+                    except Exception as email_error:
+                        logger.warning(f"Failed to send unpublish email to {facilitator.email}: {email_error}")
                 
                 db.session.commit()
             except Exception as notif_error:
@@ -4680,7 +4702,8 @@ def unpublish_schedule(unit_id: int):
             "message": "Schedule unpublished successfully",
             "deleted_unavailability": deleted_unavail,
             "rejected_swaps": rejected_swaps,
-            "notifications_sent": notifications_sent
+            "notifications_sent": notifications_sent,
+            "emails_sent": emails_sent
         }), 200
         
     except Exception as e:

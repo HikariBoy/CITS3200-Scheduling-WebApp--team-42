@@ -7756,11 +7756,12 @@ async function confirmUnpublish() {
     
     if (response.ok && result.ok) {
       // Show success message
+      const emailMsg = result.emails_sent > 0 ? `\n- Sent ${result.emails_sent} email notification(s)` : '\n- No emails sent (checkbox was unchecked)';
       showSimpleNotification(`✅ Schedule unpublished successfully
 
 Changes made:
 - Removed ${result.deleted_unavailability} auto-generated unavailability entries
-- Rejected ${result.rejected_swaps} pending swap requests
+- Rejected ${result.rejected_swaps} pending swap requests${emailMsg}
 - Status changed to DRAFT
 
 You can now edit the schedule and republish when ready.`, 'success');
