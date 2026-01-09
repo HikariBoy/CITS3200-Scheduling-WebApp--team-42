@@ -608,26 +608,22 @@ async function nextStep() {
     const end = document.querySelector('[name="end_date"]')?.value?.trim();
     if (!start || !end) return;
     
-    // Ensure unit ID is set (either from draft or existing unit)
-    if (!isEditMode) {
-      // In create mode, ensure draft unit exists
-      try {
+    // Ensure unit ID is set and changes are saved
+    try {
+      if (!isEditMode) {
+        // In create mode, ensure draft unit exists
         const unitId = await ensureDraftAndSetUnitId();
         console.debug('Draft unit id:', unitId);
-      } catch (e) {
-        alert('Could not create/get unit draft: ' + e.message);
-        return;
-      }
-    } else {
-      // In edit mode, ensure unit_id is set from the current unit
-      const currentUnitId = getUnitId();
-      if (currentUnitId) {
-        document.getElementById('unit_id').value = currentUnitId;
-        console.debug('Edit mode - using existing unit id:', currentUnitId);
       } else {
-        alert('Could not determine unit ID for editing');
-        return;
+        // In edit mode, ALSO call ensureDraftAndSetUnitId to SAVE the changes!
+        console.debug('EDIT MODE: Saving unit changes...');
+        const unitId = await ensureDraftAndSetUnitId();
+        console.debug('Edit mode - unit updated:', unitId);
       }
+    } catch (e) {
+      alert('Could not save unit: ' + e.message);
+      console.error('Error in step 2:', e);
+      return;
     }
     
     return setStep(3);
@@ -688,6 +684,19 @@ async function ensureDraftAndSetUnitId() {
   const endISO   = toIsoDate(ed);
 
   const form = new FormData();
+  
+  // IMPORTANT: Include unit_id if editing an existing unit
+  const unitId = document.getElementById('unit_id').value;
+  console.log('DEBUG ensureDraftAndSetUnitId: unitId =', unitId);
+  console.log('DEBUG ensureDraftAndSetUnitId: unit_name =', basic.unit_name);
+  
+  if (unitId) {
+    form.append('unit_id', unitId);
+    console.log('DEBUG: Appended unit_id to form:', unitId);
+  } else {
+    console.log('DEBUG: No unit_id - CREATE mode');
+  }
+  
   form.append('unit_code', basic.unit_code);
   form.append('unit_name', basic.unit_name);
   form.append('year',      basic.year);
@@ -700,11 +709,14 @@ async function ensureDraftAndSetUnitId() {
   form.append('force_new', 'true');
   form.append('timestamp', Date.now().toString());
 
+  console.log('DEBUG: Sending form to CREATE_OR_GET_DRAFT');
   const res = await fetch(CREATE_OR_GET_DRAFT, {
     method: 'POST',
     headers: { 'X-CSRFToken': CSRF_TOKEN },
     body: form
   });
+  
+  console.log('DEBUG: Response status:', res.status);
 
   const data = await res.json();
   if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to create/fetch draft');
@@ -4928,7 +4940,25 @@ async function checkAutoAssignValidation() {
   if (!autoAssignBtn) return;
 
   try {
-    const validationUrl = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE.replace('auto_assign', 'auto_assign/validation'), unitId);
+    // Get selected facilitators from localStorage
+    const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
+    let selectedFacilitators = null;
+    try {
+      const saved = localStorage.getItem(facilitatorStorageKey);
+      if (saved) {
+        selectedFacilitators = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Error loading facilitator selections:', e);
+    }
+    
+    let validationUrl = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE.replace('auto_assign', 'auto_assign/validation'), unitId);
+    
+    // Add included_facilitators as query param if specified
+    if (selectedFacilitators && selectedFacilitators.length > 0) {
+      validationUrl += `?included_facilitators=${selectedFacilitators.join(',')}`;
+    }
+    
     const validationResponse = await fetch(validationUrl, {
       method: 'GET',
       headers: {
@@ -5002,9 +5032,27 @@ async function autoAssignFacilitators() {
   const autoAssignBtn = document.querySelector('.auto-assign-btn');
   if (!autoAssignBtn) return;
 
-  // Check validation status first
+  // Get selected facilitators for validation
+  const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
+  let selectedFacilitators = null;
   try {
-    const validationUrl = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE.replace('auto_assign', 'auto_assign/validation'), unitId);
+    const saved = localStorage.getItem(facilitatorStorageKey);
+    if (saved) {
+      selectedFacilitators = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Error loading facilitator selections:', e);
+  }
+  
+  // Check validation status first (only for selected facilitators)
+  try {
+    let validationUrl = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE.replace('auto_assign', 'auto_assign/validation'), unitId);
+    
+    // Add included_facilitators as query param if specified
+    if (selectedFacilitators && selectedFacilitators.length > 0) {
+      validationUrl += `?included_facilitators=${selectedFacilitators.join(',')}`;
+    }
+    
     const validationResponse = await fetch(validationUrl, {
       method: 'GET',
       headers: {
@@ -5045,6 +5093,8 @@ async function autoAssignFacilitators() {
     // Get current weight settings
     const weights = getAutoAssignWeights();
     
+    // selectedFacilitators already loaded above for validation
+    
     const url = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE, unitId);
     const response = await fetch(url, {
       method: 'POST',
@@ -5054,7 +5104,8 @@ async function autoAssignFacilitators() {
       },
       body: JSON.stringify({
         w_skill: weights.skill / 100,        // Convert percentage to decimal (0.0-1.0)
-        w_fairness: weights.fairness / 100   // Convert percentage to decimal (0.0-1.0)
+        w_fairness: weights.fairness / 100,  // Convert percentage to decimal (0.0-1.0)
+        included_facilitators: selectedFacilitators  // null = never saved (include all), [] = explicitly none, [1,2,3] = specific IDs
         // Note: Availability is a hard constraint (always checked), not sent as weight
       })
     });
@@ -7859,6 +7910,113 @@ function openAutoAssignSettings() {
   
   // Update displays
   updateWeightDisplay('skill', autoAssignWeights.skill);
+  
+  // Load facilitators for selection
+  loadFacilitatorsForSelection(unitId);
+}
+
+async function loadFacilitatorsForSelection(unitId) {
+  const listContainer = document.getElementById('facilitator-selection-list');
+  
+  try {
+    // Fetch facilitators and their global unavailability status
+    const facilitatorsResponse = await fetch(`/unitcoordinator/units/${unitId}/facilitators-with-unavailability`);
+    const facilitatorsData = await facilitatorsResponse.json();
+    
+    if (!facilitatorsData.ok || !facilitatorsData.facilitators || facilitatorsData.facilitators.length === 0) {
+      listContainer.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No facilitators found</p>';
+      return;
+    }
+    
+    // Build set of facilitators with manual global unavailability
+    const facilitatorsWithUnavailability = new Set();
+    facilitatorsData.facilitators.forEach(f => {
+      if (f.has_manual_global_unavailability) {
+        facilitatorsWithUnavailability.add(f.id);
+      }
+    });
+    
+    const data = facilitatorsData;
+    
+    // Load saved selections for this unit
+    const storageKey = `autoAssignFacilitators_unit_${unitId}`;
+    let selectedFacilitators = null;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        selectedFacilitators = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Error loading saved facilitator selections:', e);
+    }
+    
+    // If no saved selections (null = never saved), select all by default
+    // If saved is empty array [], that means user explicitly deselected all
+    if (selectedFacilitators === null) {
+      selectedFacilitators = data.facilitators.map(f => f.id);
+    }
+    
+    // Build checkbox list with clean layout
+    let html = '<div style="display: flex; flex-direction: column; gap: 4px;">';
+    data.facilitators.forEach(facilitator => {
+      const isChecked = selectedFacilitators.includes(facilitator.id);
+      const hasFullName = facilitator.full_name && facilitator.full_name.trim() !== '';
+      const name = hasFullName ? facilitator.full_name : facilitator.email;
+      const email = facilitator.email;
+      
+      // Only show email separately if we have a different full name
+      const showEmailSeparately = hasFullName && name !== email;
+      
+      // Check if facilitator has manual unavailability
+      const hasManualUnavailability = facilitatorsWithUnavailability.has(facilitator.id);
+      
+      html += `
+        <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;" 
+               onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#e5e7eb';" 
+               onmouseout="this.style.background='white'; this.style.borderColor='transparent';">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 14px; font-weight: 500; color: #1f2937;">${name}</span>
+            ${showEmailSeparately ? `<span style="font-size: 12px; color: #9ca3af;">${email}</span>` : ''}
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            ${hasManualUnavailability 
+              ? `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #10b981; font-weight: 500;" title="Has manual unavailability set">
+                   <span class="material-icons" style="font-size: 16px;">check_circle</span>
+                   Unavail. Set
+                 </span>` 
+              : `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ef4444; font-weight: 500;" title="No manual unavailability set">
+                   <span class="material-icons" style="font-size: 16px;">cancel</span>
+                   No Unavail.
+                 </span>`
+            }
+            <input type="checkbox" 
+                   class="facilitator-checkbox" 
+                   data-facilitator-id="${facilitator.id}" 
+                   ${isChecked ? 'checked' : ''}
+                   style="width: 20px; height: 20px; cursor: pointer;">
+          </div>
+        </label>
+      `;
+    });
+    html += '</div>';
+    
+    listContainer.innerHTML = html;
+  } catch (error) {
+    console.error('Error loading facilitators:', error);
+    listContainer.innerHTML = '<p class="text-sm text-red-500 text-center py-4">Error loading facilitators</p>';
+  }
+}
+
+function selectAllFacilitators() {
+  document.querySelectorAll('.facilitator-checkbox').forEach(checkbox => {
+    checkbox.checked = true;
+  });
+}
+
+function deselectAllFacilitators() {
+  document.querySelectorAll('.facilitator-checkbox').forEach(checkbox => {
+    checkbox.checked = false;
+  });
 }
 
 function closeAutoAssignSettings() {
@@ -7953,14 +8111,23 @@ function saveAutoAssignSettings() {
   }
   
   try {
-    // Save to localStorage with unit-specific key
+    // Save weights to localStorage with unit-specific key
     const storageKey = `autoAssignWeights_unit_${unitId}`;
     localStorage.setItem(storageKey, JSON.stringify(autoAssignWeights));
     
-    showSimpleNotification('Settings saved for this unit! They will be used for the next auto-assignment.', 'success');
+    // Save selected facilitators
+    const selectedFacilitators = [];
+    document.querySelectorAll('.facilitator-checkbox:checked').forEach(checkbox => {
+      selectedFacilitators.push(parseInt(checkbox.dataset.facilitatorId));
+    });
+    
+    const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
+    localStorage.setItem(facilitatorStorageKey, JSON.stringify(selectedFacilitators));
+    
+    showSimpleNotification(`Settings saved! ${selectedFacilitators.length} facilitator(s) will be included in auto-assignment.`, 'success');
     closeAutoAssignSettings();
   } catch (error) {
-    console.error('Error saving weights:', error);
+    console.error('Error saving settings:', error);
     showSimpleNotification('Error saving settings. Please try again.', 'error');
   }
 }

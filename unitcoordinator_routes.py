@@ -2195,7 +2195,44 @@ def create_or_get_draft():
     if parsed_start and parsed_end and parsed_start > parsed_end:
         return jsonify({"ok": False, "error": "Start date must be before end date"}), 400
 
-    # Check if user is already a coordinator for a unit with this code/year/semester
+    # Check if editing an existing unit (unit_id provided)
+    unit_id_str = request.form.get('unit_id', '').strip()
+    unit = None
+    
+    print(f"DEBUG create_or_get_draft: unit_id_str = '{unit_id_str}'")
+    print(f"DEBUG create_or_get_draft: unit_code = '{unit_code}', unit_name = '{unit_name}'")
+    
+    if unit_id_str:
+        # EDIT MODE: Update existing unit
+        print(f"DEBUG: EDIT MODE detected - unit_id_str = '{unit_id_str}'")
+        try:
+            unit_id = int(unit_id_str)
+            print(f"DEBUG: Parsed unit_id = {unit_id}")
+            unit = _get_user_unit_or_404(user, unit_id)
+            print(f"DEBUG: Found unit = {unit}")
+            if unit:
+                print(f"DEBUG: Updating unit {unit_id}")
+                print(f"DEBUG: Old name: {unit.unit_name} → New name: {unit_name}")
+                # Update the unit fields
+                unit.unit_code = unit_code
+                unit.unit_name = unit_name
+                unit.year = year
+                unit.semester = semester
+                unit.start_date = parsed_start
+                unit.end_date = parsed_end
+                db.session.commit()
+                print(f"DEBUG: Unit {unit_id} updated successfully!")
+                return jsonify({"ok": True, "unit_id": unit.id, "start_date": start_date, "end_date": end_date})
+            else:
+                print(f"DEBUG: Unit not found or unauthorized")
+                return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+        except ValueError as e:
+            print(f"DEBUG: ValueError - {e}")
+            return jsonify({"ok": False, "error": "Invalid unit ID"}), 400
+    else:
+        print(f"DEBUG: CREATE MODE - no unit_id provided")
+    
+    # CREATE MODE: Check if user is already a coordinator for a unit with this code/year/semester
     unit = (
         db.session.query(Unit)
         .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
@@ -2230,7 +2267,7 @@ def create_or_get_draft():
         # Create default module for new unit
         _get_or_create_default_module(unit)
 
-    return jsonify({"ok": True, "unit_id": unit.id})
+    return jsonify({"ok": True, "unit_id": unit.id, "start_date": start_date, "end_date": end_date})
 
 
 @unitcoordinator_bp.get("/csv-template")
@@ -3201,7 +3238,8 @@ def create_session(unit_id: int):
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def check_auto_assign_validation(unit_id: int):
     """
-    Check if auto-assignment can be run (all facilitators have skills declared)
+    Check if auto-assignment can be run (all SELECTED facilitators have skills declared)
+    Accepts optional 'included_facilitators' query param as comma-separated IDs
     """
     user = get_current_user()
     unit = _get_user_unit_or_404(user, unit_id)
@@ -3209,20 +3247,33 @@ def check_auto_assign_validation(unit_id: int):
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
     try:
+        # Get included facilitators from query params (comma-separated IDs)
+        included_facilitators_str = request.args.get('included_facilitators', '')
+        included_facilitator_ids = None
+        if included_facilitators_str:
+            try:
+                included_facilitator_ids = [int(id.strip()) for id in included_facilitators_str.split(',') if id.strip()]
+            except ValueError:
+                pass  # Invalid format, ignore and check all
+        
         # Get facilitators assigned to this unit
-        # Include all users linked to unit (including UCs and Admins who can also facilitate)
-        facilitators_from_db = (
+        facilitators_query = (
             db.session.query(User)
             .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
             .filter(UnitFacilitator.unit_id == unit_id)
-            .all()
         )
+        
+        # Filter by included facilitators if specified
+        if included_facilitator_ids is not None and len(included_facilitator_ids) > 0:
+            facilitators_query = facilitators_query.filter(User.id.in_(included_facilitator_ids))
+        
+        facilitators_from_db = facilitators_query.all()
         
         if not facilitators_from_db:
             return jsonify({
                 "ok": False, 
                 "can_run": False,
-                "error": "No facilitators assigned to this unit"
+                "error": "No facilitators selected for auto-assignment"
             }), 400
         
         # Get all modules for this unit (excluding the default "General" module)
@@ -3294,19 +3345,35 @@ def auto_assign_facilitators(unit_id: int):
         )
         from flask import session as flask_session
         
+        # Get weight parameters and included facilitators from request
+        request_data = request.get_json() or {}
+        included_facilitator_ids = request_data.get('included_facilitators', None)
+        
         # Get facilitators assigned to this unit
         # Include all users linked to unit (including UCs and Admins who can also facilitate)
-        facilitators_from_db = (
+        facilitators_query = (
             db.session.query(User)
             .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
             .filter(UnitFacilitator.unit_id == unit_id)
-            .all()
         )
+        
+        # Filter by included facilitators if specified
+        # None = never saved (include all), [] = explicitly deselected all, [1,2,3] = specific IDs
+        if included_facilitator_ids is not None:
+            if len(included_facilitator_ids) == 0:
+                # User explicitly deselected all facilitators
+                return jsonify({
+                    "ok": False, 
+                    "error": "No facilitators selected for auto-assignment. Please open Settings (⚙️) and select at least one facilitator."
+                }), 400
+            facilitators_query = facilitators_query.filter(User.id.in_(included_facilitator_ids))
+        
+        facilitators_from_db = facilitators_query.all()
         
         if not facilitators_from_db:
             return jsonify({
                 "ok": False, 
-                "error": "No facilitators assigned to this unit"
+                "error": "No facilitators found for this unit. Please add facilitators first."
             }), 400
         
         # Validate that all facilitators have declared their skills and unavailability
@@ -3366,10 +3433,9 @@ def auto_assign_facilitators(unit_id: int):
         # Prepare facilitator data for optimization
         facilitators = prepare_facilitator_data(facilitators_from_db)
         
-        # Get weight parameters from request (if provided)
+        # Get weight parameters from request (already loaded above)
         # Note: Only skill and fairness are weighted (sum = 100%)
         # Availability is a hard constraint (always checked, not weighted)
-        request_data = request.get_json() or {}
         w_skill = request_data.get('w_skill', 0.50)  # Default: 50%
         w_fairness = request_data.get('w_fairness', 0.50)  # Default: 50%
         
@@ -4891,6 +4957,45 @@ def list_facilitators(unit_id: int):
             "unavailability_reason": unavailability_reason,
             "skill_level": skill_level,
             "skill_label": skill_label
+        })
+    
+    return jsonify({"ok": True, "facilitators": facilitators})
+
+
+@unitcoordinator_bp.get("/units/<int:unit_id>/facilitators-with-unavailability")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def list_facilitators_with_unavailability(unit_id: int):
+    """Get facilitators for a unit with their global unavailability status"""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+
+    # Get all facilitators for this unit
+    facs = (
+        db.session.query(User)
+        .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
+        .filter(UnitFacilitator.unit_id == unit_id)
+        .all()
+    )
+    
+    facilitators = []
+    for fac in facs:
+        # Check if facilitator has MANUAL GLOBAL unavailability (not auto-generated)
+        has_manual_global = db.session.query(Unavailability).filter(
+            Unavailability.user_id == fac.id,
+            Unavailability.unit_id == None,  # Global only
+            Unavailability.source_session_id == None  # Manual only (not auto-generated)
+        ).first() is not None
+        
+        facilitators.append({
+            "id": fac.id,
+            "full_name": fac.full_name,
+            "email": fac.email,
+            "first_name": fac.first_name,
+            "last_name": fac.last_name,
+            "has_manual_global_unavailability": has_manual_global
         })
     
     return jsonify({"ok": True, "facilitators": facilitators})

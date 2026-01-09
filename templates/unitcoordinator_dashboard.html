@@ -2671,14 +2671,14 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
 
 <!-- Auto-Assignment Settings Modal -->
 <div id="auto-assign-settings-modal" class="modal-overlay" style="display: none;">
-  <div class="modal-content" style="max-width: 600px;">
-    <div class="modal-header">
+  <div class="modal-content" style="max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
+    <div class="modal-header" style="flex-shrink: 0;">
       <h3>⚙️ Auto-Assignment Settings</h3>
       <button class="modal-close" onclick="closeAutoAssignSettings()">
         <span class="material-icons">close</span>
       </button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="flex: 1; overflow-y: auto;">
       <p class="text-sm text-gray-600 mb-4">
         Adjust how the algorithm prioritizes different factors when assigning facilitators to sessions.
       </p>
@@ -2722,6 +2722,27 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </div>
       </div>
       
+      <!-- Facilitator Selection -->
+      <div class="form-group mb-4" style="border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <label style="margin: 0; font-weight: 600;">👥 Include Facilitators</label>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn-sm" onclick="selectAllFacilitators()" style="font-size: 11px; padding: 4px 8px;">
+              Select All
+            </button>
+            <button type="button" class="btn-sm" onclick="deselectAllFacilitators()" style="font-size: 11px; padding: 4px 8px;">
+              Deselect All
+            </button>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 mb-2">Uncheck facilitators to exclude them from auto-assignment (e.g., if they have global unavailability)</p>
+        <div id="facilitator-selection-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; background: #fafafa;">
+          <!-- Will be populated by JavaScript -->
+          <p class="text-sm text-gray-400 text-center py-4">Loading facilitators...</p>
+        </div>
+        <p class="text-xs text-gray-500 mt-2" style="color: #6b7280;">💡 Tip: Use Select All / Deselect All buttons for quick changes</p>
+      </div>
+      
       <!-- Info Box -->
       <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; border-radius: 4px; margin-top: 16px;">
         <p style="margin: 0; font-size: 13px; color: #1e40af;">
@@ -2729,7 +2750,7 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </p>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-shrink: 0; background: white; border-top: 1px solid #e5e7eb;">
       <button class="btn-secondary" onclick="resetToRecommended()">
         <span class="material-icons text-base">restart_alt</span>
         Reset to Recommended
