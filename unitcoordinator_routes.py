@@ -4536,36 +4536,6 @@ def unpublish_schedule(unit_id: int):
     if unit.schedule_status != ScheduleStatus.PUBLISHED:
         return jsonify({"ok": False, "error": "Unit is not published"}), 400
     
-    # 2. Check if unit has active sessions (within 7 days)
-    today = date.today()
-    near_future = today + timedelta(days=7)
-    near_future_datetime = datetime.combine(near_future, datetime.max.time())
-    today_datetime = datetime.combine(today, datetime.min.time())
-    
-    active_sessions = (
-        db.session.query(Session)
-        .join(Module, Session.module_id == Module.id)
-        .filter(
-            Module.unit_id == unit.id,
-            Session.start_time >= today_datetime,
-            Session.start_time <= near_future_datetime
-        )
-        .count()
-    )
-    
-    if active_sessions > 0:
-        return jsonify({
-            "ok": False,
-            "error": f"Cannot unpublish. {active_sessions} session(s) scheduled within next 7 days. This would disrupt active schedules."
-        }), 403
-    
-    # 3. Check if unit is in the past
-    if unit.end_date and unit.end_date < today:
-        return jsonify({
-            "ok": False,
-            "error": "Cannot unpublish historical schedules."
-        }), 403
-    
     try:
         # 4. Remove auto-generated unavailability
         deleted_unavail = remove_unavailability_from_schedule(unit_id)
