@@ -2671,14 +2671,14 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
 
 <!-- Auto-Assignment Settings Modal -->
 <div id="auto-assign-settings-modal" class="modal-overlay" style="display: none;">
-  <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
-    <div class="modal-header">
+  <div class="modal-content" style="max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
+    <div class="modal-header" style="flex-shrink: 0;">
       <h3>⚙️ Auto-Assignment Settings</h3>
       <button class="modal-close" onclick="closeAutoAssignSettings()">
         <span class="material-icons">close</span>
       </button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="flex: 1; overflow-y: auto;">
       <p class="text-sm text-gray-600 mb-4">
         Adjust how the algorithm prioritizes different factors when assigning facilitators to sessions.
       </p>
@@ -2750,7 +2750,7 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </p>
       </div>
     </div>
-    <div class="modal-footer" style="position: sticky; bottom: 0; background: white; border-top: 1px solid #e5e7eb; margin-top: auto;">
+    <div class="modal-footer" style="flex-shrink: 0; background: white; border-top: 1px solid #e5e7eb;">
       <button class="btn-secondary" onclick="resetToRecommended()">
         <span class="material-icons text-base">restart_alt</span>
         Reset to Recommended
