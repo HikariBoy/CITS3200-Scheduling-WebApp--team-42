@@ -1264,22 +1264,33 @@ def send_schedule_unpublished_email(recipient_email, recipient_name, unit_code, 
         unit_name: Unit name (e.g., "Professional Computing")
         base_url: Base URL for the app (optional)
     """
+    print(f"\n{'='*60}")
+    print(f"UNPUBLISH EMAIL FUNCTION CALLED")
+    print(f"Recipient: {recipient_email}")
+    print(f"Unit: {unit_code} - {unit_name}")
+    print(f"{'='*60}\n")
+    
     # Check if we're in mock mode
     use_mock = os.environ.get('USE_MOCK_EMAIL', 'false').lower() == 'true'
+    print(f"USE_MOCK_EMAIL: {os.environ.get('USE_MOCK_EMAIL', 'not set')} (use_mock={use_mock})")
     
     if not use_mock:
         sender_email = os.environ.get('SES_SENDER_EMAIL')
+        print(f"SES_SENDER_EMAIL: {sender_email}")
         if not sender_email or not valid_email(sender_email):
-            print(f"Invalid or missing sender email")
+            print(f"❌ Invalid or missing sender email")
             return False
     else:
         sender_email = "noreply@example.com"
-        print(f"[MOCK] Would send unpublish email to {recipient_email}")
+        print(f"[MOCK MODE] Would send unpublish email to {recipient_email}")
+        print(f"Subject: Schedule Update: {unit_code} Unpublished")
         return True
     
     if not valid_email(recipient_email):
-        print(f"Invalid recipient email: {recipient_email}")
+        print(f"❌ Invalid recipient email: {recipient_email}")
         return False
+    
+    print(f"✓ Email validation passed")
     
     # Get base URL
     if not base_url:
@@ -1400,7 +1411,13 @@ Your Scheduling Team
     try:
         # Create SES client
         ses_region = os.environ.get('SES_REGION', 'ap-southeast-1')
+        print(f"Creating SES client in region: {ses_region}")
         client = boto3.client('ses', region_name=ses_region)
+        
+        print(f"Sending email via AWS SES...")
+        print(f"  From: {sender_email}")
+        print(f"  To: {recipient_email}")
+        print(f"  Subject: {subject}")
         
         # Send email
         response = client.send_email(
@@ -1426,13 +1443,18 @@ Your Scheduling Team
             }
         )
         
-        print(f"Unpublish email sent successfully to {recipient_email}")
-        print(f"Message ID: {response['MessageId']}")
+        print(f"✅ Unpublish email sent successfully to {recipient_email}")
+        print(f"✅ Message ID: {response['MessageId']}")
+        print(f"{'='*60}\n")
         return True
         
     except ClientError as e:
-        print(f"Error sending unpublish email: {e.response['Error']['Message']}")
+        print(f"❌ AWS ClientError sending unpublish email: {e.response['Error']['Message']}")
+        print(f"{'='*60}\n")
         return False
     except Exception as e:
-        print(f"Unexpected error sending unpublish email: {str(e)}")
+        print(f"❌ Unexpected error sending unpublish email: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print(f"{'='*60}\n")
         return False

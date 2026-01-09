@@ -4663,10 +4663,15 @@ def unpublish_schedule(unit_id: int):
                         for assignment in session.assignments:
                             facilitator_ids.add(assignment.facilitator_id)
                 
+                logger.info(f"Found {len(facilitator_ids)} facilitators to notify")
+                
                 for facilitator_id in facilitator_ids:
                     facilitator = User.query.get(facilitator_id)
                     if not facilitator:
+                        logger.warning(f"Facilitator {facilitator_id} not found")
                         continue
+                    
+                    logger.info(f"Processing facilitator: {facilitator.email}")
                     
                     # Create in-app notification
                     notification = Notification(
@@ -4679,6 +4684,7 @@ def unpublish_schedule(unit_id: int):
                     
                     # Send email
                     try:
+                        logger.info(f"Attempting to send unpublish email to {facilitator.email}")
                         email_sent = send_schedule_unpublished_email(
                             recipient_email=facilitator.email,
                             recipient_name=facilitator.full_name or facilitator.email,
@@ -4687,9 +4693,13 @@ def unpublish_schedule(unit_id: int):
                         )
                         if email_sent:
                             emails_sent += 1
-                            logger.info(f"Unpublish email sent to {facilitator.email}")
+                            logger.info(f"✅ Unpublish email sent successfully to {facilitator.email}")
+                        else:
+                            logger.warning(f"❌ Email function returned False for {facilitator.email}")
                     except Exception as email_error:
-                        logger.warning(f"Failed to send unpublish email to {facilitator.email}: {email_error}")
+                        logger.error(f"❌ Exception sending unpublish email to {facilitator.email}: {email_error}")
+                        import traceback
+                        traceback.print_exc()
                 
                 db.session.commit()
             except Exception as notif_error:
