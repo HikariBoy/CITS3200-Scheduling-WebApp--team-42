@@ -7881,13 +7881,32 @@ async function loadFacilitatorsForSelection(unitId) {
   const listContainer = document.getElementById('facilitator-selection-list');
   
   try {
-    const response = await fetch(`/unitcoordinator/units/${unitId}/facilitators`);
-    const data = await response.json();
+    // Fetch facilitators and their unavailability status
+    const [facilitatorsResponse, unavailabilityResponse] = await Promise.all([
+      fetch(`/unitcoordinator/units/${unitId}/facilitators`),
+      fetch(`/unitcoordinator/units/${unitId}/unavailability`)
+    ]);
     
-    if (!data.ok || !data.facilitators || data.facilitators.length === 0) {
+    const facilitatorsData = await facilitatorsResponse.json();
+    const unavailabilityData = await unavailabilityResponse.json();
+    
+    if (!facilitatorsData.ok || !facilitatorsData.facilitators || facilitatorsData.facilitators.length === 0) {
       listContainer.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No facilitators found</p>';
       return;
     }
+    
+    // Build map of facilitators with manual unavailability (excluding auto-generated)
+    const facilitatorsWithUnavailability = new Set();
+    if (unavailabilityData.ok && unavailabilityData.unavailability) {
+      unavailabilityData.unavailability.forEach(unavail => {
+        // Only count manual unavailability (not auto-generated from other units)
+        if (!unavail.source_session_id && unavail.user_id) {
+          facilitatorsWithUnavailability.add(unavail.user_id);
+        }
+      });
+    }
+    
+    const data = facilitatorsData;
     
     // Load saved selections for this unit
     const storageKey = `autoAssignFacilitators_unit_${unitId}`;
@@ -7918,6 +7937,9 @@ async function loadFacilitatorsForSelection(unitId) {
       // Only show email separately if we have a different full name
       const showEmailSeparately = hasFullName && name !== email;
       
+      // Check if facilitator has manual unavailability
+      const hasManualUnavailability = facilitatorsWithUnavailability.has(facilitator.id);
+      
       html += `
         <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;" 
                onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#e5e7eb';" 
@@ -7926,11 +7948,23 @@ async function loadFacilitatorsForSelection(unitId) {
             <span style="font-size: 14px; font-weight: 500; color: #1f2937;">${name}</span>
             ${showEmailSeparately ? `<span style="font-size: 12px; color: #9ca3af;">${email}</span>` : ''}
           </div>
-          <input type="checkbox" 
-                 class="facilitator-checkbox" 
-                 data-facilitator-id="${facilitator.id}" 
-                 ${isChecked ? 'checked' : ''}
-                 style="width: 20px; height: 20px; cursor: pointer; margin-left: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            ${hasManualUnavailability 
+              ? `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #10b981; font-weight: 500;" title="Has manual unavailability set">
+                   <span class="material-icons" style="font-size: 16px;">check_circle</span>
+                   Unavail. Set
+                 </span>` 
+              : `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ef4444; font-weight: 500;" title="No manual unavailability set">
+                   <span class="material-icons" style="font-size: 16px;">cancel</span>
+                   No Unavail.
+                 </span>`
+            }
+            <input type="checkbox" 
+                   class="facilitator-checkbox" 
+                   data-facilitator-id="${facilitator.id}" 
+                   ${isChecked ? 'checked' : ''}
+                   style="width: 20px; height: 20px; cursor: pointer;">
+          </div>
         </label>
       `;
     });
