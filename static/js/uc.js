@@ -7907,22 +7907,26 @@ async function loadFacilitatorsForSelection(unitId) {
       selectedFacilitators = data.facilitators.map(f => f.id);
     }
     
-    // Build checkbox list
-    let html = '<div style="display: flex; flex-direction: column; gap: 6px;">';
+    // Build checkbox list with clean layout
+    let html = '<div style="display: flex; flex-direction: column; gap: 4px;">';
     data.facilitators.forEach(facilitator => {
       const isChecked = selectedFacilitators.includes(facilitator.id);
       const name = facilitator.full_name || facilitator.email;
+      const email = facilitator.email;
+      
       html += `
-        <label style="display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 4px; cursor: pointer; transition: background 0.2s;" 
-               onmouseover="this.style.background='#f3f4f6'" 
-               onmouseout="this.style.background='transparent'">
+        <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;" 
+               onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#e5e7eb';" 
+               onmouseout="this.style.background='white'; this.style.borderColor='transparent';">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 14px; font-weight: 500; color: #1f2937;">${name}</span>
+            <span style="font-size: 12px; color: #9ca3af;">${email}</span>
+          </div>
           <input type="checkbox" 
                  class="facilitator-checkbox" 
                  data-facilitator-id="${facilitator.id}" 
                  ${isChecked ? 'checked' : ''}
-                 style="width: 16px; height: 16px; cursor: pointer;">
-          <span style="font-size: 14px; color: #374151;">${name}</span>
-          <span style="font-size: 12px; color: #9ca3af; margin-left: auto;">${facilitator.email}</span>
+                 style="width: 20px; height: 20px; cursor: pointer; margin-left: 12px;">
         </label>
       `;
     });
