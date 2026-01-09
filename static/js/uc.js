@@ -608,26 +608,22 @@ async function nextStep() {
     const end = document.querySelector('[name="end_date"]')?.value?.trim();
     if (!start || !end) return;
     
-    // Ensure unit ID is set (either from draft or existing unit)
-    if (!isEditMode) {
-      // In create mode, ensure draft unit exists
-      try {
+    // Ensure unit ID is set and changes are saved
+    try {
+      if (!isEditMode) {
+        // In create mode, ensure draft unit exists
         const unitId = await ensureDraftAndSetUnitId();
         console.debug('Draft unit id:', unitId);
-      } catch (e) {
-        alert('Could not create/get unit draft: ' + e.message);
-        return;
-      }
-    } else {
-      // In edit mode, ensure unit_id is set from the current unit
-      const currentUnitId = getUnitId();
-      if (currentUnitId) {
-        document.getElementById('unit_id').value = currentUnitId;
-        console.debug('Edit mode - using existing unit id:', currentUnitId);
       } else {
-        alert('Could not determine unit ID for editing');
-        return;
+        // In edit mode, ALSO call ensureDraftAndSetUnitId to SAVE the changes!
+        console.debug('EDIT MODE: Saving unit changes...');
+        const unitId = await ensureDraftAndSetUnitId();
+        console.debug('Edit mode - unit updated:', unitId);
       }
+    } catch (e) {
+      alert('Could not save unit: ' + e.message);
+      console.error('Error in step 2:', e);
+      return;
     }
     
     return setStep(3);
