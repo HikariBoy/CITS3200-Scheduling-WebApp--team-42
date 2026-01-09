@@ -691,8 +691,14 @@ async function ensureDraftAndSetUnitId() {
   
   // IMPORTANT: Include unit_id if editing an existing unit
   const unitId = document.getElementById('unit_id').value;
+  console.log('DEBUG ensureDraftAndSetUnitId: unitId =', unitId);
+  console.log('DEBUG ensureDraftAndSetUnitId: unit_name =', basic.unit_name);
+  
   if (unitId) {
     form.append('unit_id', unitId);
+    console.log('DEBUG: Appended unit_id to form:', unitId);
+  } else {
+    console.log('DEBUG: No unit_id - CREATE mode');
   }
   
   form.append('unit_code', basic.unit_code);
@@ -707,11 +713,14 @@ async function ensureDraftAndSetUnitId() {
   form.append('force_new', 'true');
   form.append('timestamp', Date.now().toString());
 
+  console.log('DEBUG: Sending form to CREATE_OR_GET_DRAFT');
   const res = await fetch(CREATE_OR_GET_DRAFT, {
     method: 'POST',
     headers: { 'X-CSRFToken': CSRF_TOKEN },
     body: form
   });
+  
+  console.log('DEBUG: Response status:', res.status);
 
   const data = await res.json();
   if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to create/fetch draft');

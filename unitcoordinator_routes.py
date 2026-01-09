@@ -2199,12 +2199,20 @@ def create_or_get_draft():
     unit_id_str = request.form.get('unit_id', '').strip()
     unit = None
     
+    print(f"DEBUG create_or_get_draft: unit_id_str = '{unit_id_str}'")
+    print(f"DEBUG create_or_get_draft: unit_code = '{unit_code}', unit_name = '{unit_name}'")
+    
     if unit_id_str:
         # EDIT MODE: Update existing unit
+        print(f"DEBUG: EDIT MODE detected - unit_id_str = '{unit_id_str}'")
         try:
             unit_id = int(unit_id_str)
+            print(f"DEBUG: Parsed unit_id = {unit_id}")
             unit = _get_user_unit_or_404(user, unit_id)
+            print(f"DEBUG: Found unit = {unit}")
             if unit:
+                print(f"DEBUG: Updating unit {unit_id}")
+                print(f"DEBUG: Old name: {unit.unit_name} → New name: {unit_name}")
                 # Update the unit fields
                 unit.unit_code = unit_code
                 unit.unit_name = unit_name
@@ -2213,11 +2221,16 @@ def create_or_get_draft():
                 unit.start_date = parsed_start
                 unit.end_date = parsed_end
                 db.session.commit()
+                print(f"DEBUG: Unit {unit_id} updated successfully!")
                 return jsonify({"ok": True, "unit_id": unit.id, "start_date": start_date, "end_date": end_date})
             else:
+                print(f"DEBUG: Unit not found or unauthorized")
                 return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
-        except ValueError:
+        except ValueError as e:
+            print(f"DEBUG: ValueError - {e}")
             return jsonify({"ok": False, "error": "Invalid unit ID"}), 400
+    else:
+        print(f"DEBUG: CREATE MODE - no unit_id provided")
     
     # CREATE MODE: Check if user is already a coordinator for a unit with this code/year/semester
     unit = (
