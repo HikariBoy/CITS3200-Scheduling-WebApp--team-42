@@ -7643,7 +7643,7 @@ Are you sure you want to unpublish?`);
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
+        'X-CSRFToken': CSRF_TOKEN
       }
     });
     
