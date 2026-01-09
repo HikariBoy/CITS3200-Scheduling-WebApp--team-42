@@ -2722,6 +2722,26 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         </div>
       </div>
       
+      <!-- Facilitator Selection -->
+      <div class="form-group mb-4" style="border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <label style="margin: 0; font-weight: 600;">👥 Include Facilitators</label>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn-sm" onclick="selectAllFacilitators()" style="font-size: 11px; padding: 4px 8px;">
+              Select All
+            </button>
+            <button type="button" class="btn-sm" onclick="deselectAllFacilitators()" style="font-size: 11px; padding: 4px 8px;">
+              Deselect All
+            </button>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 mb-2">Uncheck facilitators to exclude them from auto-assignment (e.g., if they have global unavailability)</p>
+        <div id="facilitator-selection-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;">
+          <!-- Will be populated by JavaScript -->
+          <p class="text-sm text-gray-400 text-center py-4">Loading facilitators...</p>
+        </div>
+      </div>
+      
       <!-- Info Box -->
       <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; border-radius: 4px; margin-top: 16px;">
         <p style="margin: 0; font-size: 13px; color: #1e40af;">

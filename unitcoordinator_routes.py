@@ -3294,19 +3294,28 @@ def auto_assign_facilitators(unit_id: int):
         )
         from flask import session as flask_session
         
+        # Get weight parameters and included facilitators from request
+        request_data = request.get_json() or {}
+        included_facilitator_ids = request_data.get('included_facilitators', None)
+        
         # Get facilitators assigned to this unit
         # Include all users linked to unit (including UCs and Admins who can also facilitate)
-        facilitators_from_db = (
+        facilitators_query = (
             db.session.query(User)
             .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
             .filter(UnitFacilitator.unit_id == unit_id)
-            .all()
         )
+        
+        # Filter by included facilitators if specified
+        if included_facilitator_ids is not None and len(included_facilitator_ids) > 0:
+            facilitators_query = facilitators_query.filter(User.id.in_(included_facilitator_ids))
+        
+        facilitators_from_db = facilitators_query.all()
         
         if not facilitators_from_db:
             return jsonify({
                 "ok": False, 
-                "error": "No facilitators assigned to this unit"
+                "error": "No facilitators selected for auto-assignment. Please select at least one facilitator in the settings."
             }), 400
         
         # Validate that all facilitators have declared their skills and unavailability
@@ -3366,10 +3375,9 @@ def auto_assign_facilitators(unit_id: int):
         # Prepare facilitator data for optimization
         facilitators = prepare_facilitator_data(facilitators_from_db)
         
-        # Get weight parameters from request (if provided)
+        # Get weight parameters from request (already loaded above)
         # Note: Only skill and fairness are weighted (sum = 100%)
         # Availability is a hard constraint (always checked, not weighted)
-        request_data = request.get_json() or {}
         w_skill = request_data.get('w_skill', 0.50)  # Default: 50%
         w_fairness = request_data.get('w_fairness', 0.50)  # Default: 50%
         

@@ -5045,6 +5045,18 @@ async function autoAssignFacilitators() {
     // Get current weight settings
     const weights = getAutoAssignWeights();
     
+    // Get selected facilitators
+    const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
+    let selectedFacilitators = [];
+    try {
+      const saved = localStorage.getItem(facilitatorStorageKey);
+      if (saved) {
+        selectedFacilitators = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Error loading facilitator selections:', e);
+    }
+    
     const url = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE, unitId);
     const response = await fetch(url, {
       method: 'POST',
@@ -5054,7 +5066,8 @@ async function autoAssignFacilitators() {
       },
       body: JSON.stringify({
         w_skill: weights.skill / 100,        // Convert percentage to decimal (0.0-1.0)
-        w_fairness: weights.fairness / 100   // Convert percentage to decimal (0.0-1.0)
+        w_fairness: weights.fairness / 100,  // Convert percentage to decimal (0.0-1.0)
+        included_facilitators: selectedFacilitators.length > 0 ? selectedFacilitators : null  // null = include all
         // Note: Availability is a hard constraint (always checked), not sent as weight
       })
     });
@@ -7859,6 +7872,78 @@ function openAutoAssignSettings() {
   
   // Update displays
   updateWeightDisplay('skill', autoAssignWeights.skill);
+  
+  // Load facilitators for selection
+  loadFacilitatorsForSelection(unitId);
+}
+
+async function loadFacilitatorsForSelection(unitId) {
+  const listContainer = document.getElementById('facilitator-selection-list');
+  
+  try {
+    const response = await fetch(`/unitcoordinator/units/${unitId}/facilitators`);
+    const data = await response.json();
+    
+    if (!data.ok || !data.facilitators || data.facilitators.length === 0) {
+      listContainer.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No facilitators found</p>';
+      return;
+    }
+    
+    // Load saved selections for this unit
+    const storageKey = `autoAssignFacilitators_unit_${unitId}`;
+    let selectedFacilitators = [];
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        selectedFacilitators = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Error loading saved facilitator selections:', e);
+    }
+    
+    // If no saved selections, select all by default
+    if (selectedFacilitators.length === 0) {
+      selectedFacilitators = data.facilitators.map(f => f.id);
+    }
+    
+    // Build checkbox list
+    let html = '<div style="display: flex; flex-direction: column; gap: 6px;">';
+    data.facilitators.forEach(facilitator => {
+      const isChecked = selectedFacilitators.includes(facilitator.id);
+      const name = facilitator.full_name || facilitator.email;
+      html += `
+        <label style="display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 4px; cursor: pointer; transition: background 0.2s;" 
+               onmouseover="this.style.background='#f3f4f6'" 
+               onmouseout="this.style.background='transparent'">
+          <input type="checkbox" 
+                 class="facilitator-checkbox" 
+                 data-facilitator-id="${facilitator.id}" 
+                 ${isChecked ? 'checked' : ''}
+                 style="width: 16px; height: 16px; cursor: pointer;">
+          <span style="font-size: 14px; color: #374151;">${name}</span>
+          <span style="font-size: 12px; color: #9ca3af; margin-left: auto;">${facilitator.email}</span>
+        </label>
+      `;
+    });
+    html += '</div>';
+    
+    listContainer.innerHTML = html;
+  } catch (error) {
+    console.error('Error loading facilitators:', error);
+    listContainer.innerHTML = '<p class="text-sm text-red-500 text-center py-4">Error loading facilitators</p>';
+  }
+}
+
+function selectAllFacilitators() {
+  document.querySelectorAll('.facilitator-checkbox').forEach(checkbox => {
+    checkbox.checked = true;
+  });
+}
+
+function deselectAllFacilitators() {
+  document.querySelectorAll('.facilitator-checkbox').forEach(checkbox => {
+    checkbox.checked = false;
+  });
 }
 
 function closeAutoAssignSettings() {
@@ -7953,14 +8038,23 @@ function saveAutoAssignSettings() {
   }
   
   try {
-    // Save to localStorage with unit-specific key
+    // Save weights to localStorage with unit-specific key
     const storageKey = `autoAssignWeights_unit_${unitId}`;
     localStorage.setItem(storageKey, JSON.stringify(autoAssignWeights));
     
-    showSimpleNotification('Settings saved for this unit! They will be used for the next auto-assignment.', 'success');
+    // Save selected facilitators
+    const selectedFacilitators = [];
+    document.querySelectorAll('.facilitator-checkbox:checked').forEach(checkbox => {
+      selectedFacilitators.push(parseInt(checkbox.dataset.facilitatorId));
+    });
+    
+    const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
+    localStorage.setItem(facilitatorStorageKey, JSON.stringify(selectedFacilitators));
+    
+    showSimpleNotification(`Settings saved! ${selectedFacilitators.length} facilitator(s) will be included in auto-assignment.`, 'success');
     closeAutoAssignSettings();
   } catch (error) {
-    console.error('Error saving weights:', error);
+    console.error('Error saving settings:', error);
     showSimpleNotification('Error saving settings. Please try again.', 'error');
   }
 }
