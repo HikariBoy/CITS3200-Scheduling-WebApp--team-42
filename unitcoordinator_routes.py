@@ -4541,13 +4541,19 @@ def unpublish_schedule(unit_id: int):
         deleted_unavail = remove_unavailability_from_schedule(unit_id)
         
         # 5. Reject pending swap requests
-        # Get all sessions for this unit through modules
-        session_ids = []
+        # Get all assignment IDs for this unit through modules and sessions
+        assignment_ids = []
         for module in unit.modules:
             for session in module.sessions:
-                session_ids.append(session.id)
+                for assignment in session.assignments:
+                    assignment_ids.append(assignment.id)
+        
+        # Find swap requests involving these assignments
         swap_requests = SwapRequest.query.filter(
-            SwapRequest.session_id.in_(session_ids),
+            db.or_(
+                SwapRequest.requester_assignment_id.in_(assignment_ids),
+                SwapRequest.target_assignment_id.in_(assignment_ids)
+            ),
             SwapRequest.status.in_([
                 SwapStatus.PENDING,
                 SwapStatus.FACILITATOR_PENDING,
