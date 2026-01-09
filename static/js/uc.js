@@ -7881,29 +7881,35 @@ async function loadFacilitatorsForSelection(unitId) {
   const listContainer = document.getElementById('facilitator-selection-list');
   
   try {
-    // Fetch facilitators and their unavailability status
-    const [facilitatorsResponse, unavailabilityResponse] = await Promise.all([
-      fetch(`/unitcoordinator/units/${unitId}/facilitators`),
-      fetch(`/unitcoordinator/units/${unitId}/unavailability`)
-    ]);
-    
+    // Fetch facilitators
+    const facilitatorsResponse = await fetch(`/unitcoordinator/units/${unitId}/facilitators`);
     const facilitatorsData = await facilitatorsResponse.json();
-    const unavailabilityData = await unavailabilityResponse.json();
     
     if (!facilitatorsData.ok || !facilitatorsData.facilitators || facilitatorsData.facilitators.length === 0) {
       listContainer.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No facilitators found</p>';
       return;
     }
     
-    // Build map of facilitators with manual unavailability (excluding auto-generated)
+    // Fetch GLOBAL unavailability for each facilitator
     const facilitatorsWithUnavailability = new Set();
-    if (unavailabilityData.ok && unavailabilityData.unavailability) {
-      unavailabilityData.unavailability.forEach(unavail => {
-        // Only count manual unavailability (not auto-generated from other units)
-        if (!unavail.source_session_id && unavail.user_id) {
-          facilitatorsWithUnavailability.add(unavail.user_id);
+    for (const facilitator of facilitatorsData.facilitators) {
+      try {
+        // Fetch global unavailability (unit_id=null means global)
+        const unavailResponse = await fetch(`/facilitator/unavailability?user_id=${facilitator.id}`);
+        const unavailData = await unavailResponse.json();
+        
+        if (unavailData.ok && unavailData.unavailability && unavailData.unavailability.length > 0) {
+          // Check if they have any MANUAL global unavailability (not auto-generated)
+          const hasManualGlobal = unavailData.unavailability.some(u => 
+            u.unit_id === null && !u.source_session_id
+          );
+          if (hasManualGlobal) {
+            facilitatorsWithUnavailability.add(facilitator.id);
+          }
         }
-      });
+      } catch (e) {
+        console.error(`Error fetching unavailability for ${facilitator.email}:`, e);
+      }
     }
     
     const data = facilitatorsData;
