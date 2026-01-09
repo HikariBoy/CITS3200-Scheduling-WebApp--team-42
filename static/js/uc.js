@@ -4784,7 +4784,7 @@ function renderDaySessions(sessions, dayDate) {
       const sessionEndTime = new Date(session.end).toTimeString().split(' ')[0].substring(0, 5); // Format: HH:MM
       
       return `
-     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-session-date="${sessionDate}" data-session-start-time="${sessionStartTime}" data-session-end-time="${sessionEndTime}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
+     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-session-date="${sessionDate}" data-session-start-time="${sessionStartTime}" data-session-end-time="${sessionEndTime}" data-session-module-id="${session.module_id || session.extendedProps?.module_id || ''}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
        id: session.id || `temp-${index}`,
        title: session.session_name || session.extendedProps?.session_name || session.title || 'New Session',
        day: new Date(session.start).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
@@ -6519,6 +6519,7 @@ function openFacilitatorModalAfterDelay(element) {
     date: sessionCard.dataset.sessionDate || null,
     startTime: sessionCard.dataset.sessionStartTime || null,  // Add start time
     endTime: sessionCard.dataset.sessionEndTime || null,  // Add end time
+    moduleId: sessionCard.dataset.sessionModuleId || null,  // Add module ID
     assignedFacilitators: sessionCard.dataset.facilitatorIds ? 
       sessionCard.dataset.facilitatorIds.split(',').map(id => id.trim()) : []
   };
@@ -6616,7 +6617,7 @@ async function loadFacilitators() {
     
     let url = withUnitId(LIST_FACILITATORS_TEMPLATE, currentUnitId);
     
-    // Add session date and time if available to check unavailability
+    // Add session date, time, and module if available
     if (currentSessionData?.date) {
       url += `?session_date=${currentSessionData.date}`;
       if (currentSessionData?.startTime) {
@@ -6624,6 +6625,9 @@ async function loadFacilitators() {
       }
       if (currentSessionData?.endTime) {
         url += `&session_end_time=${currentSessionData.endTime}`;
+      }
+      if (currentSessionData?.moduleId) {
+        url += `&module_id=${currentSessionData.moduleId}`;
       }
     }
     
@@ -6714,7 +6718,10 @@ function renderFacilitatorList() {
           </div>
           <div class="facilitator-info">
             <div class="facilitator-name">${facilitator.name}</div>
-            <div class="facilitator-email">${facilitator.email}</div>
+            <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
+              ${facilitator.email}
+              ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
+            </div>
           </div>
         </div>
       `;

@@ -4748,14 +4748,16 @@ def list_facilitators(unit_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
 
-    # Get session date and time if provided (for unavailability check)
+    # Get session date, time, and module if provided
     session_date_str = request.args.get('session_date')
     session_start_time_str = request.args.get('session_start_time')
     session_end_time_str = request.args.get('session_end_time')
+    module_id_str = request.args.get('module_id')
     
     session_date = None
     session_start_time = None
     session_end_time = None
+    module_id = None
     
     if session_date_str:
         try:
@@ -4769,6 +4771,12 @@ def list_facilitators(unit_id: int):
                 session_end_time = datetime.strptime(session_end_time_str, '%H:%M').time()
         except ValueError:
             pass  # Invalid date/time format, ignore
+    
+    if module_id_str:
+        try:
+            module_id = int(module_id_str)
+        except ValueError:
+            pass  # Invalid module ID, ignore
 
     facs = (
         db.session.query(User)
@@ -4782,6 +4790,8 @@ def list_facilitators(unit_id: int):
     for fac in facs:
         is_unavailable = False
         unavailability_reason = None
+        skill_level = None
+        skill_label = None
         
         # Check if facilitator is unavailable on this date
         if session_date:
@@ -4806,6 +4816,24 @@ def list_facilitators(unit_id: int):
                     is_unavailable = True
                     unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
         
+        # Get skill level for this module if provided
+        if module_id:
+            skill = FacilitatorSkill.query.filter_by(
+                user_id=fac.id,
+                module_id=module_id
+            ).first()
+            
+            if skill:
+                skill_level = skill.skill_level.value
+                # Map skill level to display label
+                skill_map = {
+                    'proficient': '✓ Proficient',
+                    'have_run_before': '✓ Have Run Before',
+                    'have_some_skill': '✓ Have Some Skill',
+                    'no_interest': '✗ No Interest'
+                }
+                skill_label = skill_map.get(skill_level, skill_level)
+        
         facilitators.append({
             "id": fac.id,
             "name": fac.full_name,
@@ -4815,7 +4843,9 @@ def list_facilitators(unit_id: int):
             "phone_number": fac.phone_number,
             "staff_number": fac.staff_number,
             "is_unavailable": is_unavailable,
-            "unavailability_reason": unavailability_reason
+            "unavailability_reason": unavailability_reason,
+            "skill_level": skill_level,
+            "skill_label": skill_label
         })
     
     return jsonify({"ok": True, "facilitators": facilitators})
