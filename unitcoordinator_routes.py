@@ -3201,7 +3201,8 @@ def create_session(unit_id: int):
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def check_auto_assign_validation(unit_id: int):
     """
-    Check if auto-assignment can be run (all facilitators have skills declared)
+    Check if auto-assignment can be run (all SELECTED facilitators have skills declared)
+    Accepts optional 'included_facilitators' query param as comma-separated IDs
     """
     user = get_current_user()
     unit = _get_user_unit_or_404(user, unit_id)
@@ -3209,20 +3210,33 @@ def check_auto_assign_validation(unit_id: int):
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
     try:
+        # Get included facilitators from query params (comma-separated IDs)
+        included_facilitators_str = request.args.get('included_facilitators', '')
+        included_facilitator_ids = None
+        if included_facilitators_str:
+            try:
+                included_facilitator_ids = [int(id.strip()) for id in included_facilitators_str.split(',') if id.strip()]
+            except ValueError:
+                pass  # Invalid format, ignore and check all
+        
         # Get facilitators assigned to this unit
-        # Include all users linked to unit (including UCs and Admins who can also facilitate)
-        facilitators_from_db = (
+        facilitators_query = (
             db.session.query(User)
             .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
             .filter(UnitFacilitator.unit_id == unit_id)
-            .all()
         )
+        
+        # Filter by included facilitators if specified
+        if included_facilitator_ids is not None and len(included_facilitator_ids) > 0:
+            facilitators_query = facilitators_query.filter(User.id.in_(included_facilitator_ids))
+        
+        facilitators_from_db = facilitators_query.all()
         
         if not facilitators_from_db:
             return jsonify({
                 "ok": False, 
                 "can_run": False,
-                "error": "No facilitators assigned to this unit"
+                "error": "No facilitators selected for auto-assignment"
             }), 400
         
         # Get all modules for this unit (excluding the default "General" module)

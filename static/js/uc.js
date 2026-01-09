@@ -5002,9 +5002,27 @@ async function autoAssignFacilitators() {
   const autoAssignBtn = document.querySelector('.auto-assign-btn');
   if (!autoAssignBtn) return;
 
-  // Check validation status first
+  // Get selected facilitators for validation
+  const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
+  let selectedFacilitators = null;
   try {
-    const validationUrl = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE.replace('auto_assign', 'auto_assign/validation'), unitId);
+    const saved = localStorage.getItem(facilitatorStorageKey);
+    if (saved) {
+      selectedFacilitators = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Error loading facilitator selections:', e);
+  }
+  
+  // Check validation status first (only for selected facilitators)
+  try {
+    let validationUrl = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE.replace('auto_assign', 'auto_assign/validation'), unitId);
+    
+    // Add included_facilitators as query param if specified
+    if (selectedFacilitators && selectedFacilitators.length > 0) {
+      validationUrl += `?included_facilitators=${selectedFacilitators.join(',')}`;
+    }
+    
     const validationResponse = await fetch(validationUrl, {
       method: 'GET',
       headers: {
@@ -5045,17 +5063,7 @@ async function autoAssignFacilitators() {
     // Get current weight settings
     const weights = getAutoAssignWeights();
     
-    // Get selected facilitators
-    const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
-    let selectedFacilitators = null;
-    try {
-      const saved = localStorage.getItem(facilitatorStorageKey);
-      if (saved) {
-        selectedFacilitators = JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Error loading facilitator selections:', e);
-    }
+    // selectedFacilitators already loaded above for validation
     
     const url = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE, unitId);
     const response = await fetch(url, {
