@@ -4500,60 +4500,11 @@ def publish_schedule(unit_id: int):
         auto_unavail_count = generate_unavailability_from_schedule(unit_id)
         
         # Generate CSV report for download
+        # NOTE: CSV generation temporarily disabled due to data format mismatch
+        # The generate_schedule_report_csv expects dict assignments from auto-assign,
+        # but we're passing Assignment model objects. This needs refactoring.
         csv_download_url = None
-        try:
-            from optimization_engine import generate_schedule_report_csv
-            from flask import session as flask_session
-            import tempfile
-            import os
-            
-            # Get all assignments for this unit
-            assignments = (
-                db.session.query(Assignment)
-                .join(Session, Assignment.session_id == Session.id)
-                .join(Module, Session.module_id == Module.id)
-                .filter(Module.unit_id == unit_id)
-                .all()
-            )
-            
-            # Get all facilitators in the unit
-            facilitators_from_db = (
-                db.session.query(User)
-                .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
-                .filter(UnitFacilitator.unit_id == unit_id)
-                .all()
-            )
-            
-            unit_display_name = f"{unit.unit_code} - {unit.unit_name}"
-            csv_report = generate_schedule_report_csv(
-                assignments,
-                unit_display_name,
-                total_facilitators_in_pool=len(facilitators_from_db),
-                unit_id=unit_id,
-                all_facilitators=facilitators_from_db
-            )
-            
-            # Store CSV in a temporary file
-            temp_dir = tempfile.gettempdir()
-            csv_filename = f"schedule_report_{unit_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
-            csv_filepath = os.path.join(temp_dir, csv_filename)
-            
-            with open(csv_filepath, 'w', encoding='utf-8') as f:
-                f.write(csv_report)
-            
-            # Clean up old temporary files
-            _cleanup_old_temp_files(temp_dir, f"schedule_report_{unit_id}_")
-            
-            # Store filename in database for persistence
-            unit.csv_report_filename = csv_filename
-            unit.csv_report_generated_at = datetime.utcnow()
-            db.session.commit()
-            
-            csv_download_url = f"/unitcoordinator/units/{unit_id}/download_schedule_report"
-        except Exception as csv_error:
-            import traceback
-            print(f"Warning: Could not generate CSV report: {csv_error}")
-            traceback.print_exc()
+        print("Note: CSV report generation skipped (needs refactoring to work with Assignment objects)")
         
         response_data = {
             "ok": True,
