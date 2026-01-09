@@ -1251,3 +1251,210 @@ def send_coordinator_added_email(recipient_email, recipient_name, unit_code, uni
     except Exception as e:
         print(f"Unexpected error sending coordinator added email: {str(e)}")
         return False
+
+
+def send_schedule_unpublished_email(recipient_email, recipient_name, unit_code, unit_name, base_url=None):
+    """
+    Send an email to a facilitator notifying them that a schedule has been unpublished.
+    
+    Args:
+        recipient_email: Facilitator's email address
+        recipient_name: Facilitator's full name
+        unit_code: Unit code (e.g., "CITS3200")
+        unit_name: Unit name (e.g., "Professional Computing")
+        base_url: Base URL for the app (optional)
+    """
+    print(f"\n{'='*60}")
+    print(f"UNPUBLISH EMAIL FUNCTION CALLED")
+    print(f"Recipient: {recipient_email}")
+    print(f"Unit: {unit_code} - {unit_name}")
+    print(f"{'='*60}\n")
+    
+    # Check if we're in mock mode
+    use_mock = os.environ.get('USE_MOCK_EMAIL', 'false').lower() == 'true'
+    print(f"USE_MOCK_EMAIL: {os.environ.get('USE_MOCK_EMAIL', 'not set')} (use_mock={use_mock})")
+    
+    if not use_mock:
+        sender_email = os.environ.get('SES_SENDER_EMAIL')
+        print(f"SES_SENDER_EMAIL: {sender_email}")
+        if not sender_email or not valid_email(sender_email):
+            print(f"❌ Invalid or missing sender email")
+            return False
+    else:
+        sender_email = "noreply@example.com"
+        print(f"[MOCK MODE] Would send unpublish email to {recipient_email}")
+        print(f"Subject: Schedule Update: {unit_code} Unpublished")
+        return True
+    
+    if not valid_email(recipient_email):
+        print(f"❌ Invalid recipient email: {recipient_email}")
+        return False
+    
+    print(f"✓ Email validation passed")
+    
+    # Get base URL
+    if not base_url:
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    
+    dashboard_link = f"{base_url}/facilitator/dashboard"
+    
+    subject = f"Schedule Update: {unit_code} Unpublished"
+    
+    # Plain text version
+    body_text = f"""Hello {recipient_name},
+
+The schedule for {unit_code} - {unit_name} has been unpublished by the Unit Coordinator.
+
+What this means:
+• Your assigned sessions are still saved
+• The schedule is being revised
+• You will be notified when it is republished
+
+You can view your current assignments at:
+{dashboard_link}
+
+If you have any questions, please contact your Unit Coordinator.
+
+Best regards,
+Your Scheduling Team
+"""
+    
+    # HTML version
+    body_html = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f4f4f4;
+            }}
+            .container {{
+                width: 100%;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+            }}
+            .header {{
+                background-color: #f59e0b;
+                color: white;
+                padding: 30px;
+                text-align: center;
+                border-radius: 8px 8px 0 0;
+            }}
+            .content {{
+                background-color: white;
+                padding: 30px;
+                border-radius: 0 0 8px 8px;
+            }}
+            .info-box {{
+                background-color: #fef3c7;
+                border-left: 4px solid #f59e0b;
+                padding: 15px;
+                margin: 20px 0;
+            }}
+            .button {{
+                display: inline-block;
+                padding: 12px 24px;
+                background-color: #7c3aed;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+                margin-top: 20px;
+            }}
+            .footer {{
+                text-align: center;
+                color: #6b7280;
+                font-size: 12px;
+                margin-top: 20px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0; font-size: 24px;">⚠️ Schedule Update</h1>
+            </div>
+            <div class="content">
+                <p>Hello {recipient_name},</p>
+                
+                <p>The schedule for <strong>{unit_code} - {unit_name}</strong> has been unpublished by the Unit Coordinator.</p>
+                
+                <div class="info-box">
+                    <h3 style="margin-top: 0; color: #92400e;">What this means:</h3>
+                    <ul style="margin-bottom: 0;">
+                        <li>Your assigned sessions are still saved</li>
+                        <li>The schedule is being revised</li>
+                        <li>You will be notified when it is republished</li>
+                    </ul>
+                </div>
+                
+                <p>You can view your current assignments on your dashboard:</p>
+                
+                <div style="text-align: center;">
+                    <a href="{dashboard_link}" class="button">View Dashboard</a>
+                </div>
+                
+                <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
+                    If you have any questions, please contact your Unit Coordinator.
+                </p>
+            </div>
+            <div class="footer">
+                <p>This is an automated message from the Scheduling System.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    try:
+        # Create SES client
+        ses_region = os.environ.get('SES_REGION', 'ap-southeast-1')
+        print(f"Creating SES client in region: {ses_region}")
+        client = boto3.client('ses', region_name=ses_region)
+        
+        print(f"Sending email via AWS SES...")
+        print(f"  From: {sender_email}")
+        print(f"  To: {recipient_email}")
+        print(f"  Subject: {subject}")
+        
+        # Send email
+        response = client.send_email(
+            Source=sender_email,
+            Destination={
+                'ToAddresses': [recipient_email]
+            },
+            Message={
+                'Subject': {
+                    'Data': subject,
+                    'Charset': 'UTF-8'
+                },
+                'Body': {
+                    'Text': {
+                        'Data': body_text,
+                        'Charset': 'UTF-8'
+                    },
+                    'Html': {
+                        'Data': body_html,
+                        'Charset': 'UTF-8'
+                    }
+                }
+            }
+        )
+        
+        print(f"✅ Unpublish email sent successfully to {recipient_email}")
+        print(f"✅ Message ID: {response['MessageId']}")
+        print(f"{'='*60}\n")
+        return True
+        
+    except ClientError as e:
+        print(f"❌ AWS ClientError sending unpublish email: {e.response['Error']['Message']}")
+        print(f"{'='*60}\n")
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected error sending unpublish email: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        return False

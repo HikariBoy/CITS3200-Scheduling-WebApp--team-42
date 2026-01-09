@@ -4784,7 +4784,7 @@ function renderDaySessions(sessions, dayDate) {
       const sessionEndTime = new Date(session.end).toTimeString().split(' ')[0].substring(0, 5); // Format: HH:MM
       
       return `
-     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-session-date="${sessionDate}" data-session-start-time="${sessionStartTime}" data-session-end-time="${sessionEndTime}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
+     <div class="session-card clickable-session" data-session-id="${session.id || `temp-${index}`}" data-session-name="${session.session_name || session.extendedProps?.session_name || session.title || 'New Session'}" data-session-time="${formatTime(session.start)} - ${formatTime(session.end)}" data-session-location="${session.location || session.extendedProps?.location || 'TBA'}" data-session-date="${sessionDate}" data-session-start-time="${sessionStartTime}" data-session-end-time="${sessionEndTime}" data-session-module-id="${session.module_id || session.extendedProps?.module_id || ''}" data-facilitator-ids="${facilitatorIds}" onclick="openSessionDetailsModal(${JSON.stringify({
        id: session.id || `temp-${index}`,
        title: session.session_name || session.extendedProps?.session_name || session.title || 'New Session',
        day: new Date(session.start).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
@@ -5694,6 +5694,31 @@ function updateConflictsBanner(conflicts) {
           </div>
         </li>
       `;
+    } else if (conflict.type === 'skill_conflict' && conflict.session) {
+      const date = new Date(conflict.session.start_time).toLocaleDateString('en-AU', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      const timeStart = conflict.session.start_time.substring(11, 16);
+      const timeEnd = conflict.session.end_time.substring(11, 16);
+      
+      html += `
+        <li style="margin-bottom: 16px; padding: 12px; background: white; border-radius: 6px; border-left: 3px solid #f59e0b;">
+          <div style="margin-bottom: 8px;">
+            <strong style="color: #92400e; font-size: 0.9375rem;">${conflict.facilitator_name}</strong>
+            <span style="color: #6b7280; font-size: 0.875rem;"> • ${date}</span>
+          </div>
+          <div style="padding: 8px; background: #fef3c7; border-radius: 4px; font-size: 0.875rem;">
+            <div style="font-weight: 600; color: #92400e; margin-bottom: 4px;">${conflict.session.module}</div>
+            <div style="color: #6b7280; font-size: 0.8125rem; margin-bottom: 6px;">⏰ ${timeStart} - ${timeEnd}</div>
+            <div style="display: flex; align-items: center; gap: 6px; color: #92400e;">
+              <span style="font-size: 1rem;">✗</span>
+              <span style="font-weight: 600;">Marked as "No Interest"</span>
+            </div>
+          </div>
+        </li>
+      `;
     } else {
       // Fallback for unexpected conflict format
       html += `
@@ -6519,6 +6544,7 @@ function openFacilitatorModalAfterDelay(element) {
     date: sessionCard.dataset.sessionDate || null,
     startTime: sessionCard.dataset.sessionStartTime || null,  // Add start time
     endTime: sessionCard.dataset.sessionEndTime || null,  // Add end time
+    moduleId: sessionCard.dataset.sessionModuleId || null,  // Add module ID
     assignedFacilitators: sessionCard.dataset.facilitatorIds ? 
       sessionCard.dataset.facilitatorIds.split(',').map(id => id.trim()) : []
   };
@@ -6616,7 +6642,7 @@ async function loadFacilitators() {
     
     let url = withUnitId(LIST_FACILITATORS_TEMPLATE, currentUnitId);
     
-    // Add session date and time if available to check unavailability
+    // Add session date, time, and module if available
     if (currentSessionData?.date) {
       url += `?session_date=${currentSessionData.date}`;
       if (currentSessionData?.startTime) {
@@ -6624,6 +6650,9 @@ async function loadFacilitators() {
       }
       if (currentSessionData?.endTime) {
         url += `&session_end_time=${currentSessionData.endTime}`;
+      }
+      if (currentSessionData?.moduleId) {
+        url += `&module_id=${currentSessionData.moduleId}`;
       }
     }
     
@@ -6706,6 +6735,7 @@ function renderFacilitatorList() {
     html += availableFacilitators.map((facilitator) => {
       // Use selectedFacilitators to determine checked state (preserves user's selections during search)
       const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
+      
       return `
         <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
           <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
@@ -6714,7 +6744,10 @@ function renderFacilitatorList() {
           </div>
           <div class="facilitator-info">
             <div class="facilitator-name">${facilitator.name}</div>
-            <div class="facilitator-email">${facilitator.email}</div>
+            <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
+              ${facilitator.email}
+              ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
+            </div>
           </div>
         </div>
       `;
@@ -7500,7 +7533,44 @@ async function confirmPublish() {
     const result = await response.json();
     
     if (result.ok) {
-      showSimpleNotification(`Schedule published! ${result.facilitators_notified} facilitators notified via email.`, 'success');
+      // Check for unpublish conflicts warning
+      if (result.unpublish_conflicts && result.unpublish_conflicts.length > 0) {
+        let warningHTML = `
+          <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              <span style="font-size: 24px;">⚠️</span>
+              <strong style="color: #92400e; font-size: 1.1rem;">Warning: New Unavailability Detected</strong>
+            </div>
+            <p style="color: #92400e; margin-bottom: 12px;">
+              ${result.unpublish_conflicts.length} facilitator(s) added unavailability since the schedule was unpublished:
+            </p>
+            <ul style="margin: 0; padding-left: 20px; color: #92400e;">
+        `;
+        
+        result.unpublish_conflicts.forEach(conflict => {
+          const date = new Date(conflict.session.start_time).toLocaleDateString('en-AU', { 
+            weekday: 'short', month: 'short', day: 'numeric' 
+          });
+          warningHTML += `
+            <li style="margin-bottom: 8px;">
+              <strong>${conflict.facilitator_name}</strong> - ${conflict.session.module} (${date})
+            </li>
+          `;
+        });
+        
+        warningHTML += `
+            </ul>
+            <p style="color: #92400e; margin-top: 12px; font-size: 0.9rem;">
+              These facilitators may no longer be available for their assigned sessions. Please review and reassign if necessary.
+            </p>
+          </div>
+        `;
+        
+        showConflictPopup('Schedule Published with Warnings', warningHTML);
+      } else {
+        showSimpleNotification(`Schedule published! ${result.facilitators_notified} facilitators notified via email.`, 'success');
+      }
+      
       closePublishConfirmation();
       
       // Change button text to "Re-publish"
@@ -7602,6 +7672,133 @@ async function resendSetupEmail(facilitatorId, email) {
   } catch (error) {
     console.error('Error resending setup email:', error);
     showSimpleNotification('Failed to send email', 'error');
+  }
+}
+
+// ============================================
+// UNPUBLISH SCHEDULE
+// ============================================
+
+async function unpublishSchedule() {
+  const unitId = getUnitId();
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  // Show confirmation modal with email option
+  const modalHTML = `
+    <div id="unpublish-confirmation-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+      <div style="background: white; border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;">
+        <h2 style="margin: 0 0 16px 0; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+          <span class="material-icons" style="font-size: 28px;">warning</span>
+          Unpublish Schedule?
+        </h2>
+        <p style="margin-bottom: 16px; color: #374151;">This will:</p>
+        <ul style="margin: 0 0 16px 20px; color: #374151;">
+          <li>Remove auto-generated unavailability</li>
+          <li>Reject all pending swap requests</li>
+          <li>Change status back to DRAFT</li>
+          <li>Keep all facilitator assignments</li>
+        </ul>
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="unpublish-send-email" checked style="width: 18px; height: 18px; cursor: pointer;">
+            <span style="color: #92400e; font-weight: 500;">Send email notifications to facilitators</span>
+          </label>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button onclick="closeUnpublishModal()" style="padding: 10px 20px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; font-weight: 500;">
+            Cancel
+          </button>
+          <button onclick="confirmUnpublish()" style="padding: 10px 20px; border: none; background: #f59e0b; color: white; border-radius: 6px; cursor: pointer; font-weight: 500;">
+            Unpublish Schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+function closeUnpublishModal() {
+  const modal = document.getElementById('unpublish-confirmation-modal');
+  if (modal) modal.remove();
+}
+
+async function confirmUnpublish() {
+  const unitId = getUnitId();
+  
+  // Read checkbox value BEFORE closing modal
+  const checkbox = document.getElementById('unpublish-send-email');
+  const sendEmail = checkbox ? checkbox.checked : true;
+  
+  console.log('Unpublish checkbox element:', checkbox);
+  console.log('Unpublish checkbox checked:', checkbox?.checked);
+  console.log('Unpublish sendEmail value:', sendEmail);
+  
+  closeUnpublishModal();
+  
+  try {
+    // Show loading state
+    const unpublishBtn = document.getElementById('unpublish-schedule-btn');
+    if (unpublishBtn) {
+      unpublishBtn.disabled = true;
+      unpublishBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Unpublishing...';
+    }
+    
+    const response = await fetch(`/unitcoordinator/units/${unitId}/unpublish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN
+      },
+      body: JSON.stringify({
+        send_notifications: sendEmail
+      })
+    });
+    
+    const result = await response.json();
+    
+    console.log('Unpublish response:', result);
+    console.log('emails_sent from backend:', result.emails_sent);
+    
+    if (response.ok && result.ok) {
+      // Show success message
+      const emailMsg = result.emails_sent > 0 ? `\n- Sent ${result.emails_sent} email notification(s)` : '\n- No emails sent (checkbox was unchecked)';
+      showSimpleNotification(`✅ Schedule unpublished successfully
+
+Changes made:
+- Removed ${result.deleted_unavailability} auto-generated unavailability entries
+- Rejected ${result.rejected_swaps} pending swap requests${emailMsg}
+- Status changed to DRAFT
+
+You can now edit the schedule and republish when ready.`, 'success');
+      
+      // Reload page to show updated status
+      setTimeout(() => {
+        location.reload();
+      }, 2000);
+    } else {
+      showSimpleNotification(`❌ Failed to unpublish: ${result.error || 'Unknown error'}`, 'error');
+      
+      // Restore button
+      if (unpublishBtn) {
+        unpublishBtn.disabled = false;
+        unpublishBtn.innerHTML = '<span class="material-icons">unpublished</span> Unpublish Schedule';
+      }
+    }
+  } catch (error) {
+    console.error('Unpublish error:', error);
+    showSimpleNotification('❌ Failed to unpublish schedule. Please try again.', 'error');
+    
+    // Restore button
+    const unpublishBtn = document.getElementById('unpublish-schedule-btn');
+    if (unpublishBtn) {
+      unpublishBtn.disabled = false;
+      unpublishBtn.innerHTML = '<span class="material-icons">unpublished</span> Unpublish Schedule';
+    }
   }
 }
 

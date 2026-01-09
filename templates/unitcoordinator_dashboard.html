@@ -915,14 +915,22 @@
                   <span>Unassigned</span>
                 </div>
               </div>
-              <button class="publish-btn" id="publish-schedule-btn" onclick="openPublishConfirmation()">
-                <span class="material-icons">publish</span>
+              <div style="display: flex; gap: 10px;">
+                <button class="publish-btn" id="publish-schedule-btn" onclick="openPublishConfirmation()">
+                  <span class="material-icons">publish</span>
+                  {% if current_unit and current_unit.schedule_status and current_unit.schedule_status.value == 'published' %}
+                  Re-publish Schedule
+                  {% else %}
+                  Publish Schedule
+                  {% endif %}
+                </button>
                 {% if current_unit and current_unit.schedule_status and current_unit.schedule_status.value == 'published' %}
-                Re-publish Schedule
-                {% else %}
-                Publish Schedule
+                <button class="unpublish-btn" id="unpublish-schedule-btn" onclick="unpublishSchedule()">
+                  <span class="material-icons">unpublished</span>
+                  Unpublish Schedule
+                </button>
                 {% endif %}
-              </button>
+              </div>
             </div>
 
             <!-- Calendar View -->

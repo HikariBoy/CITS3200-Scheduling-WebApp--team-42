@@ -18,7 +18,7 @@ from auth import login_required, get_current_user
 from utils import role_required
 from models import db
 
-from models import db, UserRole, Unit, User, Venue, UnitFacilitator, UnitCoordinator, UnitVenue, Module, Session, Assignment, Unavailability, Facilitator, SwapRequest, SwapStatus, FacilitatorSkill, Notification
+from models import db, UserRole, Unit, User, Venue, UnitFacilitator, UnitCoordinator, UnitVenue, Module, Session, Assignment, Unavailability, Facilitator, SwapRequest, SwapStatus, FacilitatorSkill, SkillLevel, Notification
 
 # ------------------------------------------------------------------------------
 # Setup
@@ -295,12 +295,14 @@ def _serialize_session(s: Session, venues_by_name=None):
         "session_name": title,
         "location": s.location,
         "module_type": s.module.module_type or "Workshop",
+        "module_id": s.module_id,  # Add module_id for skill lookup
         "attendees": getattr(s, 'attendees', None),
         "extendedProps": {
             "venue": venue_name,
             "venue_id": vid,
             "session_name": title,
             "location": s.location,
+            "module_id": s.module_id,  # Add module_id here too
             "facilitator_name": facilitator,  # Backward compatibility
             "facilitator_id": s.assignments[0].facilitator_id if s.assignments else None,
             "lead_staff_required": s.lead_staff_required or 1,
@@ -4025,6 +4027,10 @@ def publish_preview(unit_id: int):
                 old_sessions = previously_published_sessions.get(fid, set())
                 # Check if sessions added, removed, or facilitator is new
                 has_changes = (current_sessions != old_sessions)
+                
+                # Debug logging
+                if has_changes:
+                    logger.info(f"Facilitator {fid} has changes: current={current_sessions}, old={old_sessions}")
             else:
                 # First publish - all facilitators are "changed"
                 has_changes = True
@@ -4150,11 +4156,8 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
         
         # Create new assignments
         for facilitator_id in facilitator_ids:
-            # Verify facilitator exists and belongs to this unit
-            facilitator = User.query.filter_by(
-                id=facilitator_id, 
-                role=UserRole.FACILITATOR
-            ).first()
+            # Verify facilitator exists (allow any role - UC/Admin can also facilitate)
+            facilitator = User.query.get(facilitator_id)
             
             if not facilitator:
                 continue
@@ -4277,6 +4280,54 @@ def publish_schedule(unit_id: int):
     # Get optional list of facilitator IDs to notify (if not provided, notify all)
     data = request.get_json() or {}
     notify_facilitator_ids = data.get('notify_facilitator_ids', None)  # None means notify all
+    
+    # Check for new unavailability added during unpublish window
+    unpublish_conflicts = []
+    if unit.unpublished_at:
+        # Get all facilitators assigned to sessions in this unit
+        facilitator_ids = set()
+        for module in unit.modules:
+            for session in module.sessions:
+                for assignment in session.assignments:
+                    facilitator_ids.add(assignment.facilitator_id)
+        
+        # Check for new unavailability created since unpublish
+        new_unavailability = (
+            db.session.query(Unavailability, User, Session, Assignment)
+            .join(User, User.id == Unavailability.user_id)
+            .join(Assignment, Assignment.facilitator_id == User.id)
+            .join(Session, Session.id == Assignment.session_id)
+            .join(Module, Module.id == Session.module_id)
+            .filter(
+                Module.unit_id == unit_id,
+                Unavailability.user_id.in_(facilitator_ids),
+                Unavailability.created_at > unit.unpublished_at,
+                Unavailability.unit_id.is_(None),  # Global unavailability only
+                db.func.date(Session.start_time) == Unavailability.date
+            )
+            .all()
+        )
+        
+        for unavail, facilitator, session, assignment in new_unavailability:
+            unpublish_conflicts.append({
+                'facilitator_id': facilitator.id,
+                'facilitator_name': f"{facilitator.first_name} {facilitator.last_name}".strip(),
+                'session': {
+                    'id': session.id,
+                    'module': session.module.module_name,
+                    'start_time': session.start_time.isoformat(),
+                    'end_time': session.end_time.isoformat()
+                },
+                'unavailability': {
+                    'date': unavail.date.isoformat(),
+                    'created_at': unavail.created_at.isoformat(),
+                    'reason': unavail.reason
+                }
+            })
+        
+        # If conflicts found, return warning (don't block, just warn)
+        if unpublish_conflicts:
+            logger.warning(f"Found {len(unpublish_conflicts)} new unavailability conflicts since unpublish for unit {unit_id}")
     
     try:
         # Get all sessions for this unit that have facilitators assigned
@@ -4449,62 +4500,13 @@ def publish_schedule(unit_id: int):
         auto_unavail_count = generate_unavailability_from_schedule(unit_id)
         
         # Generate CSV report for download
+        # NOTE: CSV generation temporarily disabled due to data format mismatch
+        # The generate_schedule_report_csv expects dict assignments from auto-assign,
+        # but we're passing Assignment model objects. This needs refactoring.
         csv_download_url = None
-        try:
-            from optimization_engine import generate_schedule_report_csv
-            from flask import session as flask_session
-            import tempfile
-            import os
-            
-            # Get all assignments for this unit
-            assignments = (
-                db.session.query(Assignment)
-                .join(Session, Assignment.session_id == Session.id)
-                .join(Module, Session.module_id == Module.id)
-                .filter(Module.unit_id == unit_id)
-                .all()
-            )
-            
-            # Get all facilitators in the unit
-            facilitators_from_db = (
-                db.session.query(User)
-                .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
-                .filter(UnitFacilitator.unit_id == unit_id)
-                .all()
-            )
-            
-            unit_display_name = f"{unit.unit_code} - {unit.unit_name}"
-            csv_report = generate_schedule_report_csv(
-                assignments,
-                unit_display_name,
-                total_facilitators_in_pool=len(facilitators_from_db),
-                unit_id=unit_id,
-                all_facilitators=facilitators_from_db
-            )
-            
-            # Store CSV in a temporary file
-            temp_dir = tempfile.gettempdir()
-            csv_filename = f"schedule_report_{unit_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
-            csv_filepath = os.path.join(temp_dir, csv_filename)
-            
-            with open(csv_filepath, 'w', encoding='utf-8') as f:
-                f.write(csv_report)
-            
-            # Clean up old temporary files
-            _cleanup_old_temp_files(temp_dir, f"schedule_report_{unit_id}_")
-            
-            # Store filename in database for persistence
-            unit.csv_report_filename = csv_filename
-            unit.csv_report_generated_at = datetime.utcnow()
-            db.session.commit()
-            
-            csv_download_url = f"/unitcoordinator/units/{unit_id}/download_schedule_report"
-        except Exception as csv_error:
-            import traceback
-            print(f"Warning: Could not generate CSV report: {csv_error}")
-            traceback.print_exc()
+        print("Note: CSV report generation skipped (needs refactoring to work with Assignment objects)")
         
-        return jsonify({
+        response_data = {
             "ok": True,
             "message": f"Schedule published successfully. {emails_sent} facilitators notified via email.",
             "sessions_published": len(sessions),
@@ -4512,11 +4514,162 @@ def publish_schedule(unit_id: int):
             "notifications_created": notifications_created,
             "auto_unavailability_created": auto_unavail_count,
             "csv_download_url": csv_download_url
-        })
+        }
+        
+        # Add unpublish conflicts if any were found
+        if unpublish_conflicts:
+            response_data["unpublish_conflicts"] = unpublish_conflicts
+            response_data["warning"] = f"{len(unpublish_conflicts)} facilitator(s) added unavailability since unpublish"
+        
+        return jsonify(response_data)
         
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": f"Failed to publish schedule: {str(e)}"}), 500
+
+
+@unitcoordinator_bp.post("/units/<int:unit_id>/unpublish")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def unpublish_schedule(unit_id: int):
+    """Unpublish a schedule and revert to draft state."""
+    from models import ScheduleStatus, SwapStatus
+    from datetime import date, timedelta
+    
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+    
+    # Get optional send_notifications parameter (default True)
+    data = request.get_json() or {}
+    send_notifications = data.get('send_notifications', True)
+    
+    # 1. Check if unit is published
+    if unit.schedule_status != ScheduleStatus.PUBLISHED:
+        return jsonify({"ok": False, "error": "Unit is not published"}), 400
+    
+    try:
+        # 4. Remove auto-generated unavailability
+        deleted_unavail = remove_unavailability_from_schedule(unit_id)
+        
+        # 5. Reject pending swap requests
+        # Get all assignment IDs for this unit through modules and sessions
+        assignment_ids = []
+        for module in unit.modules:
+            for session in module.sessions:
+                for assignment in session.assignments:
+                    assignment_ids.append(assignment.id)
+        
+        # Find swap requests involving these assignments
+        swap_requests = SwapRequest.query.filter(
+            db.or_(
+                SwapRequest.requester_assignment_id.in_(assignment_ids),
+                SwapRequest.target_assignment_id.in_(assignment_ids)
+            ),
+            SwapRequest.status.in_([
+                SwapStatus.PENDING,
+                SwapStatus.FACILITATOR_PENDING,
+                SwapStatus.COORDINATOR_PENDING
+            ])
+        ).all()
+        
+        rejected_swaps = 0
+        for swap in swap_requests:
+            swap.status = SwapStatus.REJECTED
+            swap.rejection_reason = "Schedule unpublished by coordinator"
+            rejected_swaps += 1
+            
+            # Create notification for requesting facilitator
+            try:
+                from models import Notification
+                notification = Notification(
+                    user_id=swap.requester_id,
+                    message=f"Your swap request for {unit.unit_code} was rejected because the schedule was unpublished.",
+                    notification_type="swap_rejected"
+                )
+                db.session.add(notification)
+            except Exception as notif_error:
+                logger.warning(f"Failed to create notification for swap rejection: {notif_error}")
+        
+        # 6. Update unit status
+        unit.schedule_status = ScheduleStatus.DRAFT
+        unit.unpublished_at = datetime.utcnow()
+        unit.unpublished_by = user.id
+        
+        db.session.commit()
+        
+        # 7. Send notifications to facilitators (if enabled)
+        notifications_sent = 0
+        emails_sent = 0
+        if send_notifications:
+            try:
+                from models import Notification
+                from email_service import send_schedule_unpublished_email
+                
+                facilitator_ids = set()
+                # Get all sessions through modules
+                for module in unit.modules:
+                    for session in module.sessions:
+                        for assignment in session.assignments:
+                            facilitator_ids.add(assignment.facilitator_id)
+                
+                logger.info(f"Found {len(facilitator_ids)} facilitators to notify")
+                
+                for facilitator_id in facilitator_ids:
+                    facilitator = User.query.get(facilitator_id)
+                    if not facilitator:
+                        logger.warning(f"Facilitator {facilitator_id} not found")
+                        continue
+                    
+                    logger.info(f"Processing facilitator: {facilitator.email}")
+                    
+                    # Create in-app notification
+                    notification = Notification(
+                        user_id=facilitator_id,
+                        message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished."
+                    )
+                    db.session.add(notification)
+                    notifications_sent += 1
+                    
+                    # Send email
+                    try:
+                        logger.info(f"Attempting to send unpublish email to {facilitator.email}")
+                        email_sent = send_schedule_unpublished_email(
+                            recipient_email=facilitator.email,
+                            recipient_name=facilitator.full_name or facilitator.email,
+                            unit_code=unit.unit_code,
+                            unit_name=unit.unit_name
+                        )
+                        if email_sent:
+                            emails_sent += 1
+                            logger.info(f"✅ Unpublish email sent successfully to {facilitator.email}")
+                        else:
+                            logger.warning(f"❌ Email function returned False for {facilitator.email}")
+                    except Exception as email_error:
+                        logger.error(f"❌ Exception sending unpublish email to {facilitator.email}: {email_error}")
+                        import traceback
+                        traceback.print_exc()
+                
+                db.session.commit()
+            except Exception as notif_error:
+                logger.warning(f"Failed to create facilitator notifications: {notif_error}")
+        
+        logger.info(f"Unit {unit.unit_code} unpublished by {user.email}. Removed {deleted_unavail} auto-unavailability entries, rejected {rejected_swaps} swaps.")
+        
+        return jsonify({
+            "ok": True,
+            "message": "Schedule unpublished successfully",
+            "deleted_unavailability": deleted_unavail,
+            "rejected_swaps": rejected_swaps,
+            "notifications_sent": notifications_sent,
+            "emails_sent": emails_sent
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to unpublish unit {unit_id}: {str(e)}")
+        return jsonify({"ok": False, "error": f"Failed to unpublish schedule: {str(e)}"}), 500
 
 
 @unitcoordinator_bp.get("/units/<int:unit_id>/modules")
@@ -4640,14 +4793,16 @@ def list_facilitators(unit_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
 
-    # Get session date and time if provided (for unavailability check)
+    # Get session date, time, and module if provided
     session_date_str = request.args.get('session_date')
     session_start_time_str = request.args.get('session_start_time')
     session_end_time_str = request.args.get('session_end_time')
+    module_id_str = request.args.get('module_id')
     
     session_date = None
     session_start_time = None
     session_end_time = None
+    module_id = None
     
     if session_date_str:
         try:
@@ -4661,6 +4816,12 @@ def list_facilitators(unit_id: int):
                 session_end_time = datetime.strptime(session_end_time_str, '%H:%M').time()
         except ValueError:
             pass  # Invalid date/time format, ignore
+    
+    if module_id_str:
+        try:
+            module_id = int(module_id_str)
+        except ValueError:
+            pass  # Invalid module ID, ignore
 
     facs = (
         db.session.query(User)
@@ -4674,6 +4835,8 @@ def list_facilitators(unit_id: int):
     for fac in facs:
         is_unavailable = False
         unavailability_reason = None
+        skill_level = None
+        skill_label = None
         
         # Check if facilitator is unavailable on this date
         if session_date:
@@ -4698,6 +4861,24 @@ def list_facilitators(unit_id: int):
                     is_unavailable = True
                     unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
         
+        # Get skill level for this module if provided
+        if module_id:
+            skill = FacilitatorSkill.query.filter_by(
+                facilitator_id=fac.id,
+                module_id=module_id
+            ).first()
+            
+            if skill:
+                skill_level = skill.skill_level.value
+                # Map skill level to display label
+                skill_map = {
+                    'proficient': '✓ Proficient',
+                    'have_run_before': '✓ Have Run Before',
+                    'have_some_skill': '✓ Have Some Skill',
+                    'no_interest': '✗ No Interest'
+                }
+                skill_label = skill_map.get(skill_level, skill_level)
+        
         facilitators.append({
             "id": fac.id,
             "name": fac.full_name,
@@ -4707,7 +4888,9 @@ def list_facilitators(unit_id: int):
             "phone_number": fac.phone_number,
             "staff_number": fac.staff_number,
             "is_unavailable": is_unavailable,
-            "unavailability_reason": unavailability_reason
+            "unavailability_reason": unavailability_reason,
+            "skill_level": skill_level,
+            "skill_label": skill_label
         })
     
     return jsonify({"ok": True, "facilitators": facilitators})
@@ -5732,6 +5915,41 @@ def get_schedule_conflicts(unit_id: int):
                     'is_full_day': unavailability.is_full_day,
                     'reason': unavailability.reason
                 }
+            }
+            conflicts.append(conflict)
+        
+        # Check for skill conflicts (facilitators marked as "no_interest" but assigned)
+        skill_conflicts_query = (
+            db.session.query(Assignment, Session, User, FacilitatorSkill)
+            .join(Session, Session.id == Assignment.session_id)
+            .join(Module, Module.id == Session.module_id)
+            .join(User, User.id == Assignment.facilitator_id)
+            .join(FacilitatorSkill, 
+                  db.and_(
+                      FacilitatorSkill.facilitator_id == Assignment.facilitator_id,
+                      FacilitatorSkill.module_id == Session.module_id
+                  )
+            )
+            .filter(
+                Module.unit_id == unit.id,
+                FacilitatorSkill.skill_level == SkillLevel.NO_INTEREST
+            )
+            .all()
+        )
+        
+        for assignment, session, facilitator, skill in skill_conflicts_query:
+            conflict = {
+                'type': 'skill_conflict',
+                'facilitator_id': facilitator.id,
+                'facilitator_name': f"{facilitator.first_name} {facilitator.last_name}".strip(),
+                'session': {
+                    'id': session.id,
+                    'module': session.module.module_name,
+                    'start_time': session.start_time.isoformat(),
+                    'end_time': session.end_time.isoformat()
+                },
+                'skill_level': 'no_interest',
+                'message': f"{facilitator.first_name} {facilitator.last_name} is marked as 'No Interest' for {session.module.module_name}"
             }
             conflicts.append(conflict)
         
