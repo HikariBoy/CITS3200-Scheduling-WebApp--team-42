@@ -4911,6 +4911,45 @@ def list_facilitators(unit_id: int):
     return jsonify({"ok": True, "facilitators": facilitators})
 
 
+@unitcoordinator_bp.get("/units/<int:unit_id>/facilitators-with-unavailability")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def list_facilitators_with_unavailability(unit_id: int):
+    """Get facilitators for a unit with their global unavailability status"""
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+
+    # Get all facilitators for this unit
+    facs = (
+        db.session.query(User)
+        .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
+        .filter(UnitFacilitator.unit_id == unit_id)
+        .all()
+    )
+    
+    facilitators = []
+    for fac in facs:
+        # Check if facilitator has MANUAL GLOBAL unavailability (not auto-generated)
+        has_manual_global = db.session.query(Unavailability).filter(
+            Unavailability.user_id == fac.id,
+            Unavailability.unit_id == None,  # Global only
+            Unavailability.source_session_id == None  # Manual only (not auto-generated)
+        ).first() is not None
+        
+        facilitators.append({
+            "id": fac.id,
+            "full_name": fac.full_name,
+            "email": fac.email,
+            "first_name": fac.first_name,
+            "last_name": fac.last_name,
+            "has_manual_global_unavailability": has_manual_global
+        })
+    
+    return jsonify({"ok": True, "facilitators": facilitators})
+
+
 # ---------- CAS CSV Upload (auto-generate sessions) ----------
 @unitcoordinator_bp.post("/units/<int:unit_id>/upload_cas_csv")
 @login_required

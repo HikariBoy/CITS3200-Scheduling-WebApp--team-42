@@ -7881,8 +7881,8 @@ async function loadFacilitatorsForSelection(unitId) {
   const listContainer = document.getElementById('facilitator-selection-list');
   
   try {
-    // Fetch facilitators
-    const facilitatorsResponse = await fetch(`/unitcoordinator/units/${unitId}/facilitators`);
+    // Fetch facilitators and their global unavailability status
+    const facilitatorsResponse = await fetch(`/unitcoordinator/units/${unitId}/facilitators-with-unavailability`);
     const facilitatorsData = await facilitatorsResponse.json();
     
     if (!facilitatorsData.ok || !facilitatorsData.facilitators || facilitatorsData.facilitators.length === 0) {
@@ -7890,27 +7890,13 @@ async function loadFacilitatorsForSelection(unitId) {
       return;
     }
     
-    // Fetch GLOBAL unavailability for each facilitator
+    // Build set of facilitators with manual global unavailability
     const facilitatorsWithUnavailability = new Set();
-    for (const facilitator of facilitatorsData.facilitators) {
-      try {
-        // Fetch global unavailability (unit_id=null means global)
-        const unavailResponse = await fetch(`/facilitator/unavailability?user_id=${facilitator.id}`);
-        const unavailData = await unavailResponse.json();
-        
-        if (unavailData.ok && unavailData.unavailability && unavailData.unavailability.length > 0) {
-          // Check if they have any MANUAL global unavailability (not auto-generated)
-          const hasManualGlobal = unavailData.unavailability.some(u => 
-            u.unit_id === null && !u.source_session_id
-          );
-          if (hasManualGlobal) {
-            facilitatorsWithUnavailability.add(facilitator.id);
-          }
-        }
-      } catch (e) {
-        console.error(`Error fetching unavailability for ${facilitator.email}:`, e);
+    facilitatorsData.facilitators.forEach(f => {
+      if (f.has_manual_global_unavailability) {
+        facilitatorsWithUnavailability.add(f.id);
       }
-    }
+    });
     
     const data = facilitatorsData;
     
