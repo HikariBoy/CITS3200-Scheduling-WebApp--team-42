@@ -2195,7 +2195,31 @@ def create_or_get_draft():
     if parsed_start and parsed_end and parsed_start > parsed_end:
         return jsonify({"ok": False, "error": "Start date must be before end date"}), 400
 
-    # Check if user is already a coordinator for a unit with this code/year/semester
+    # Check if editing an existing unit (unit_id provided)
+    unit_id_str = request.form.get('unit_id', '').strip()
+    unit = None
+    
+    if unit_id_str:
+        # EDIT MODE: Update existing unit
+        try:
+            unit_id = int(unit_id_str)
+            unit = _get_user_unit_or_404(user, unit_id)
+            if unit:
+                # Update the unit fields
+                unit.unit_code = unit_code
+                unit.unit_name = unit_name
+                unit.year = year
+                unit.semester = semester
+                unit.start_date = parsed_start
+                unit.end_date = parsed_end
+                db.session.commit()
+                return jsonify({"ok": True, "unit_id": unit.id, "start_date": start_date, "end_date": end_date})
+            else:
+                return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+        except ValueError:
+            return jsonify({"ok": False, "error": "Invalid unit ID"}), 400
+    
+    # CREATE MODE: Check if user is already a coordinator for a unit with this code/year/semester
     unit = (
         db.session.query(Unit)
         .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
@@ -2230,7 +2254,7 @@ def create_or_get_draft():
         # Create default module for new unit
         _get_or_create_default_module(unit)
 
-    return jsonify({"ok": True, "unit_id": unit.id})
+    return jsonify({"ok": True, "unit_id": unit.id, "start_date": start_date, "end_date": end_date})
 
 
 @unitcoordinator_bp.get("/csv-template")
