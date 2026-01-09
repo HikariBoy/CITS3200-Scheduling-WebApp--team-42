@@ -4025,6 +4025,10 @@ def publish_preview(unit_id: int):
                 old_sessions = previously_published_sessions.get(fid, set())
                 # Check if sessions added, removed, or facilitator is new
                 has_changes = (current_sessions != old_sessions)
+                
+                # Debug logging
+                if has_changes:
+                    logger.info(f"Facilitator {fid} has changes: current={current_sessions}, old={old_sessions}")
             else:
                 # First publish - all facilitators are "changed"
                 has_changes = True
