@@ -923,6 +923,13 @@
                 Publish Schedule
                 {% endif %}
               </button>
+              
+              {% if current_unit and current_unit.schedule_status and current_unit.schedule_status.value == 'published' %}
+              <button class="unpublish-btn" id="unpublish-schedule-btn" onclick="unpublishSchedule()" style="margin-left: 10px;">
+                <span class="material-icons">unpublished</span>
+                Unpublish Schedule
+              </button>
+              {% endif %}
             </div>
 
             <!-- Calendar View -->

@@ -4519,6 +4519,126 @@ def publish_schedule(unit_id: int):
         return jsonify({"ok": False, "error": f"Failed to publish schedule: {str(e)}"}), 500
 
 
+@unitcoordinator_bp.post("/units/<int:unit_id>/unpublish")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def unpublish_schedule(unit_id: int):
+    """Unpublish a schedule and revert to draft state."""
+    from models import ScheduleStatus, SwapStatus
+    from datetime import date, timedelta
+    
+    user = get_current_user()
+    unit = _get_user_unit_or_404(user, unit_id)
+    if not unit:
+        return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
+    
+    # 1. Check if unit is published
+    if unit.schedule_status != ScheduleStatus.PUBLISHED:
+        return jsonify({"ok": False, "error": "Unit is not published"}), 400
+    
+    # 2. Check if unit has active sessions (within 7 days)
+    today = date.today()
+    near_future = today + timedelta(days=7)
+    
+    active_sessions = (
+        db.session.query(Session)
+        .join(Module, Session.module_id == Module.id)
+        .filter(
+            Module.unit_id == unit.id,
+            Session.date >= today,
+            Session.date <= near_future
+        )
+        .count()
+    )
+    
+    if active_sessions > 0:
+        return jsonify({
+            "ok": False,
+            "error": f"Cannot unpublish. {active_sessions} session(s) scheduled within next 7 days. This would disrupt active schedules."
+        }), 403
+    
+    # 3. Check if unit is in the past
+    if unit.end_date and unit.end_date < today:
+        return jsonify({
+            "ok": False,
+            "error": "Cannot unpublish historical schedules."
+        }), 403
+    
+    try:
+        # 4. Remove auto-generated unavailability
+        deleted_unavail = remove_unavailability_from_schedule(unit_id)
+        
+        # 5. Reject pending swap requests
+        session_ids = [s.id for s in unit.sessions]
+        swap_requests = SwapRequest.query.filter(
+            SwapRequest.session_id.in_(session_ids),
+            SwapRequest.status.in_([
+                SwapStatus.PENDING,
+                SwapStatus.FACILITATOR_PENDING,
+                SwapStatus.COORDINATOR_PENDING
+            ])
+        ).all()
+        
+        rejected_swaps = 0
+        for swap in swap_requests:
+            swap.status = SwapStatus.REJECTED
+            swap.rejection_reason = "Schedule unpublished by coordinator"
+            rejected_swaps += 1
+            
+            # Create notification for requesting facilitator
+            try:
+                from models import Notification
+                notification = Notification(
+                    user_id=swap.requester_id,
+                    message=f"Your swap request for {unit.unit_code} was rejected because the schedule was unpublished.",
+                    notification_type="swap_rejected"
+                )
+                db.session.add(notification)
+            except Exception as notif_error:
+                logger.warning(f"Failed to create notification for swap rejection: {notif_error}")
+        
+        # 6. Update unit status
+        unit.schedule_status = ScheduleStatus.DRAFT
+        unit.unpublished_at = datetime.utcnow()
+        unit.unpublished_by = user.id
+        
+        db.session.commit()
+        
+        # 7. Create in-app notifications for facilitators
+        try:
+            from models import Notification
+            facilitator_ids = set()
+            for session in unit.sessions:
+                for assignment in session.assignments:
+                    facilitator_ids.add(assignment.facilitator_id)
+            
+            for facilitator_id in facilitator_ids:
+                notification = Notification(
+                    user_id=facilitator_id,
+                    message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished.",
+                    notification_type="schedule_unpublished"
+                )
+                db.session.add(notification)
+            
+            db.session.commit()
+        except Exception as notif_error:
+            logger.warning(f"Failed to create facilitator notifications: {notif_error}")
+        
+        logger.info(f"Unit {unit.unit_code} unpublished by {user.email}. Removed {deleted_unavail} auto-unavailability entries, rejected {rejected_swaps} swaps.")
+        
+        return jsonify({
+            "ok": True,
+            "message": "Schedule unpublished successfully",
+            "deleted_unavailability": deleted_unavail,
+            "rejected_swaps": rejected_swaps
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to unpublish unit {unit_id}: {str(e)}")
+        return jsonify({"ok": False, "error": f"Failed to unpublish schedule: {str(e)}"}), 500
+
+
 @unitcoordinator_bp.get("/units/<int:unit_id>/modules")
 @login_required
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])

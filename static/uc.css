@@ -5024,6 +5024,47 @@ main {
   box-shadow: none;
 }
 
+/* Unpublish Button */
+.unpublish-btn {
+  padding: 10px 20px;
+  background-color: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+}
+
+.unpublish-btn:hover {
+  background-color: #d97706;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+}
+
+.unpublish-btn:active {
+  background-color: #b45309;
+  transform: translateY(0);
+}
+
+.unpublish-btn:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.unpublish-btn:disabled:hover {
+  background-color: #9ca3af;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Publish Confirmation Modal */
 .publish-confirmation-modal {
   position: fixed;

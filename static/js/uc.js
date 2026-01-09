@@ -7606,6 +7606,87 @@ async function resendSetupEmail(facilitatorId, email) {
 }
 
 // ============================================
+// UNPUBLISH SCHEDULE
+// ============================================
+
+async function unpublishSchedule() {
+  const unitId = getUnitId();
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  // Show confirmation dialog
+  const confirmed = confirm(`⚠️ Unpublish Schedule?
+
+This will:
+✓ Remove auto-generated unavailability (facilitators become available again in other units)
+✓ Reject all pending swap requests
+✓ Change status back to DRAFT
+✓ Keep all facilitator assignments
+
+You can make changes and republish when ready.
+
+Are you sure you want to unpublish?`);
+  
+  if (!confirmed) return;
+  
+  try {
+    // Show loading state
+    const unpublishBtn = document.getElementById('unpublish-schedule-btn');
+    if (unpublishBtn) {
+      unpublishBtn.disabled = true;
+      unpublishBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Unpublishing...';
+    }
+    
+    const response = await fetch(`/unitcoordinator/units/${unitId}/unpublish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCSRFToken()
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok && result.ok) {
+      // Show success message
+      showSimpleNotification(`✅ Schedule unpublished successfully
+
+Changes made:
+- Removed ${result.deleted_unavailability} auto-generated unavailability entries
+- Rejected ${result.rejected_swaps} pending swap requests
+- Status changed to DRAFT
+
+You can now edit the schedule and republish when ready.`, 'success');
+      
+      // Reload page to show updated status
+      setTimeout(() => {
+        location.reload();
+      }, 2000);
+    } else {
+      showSimpleNotification(`❌ Failed to unpublish: ${result.error || 'Unknown error'}`, 'error');
+      
+      // Restore button
+      if (unpublishBtn) {
+        unpublishBtn.disabled = false;
+        unpublishBtn.innerHTML = '<span class="material-icons">unpublished</span> Unpublish Schedule';
+      }
+    }
+  } catch (error) {
+    console.error('Unpublish error:', error);
+    showSimpleNotification('❌ Failed to unpublish schedule. Please try again.', 'error');
+    
+    // Restore button
+    const unpublishBtn = document.getElementById('unpublish-schedule-btn');
+    if (unpublishBtn) {
+      unpublishBtn.disabled = false;
+      unpublishBtn.innerHTML = '<span class="material-icons">unpublished</span> Unpublish Schedule';
+    }
+  }
+}
+
+// ============================================
 // AUTO-ASSIGNMENT SETTINGS MODAL
 // ============================================
 
