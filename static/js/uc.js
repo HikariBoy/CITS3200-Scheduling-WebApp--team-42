@@ -688,6 +688,13 @@ async function ensureDraftAndSetUnitId() {
   const endISO   = toIsoDate(ed);
 
   const form = new FormData();
+  
+  // IMPORTANT: Include unit_id if editing an existing unit
+  const unitId = document.getElementById('unit_id').value;
+  if (unitId) {
+    form.append('unit_id', unitId);
+  }
+  
   form.append('unit_code', basic.unit_code);
   form.append('unit_name', basic.unit_name);
   form.append('year',      basic.year);
