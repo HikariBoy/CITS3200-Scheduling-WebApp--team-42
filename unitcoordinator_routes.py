@@ -3307,7 +3307,14 @@ def auto_assign_facilitators(unit_id: int):
         )
         
         # Filter by included facilitators if specified
-        if included_facilitator_ids is not None and len(included_facilitator_ids) > 0:
+        # None = never saved (include all), [] = explicitly deselected all, [1,2,3] = specific IDs
+        if included_facilitator_ids is not None:
+            if len(included_facilitator_ids) == 0:
+                # User explicitly deselected all facilitators
+                return jsonify({
+                    "ok": False, 
+                    "error": "No facilitators selected for auto-assignment. Please open Settings (⚙️) and select at least one facilitator."
+                }), 400
             facilitators_query = facilitators_query.filter(User.id.in_(included_facilitator_ids))
         
         facilitators_from_db = facilitators_query.all()
@@ -3315,7 +3322,7 @@ def auto_assign_facilitators(unit_id: int):
         if not facilitators_from_db:
             return jsonify({
                 "ok": False, 
-                "error": "No facilitators selected for auto-assignment. Please select at least one facilitator in the settings."
+                "error": "No facilitators found for this unit. Please add facilitators first."
             }), 400
         
         # Validate that all facilitators have declared their skills and unavailability

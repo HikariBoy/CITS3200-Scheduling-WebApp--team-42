@@ -5047,7 +5047,7 @@ async function autoAssignFacilitators() {
     
     // Get selected facilitators
     const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
-    let selectedFacilitators = [];
+    let selectedFacilitators = null;
     try {
       const saved = localStorage.getItem(facilitatorStorageKey);
       if (saved) {
@@ -5067,7 +5067,7 @@ async function autoAssignFacilitators() {
       body: JSON.stringify({
         w_skill: weights.skill / 100,        // Convert percentage to decimal (0.0-1.0)
         w_fairness: weights.fairness / 100,  // Convert percentage to decimal (0.0-1.0)
-        included_facilitators: selectedFacilitators.length > 0 ? selectedFacilitators : null  // null = include all
+        included_facilitators: selectedFacilitators  // null = never saved (include all), [] = explicitly none, [1,2,3] = specific IDs
         // Note: Availability is a hard constraint (always checked), not sent as weight
       })
     });
@@ -7891,7 +7891,7 @@ async function loadFacilitatorsForSelection(unitId) {
     
     // Load saved selections for this unit
     const storageKey = `autoAssignFacilitators_unit_${unitId}`;
-    let selectedFacilitators = [];
+    let selectedFacilitators = null;
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -7901,8 +7901,9 @@ async function loadFacilitatorsForSelection(unitId) {
       console.error('Error loading saved facilitator selections:', e);
     }
     
-    // If no saved selections, select all by default
-    if (selectedFacilitators.length === 0) {
+    // If no saved selections (null = never saved), select all by default
+    // If saved is empty array [], that means user explicitly deselected all
+    if (selectedFacilitators === null) {
       selectedFacilitators = data.facilitators.map(f => f.id);
     }
     
