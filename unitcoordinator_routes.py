@@ -4627,8 +4627,7 @@ def unpublish_schedule(unit_id: int):
                     # Create in-app notification
                     notification = Notification(
                         user_id=facilitator_id,
-                        message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished.",
-                        notification_type="schedule_unpublished"
+                        message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished."
                     )
                     db.session.add(notification)
                     notifications_sent += 1
