@@ -7729,7 +7729,14 @@ function closeUnpublishModal() {
 
 async function confirmUnpublish() {
   const unitId = getUnitId();
-  const sendEmail = document.getElementById('unpublish-send-email')?.checked ?? true;
+  
+  // Read checkbox value BEFORE closing modal
+  const checkbox = document.getElementById('unpublish-send-email');
+  const sendEmail = checkbox ? checkbox.checked : true;
+  
+  console.log('Unpublish checkbox element:', checkbox);
+  console.log('Unpublish checkbox checked:', checkbox?.checked);
+  console.log('Unpublish sendEmail value:', sendEmail);
   
   closeUnpublishModal();
   
