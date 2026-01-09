@@ -7911,8 +7911,12 @@ async function loadFacilitatorsForSelection(unitId) {
     let html = '<div style="display: flex; flex-direction: column; gap: 4px;">';
     data.facilitators.forEach(facilitator => {
       const isChecked = selectedFacilitators.includes(facilitator.id);
-      const name = facilitator.full_name || facilitator.email;
+      const hasFullName = facilitator.full_name && facilitator.full_name.trim() !== '';
+      const name = hasFullName ? facilitator.full_name : facilitator.email;
       const email = facilitator.email;
+      
+      // Only show email separately if we have a different full name
+      const showEmailSeparately = hasFullName && name !== email;
       
       html += `
         <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;" 
@@ -7920,7 +7924,7 @@ async function loadFacilitatorsForSelection(unitId) {
                onmouseout="this.style.background='white'; this.style.borderColor='transparent';">
           <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
             <span style="font-size: 14px; font-weight: 500; color: #1f2937;">${name}</span>
-            <span style="font-size: 12px; color: #9ca3af;">${email}</span>
+            ${showEmailSeparately ? `<span style="font-size: 12px; color: #9ca3af;">${email}</span>` : ''}
           </div>
           <input type="checkbox" 
                  class="facilitator-checkbox" 
