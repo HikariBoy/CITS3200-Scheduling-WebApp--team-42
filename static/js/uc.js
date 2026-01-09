@@ -7686,20 +7686,52 @@ async function unpublishSchedule() {
     return;
   }
   
-  // Show confirmation dialog
-  const confirmed = confirm(`⚠️ Unpublish Schedule?
-
-This will:
-✓ Remove auto-generated unavailability (facilitators become available again in other units)
-✓ Reject all pending swap requests
-✓ Change status back to DRAFT
-✓ Keep all facilitator assignments
-
-You can make changes and republish when ready.
-
-Are you sure you want to unpublish?`);
+  // Show confirmation modal with email option
+  const modalHTML = `
+    <div id="unpublish-confirmation-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+      <div style="background: white; border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;">
+        <h2 style="margin: 0 0 16px 0; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+          <span class="material-icons" style="font-size: 28px;">warning</span>
+          Unpublish Schedule?
+        </h2>
+        <p style="margin-bottom: 16px; color: #374151;">This will:</p>
+        <ul style="margin: 0 0 16px 20px; color: #374151;">
+          <li>Remove auto-generated unavailability</li>
+          <li>Reject all pending swap requests</li>
+          <li>Change status back to DRAFT</li>
+          <li>Keep all facilitator assignments</li>
+        </ul>
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="unpublish-send-email" checked style="width: 18px; height: 18px; cursor: pointer;">
+            <span style="color: #92400e; font-weight: 500;">Send email notifications to facilitators</span>
+          </label>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button onclick="closeUnpublishModal()" style="padding: 10px 20px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; font-weight: 500;">
+            Cancel
+          </button>
+          <button onclick="confirmUnpublish()" style="padding: 10px 20px; border: none; background: #f59e0b; color: white; border-radius: 6px; cursor: pointer; font-weight: 500;">
+            Unpublish Schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
   
-  if (!confirmed) return;
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+function closeUnpublishModal() {
+  const modal = document.getElementById('unpublish-confirmation-modal');
+  if (modal) modal.remove();
+}
+
+async function confirmUnpublish() {
+  const unitId = getUnitId();
+  const sendEmail = document.getElementById('unpublish-send-email')?.checked ?? true;
+  
+  closeUnpublishModal();
   
   try {
     // Show loading state
@@ -7714,7 +7746,10 @@ Are you sure you want to unpublish?`);
       headers: {
         'Content-Type': 'application/json',
         'X-CSRFToken': CSRF_TOKEN
-      }
+      },
+      body: JSON.stringify({
+        send_notifications: sendEmail
+      })
     });
     
     const result = await response.json();

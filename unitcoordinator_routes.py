@@ -4590,6 +4590,10 @@ def unpublish_schedule(unit_id: int):
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
+    # Get optional send_notifications parameter (default True)
+    data = request.get_json() or {}
+    send_notifications = data.get('send_notifications', True)
+    
     # 1. Check if unit is published
     if unit.schedule_status != ScheduleStatus.PUBLISHED:
         return jsonify({"ok": False, "error": "Unit is not published"}), 400
@@ -4644,27 +4648,30 @@ def unpublish_schedule(unit_id: int):
         
         db.session.commit()
         
-        # 7. Create in-app notifications for facilitators
-        try:
-            from models import Notification
-            facilitator_ids = set()
-            # Get all sessions through modules
-            for module in unit.modules:
-                for session in module.sessions:
-                    for assignment in session.assignments:
-                        facilitator_ids.add(assignment.facilitator_id)
-            
-            for facilitator_id in facilitator_ids:
-                notification = Notification(
-                    user_id=facilitator_id,
-                    message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished.",
-                    notification_type="schedule_unpublished"
-                )
-                db.session.add(notification)
-            
-            db.session.commit()
-        except Exception as notif_error:
-            logger.warning(f"Failed to create facilitator notifications: {notif_error}")
+        # 7. Create in-app notifications for facilitators (if enabled)
+        notifications_sent = 0
+        if send_notifications:
+            try:
+                from models import Notification
+                facilitator_ids = set()
+                # Get all sessions through modules
+                for module in unit.modules:
+                    for session in module.sessions:
+                        for assignment in session.assignments:
+                            facilitator_ids.add(assignment.facilitator_id)
+                
+                for facilitator_id in facilitator_ids:
+                    notification = Notification(
+                        user_id=facilitator_id,
+                        message=f"The schedule for {unit.unit_code} - {unit.unit_name} has been unpublished. You will be notified when it is republished.",
+                        notification_type="schedule_unpublished"
+                    )
+                    db.session.add(notification)
+                    notifications_sent += 1
+                
+                db.session.commit()
+            except Exception as notif_error:
+                logger.warning(f"Failed to create facilitator notifications: {notif_error}")
         
         logger.info(f"Unit {unit.unit_code} unpublished by {user.email}. Removed {deleted_unavail} auto-unavailability entries, rejected {rejected_swaps} swaps.")
         
@@ -4672,7 +4679,8 @@ def unpublish_schedule(unit_id: int):
             "ok": True,
             "message": "Schedule unpublished successfully",
             "deleted_unavailability": deleted_unavail,
-            "rejected_swaps": rejected_swaps
+            "rejected_swaps": rejected_swaps,
+            "notifications_sent": notifications_sent
         }), 200
         
     except Exception as e:
