@@ -295,12 +295,14 @@ def _serialize_session(s: Session, venues_by_name=None):
         "session_name": title,
         "location": s.location,
         "module_type": s.module.module_type or "Workshop",
+        "module_id": s.module_id,  # Add module_id for skill lookup
         "attendees": getattr(s, 'attendees', None),
         "extendedProps": {
             "venue": venue_name,
             "venue_id": vid,
             "session_name": title,
             "location": s.location,
+            "module_id": s.module_id,  # Add module_id here too
             "facilitator_name": facilitator,  # Backward compatibility
             "facilitator_id": s.assignments[0].facilitator_id if s.assignments else None,
             "lead_staff_required": s.lead_staff_required or 1,
@@ -4819,7 +4821,7 @@ def list_facilitators(unit_id: int):
         # Get skill level for this module if provided
         if module_id:
             skill = FacilitatorSkill.query.filter_by(
-                user_id=fac.id,
+                facilitator_id=fac.id,
                 module_id=module_id
             ).first()
             
