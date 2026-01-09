@@ -4541,7 +4541,11 @@ def unpublish_schedule(unit_id: int):
         deleted_unavail = remove_unavailability_from_schedule(unit_id)
         
         # 5. Reject pending swap requests
-        session_ids = [s.id for s in unit.sessions]
+        # Get all sessions for this unit through modules
+        session_ids = []
+        for module in unit.modules:
+            for session in module.sessions:
+                session_ids.append(session.id)
         swap_requests = SwapRequest.query.filter(
             SwapRequest.session_id.in_(session_ids),
             SwapRequest.status.in_([
@@ -4580,9 +4584,11 @@ def unpublish_schedule(unit_id: int):
         try:
             from models import Notification
             facilitator_ids = set()
-            for session in unit.sessions:
-                for assignment in session.assignments:
-                    facilitator_ids.add(assignment.facilitator_id)
+            # Get all sessions through modules
+            for module in unit.modules:
+                for session in module.sessions:
+                    for assignment in session.assignments:
+                        facilitator_ids.add(assignment.facilitator_id)
             
             for facilitator_id in facilitator_ids:
                 notification = Notification(
