@@ -1972,11 +1972,14 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
         exclude_session_id: Optional session ID to exclude from conflict check (for swap requests)
     """
     
-    # Check for GLOBAL unavailability conflicts
+    # Check for unavailability conflicts (both unit-specific AND global)
     unavailability_conflict = Unavailability.query.filter(
         Unavailability.user_id == facilitator_id,
-        Unavailability.unit_id.is_(None),  # Global unavailability
         Unavailability.date == session_date,
+        db.or_(
+            Unavailability.unit_id == unit_id,  # Unit-specific unavailability
+            Unavailability.unit_id.is_(None)     # Global unavailability
+        ),
         db.or_(
             Unavailability.is_full_day == True,
             db.and_(
