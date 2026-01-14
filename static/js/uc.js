@@ -6784,10 +6784,10 @@ function renderFacilitatorList() {
         </div>
         <div class="facilitator-info">
           <div class="facilitator-name">${facilitator.name}</div>
-          <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
-            ${facilitator.email}
-            ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
-            ${isUnavailable ? `<span style="margin-left: 8px; padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 2px;"><span class="material-icons" style="font-size: 12px;">event_busy</span>${facilitator.unavailability_reason || 'Unavailable'}</span>` : ''}
+          <div class="facilitator-email">${facilitator.email}</div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+            ${facilitator.skill_label ? `<span style="padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
+            ${isUnavailable ? `<span style="padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 2px;"><span class="material-icons" style="font-size: 12px;">event_busy</span>${facilitator.unavailability_reason || 'Unavailable'}</span>` : ''}
           </div>
         </div>
       </div>
