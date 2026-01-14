@@ -6768,72 +6768,31 @@ function renderFacilitatorList() {
     return;
   }
   
-  // Separate available and unavailable facilitators
-  const availableFacilitators = filteredFacilitators.filter(f => !f.is_unavailable);
-  const unavailableFacilitators = filteredFacilitators.filter(f => f.is_unavailable);
-  
+  // Render all facilitators in one list (no separation)
   let html = '';
   
-  // Render Available section
-  if (availableFacilitators.length > 0) {
-    html += `
-      <div style="padding: 12px 16px; background: #f0fdf4; border-bottom: 2px solid #86efac; font-weight: 600; color: #166534; display: flex; align-items: center; gap: 8px;">
-        <span class="material-icons" style="font-size: 20px;">check_circle</span>
-        Available Facilitators (${availableFacilitators.length})
-      </div>
-    `;
+  html += filteredFacilitators.map((facilitator) => {
+    // Use selectedFacilitators to determine checked state (preserves user's selections during search)
+    const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
+    const isUnavailable = facilitator.is_unavailable;
     
-    html += availableFacilitators.map((facilitator) => {
-      // Use selectedFacilitators to determine checked state (preserves user's selections during search)
-      const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
-      
-      return `
-        <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
-          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
-          <div class="facilitator-avatar">
-            ${getFacilitatorInitials(facilitator.name)}
-          </div>
-          <div class="facilitator-info">
-            <div class="facilitator-name">${facilitator.name}</div>
-            <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
-              ${facilitator.email}
-              ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
-            </div>
+    return `
+      <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
+        <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
+        <div class="facilitator-avatar">
+          ${getFacilitatorInitials(facilitator.name)}
+        </div>
+        <div class="facilitator-info">
+          <div class="facilitator-name">${facilitator.name}</div>
+          <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
+            ${facilitator.email}
+            ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
+            ${isUnavailable ? `<span style="margin-left: 8px; padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 2px;"><span class="material-icons" style="font-size: 12px;">event_busy</span>${facilitator.unavailability_reason || 'Unavailable'}</span>` : ''}
           </div>
         </div>
-      `;
-    }).join('');
-  }
-  
-  // Render Unavailable section
-  if (unavailableFacilitators.length > 0) {
-    html += `
-      <div style="padding: 12px 16px; background: #fef3c7; border-bottom: 2px solid #fbbf24; font-weight: 600; color: #92400e; display: flex; align-items: center; gap: 8px; margin-top: ${availableFacilitators.length > 0 ? '8px' : '0'};">
-        <span class="material-icons" style="font-size: 20px;">warning</span>
-        Unavailable (${unavailableFacilitators.length})
       </div>
     `;
-    
-    html += unavailableFacilitators.map((facilitator) => {
-      return `
-        <div class="facilitator-item" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}" style="opacity: 0.6; background: #fef3c7; cursor: not-allowed;">
-          <div class="facilitator-avatar" style="background: #fbbf24;">
-            ${getFacilitatorInitials(facilitator.name)}
-          </div>
-          <div class="facilitator-info">
-            <div class="facilitator-name" style="color: #92400e;">${facilitator.name}</div>
-            <div class="facilitator-email" style="color: #92400e;">
-              <span class="material-icons" style="font-size: 14px; vertical-align: middle;">event_busy</span>
-              ${facilitator.unavailability_reason || 'Unavailable'}
-            </div>
-          </div>
-          <div style="margin-left: auto; padding: 4px 8px; background: #fbbf24; color: #78350f; border-radius: 4px; font-size: 11px; font-weight: 600;">
-            UNAVAILABLE
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
+  }).join('');
   
   facilitatorList.innerHTML = html;
   
