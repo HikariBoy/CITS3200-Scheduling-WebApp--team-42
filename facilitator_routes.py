@@ -2140,12 +2140,14 @@ def get_available_facilitators():
     
     for facilitator in unit_facilitators:
         # Check availability for the session time
+        # Exclude the current session from conflict check (facilitator might already be assigned to it)
         is_available, reason = check_facilitator_availability(
             facilitator.id,
             session.start_time.date(),
             session.start_time.time(),
             session.end_time.time(),
-            unit.id
+            unit.id,
+            exclude_session_id=session.id
         )
         
         # Check if facilitator has required skills for this module
