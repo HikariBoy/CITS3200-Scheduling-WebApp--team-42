@@ -340,7 +340,17 @@
                 </div>
                 <div class="session-info">
                     <span class="material-icons">calendar_today</span>
-                    <span>{{ units_data|selectattr('id', 'equalto', current_unit.id)|map(attribute='sessions')|first if current_unit else 0 }} sessions</span>
+                    <span id="unit-session-count">
+                        {% if current_unit %}
+                            {% for unit in units_data %}
+                                {% if unit.id == current_unit.id %}
+                                    {{ unit.sessions }} sessions
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            0 sessions
+                        {% endif %}
+                    </span>
                     <span class="date-range">
                         {% if current_unit and current_unit.start_date and current_unit.end_date %}
                             {{ current_unit.start_date.strftime('%d/%m/%Y') }} - {{ current_unit.end_date.strftime('%d/%m/%Y') }}
