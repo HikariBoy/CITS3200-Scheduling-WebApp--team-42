@@ -7465,18 +7465,27 @@ function renderPublishFacilitatorList() {
 }
 
 function selectAllFacilitators(selectAll) {
+  console.log('selectAllFacilitators called with:', selectAll);
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
-  checkboxes.forEach(cb => cb.checked = selectAll);
+  console.log('Found checkboxes:', checkboxes.length);
+  checkboxes.forEach(cb => {
+    cb.checked = selectAll;
+  });
   updatePublishCount();
 }
 
 function selectOnlyChangedFacilitators() {
+  console.log('selectOnlyChangedFacilitators called');
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
+  console.log('Found checkboxes:', checkboxes.length);
+  let changedCount = 0;
   checkboxes.forEach(cb => {
     // Check if this facilitator has changes (stored in data attribute)
     const hasChanges = cb.dataset.hasChanges === 'true';
+    if (hasChanges) changedCount++;
     cb.checked = hasChanges;
   });
+  console.log('Facilitators with changes:', changedCount);
   updatePublishCount();
 }
 
