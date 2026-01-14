@@ -7482,7 +7482,13 @@ function attachPublishButtonListeners() {
       console.log('SELECT ALL CLICKED!');
       e.preventDefault();
       e.stopPropagation();
-      selectAllFacilitators(true);
+      try {
+        console.log('About to call selectAllFacilitators(true)');
+        selectAllFacilitators(true);
+        console.log('selectAllFacilitators(true) completed');
+      } catch (err) {
+        console.error('ERROR in Select All:', err);
+      }
       return false;
     }, true);
     console.log('Select All button listener attached');
@@ -7508,7 +7514,13 @@ function attachPublishButtonListeners() {
       console.log('DESELECT ALL CLICKED!');
       e.preventDefault();
       e.stopPropagation();
-      selectAllFacilitators(false);
+      try {
+        console.log('About to call selectAllFacilitators(false)');
+        selectAllFacilitators(false);
+        console.log('selectAllFacilitators(false) completed');
+      } catch (err) {
+        console.error('ERROR in Deselect All:', err);
+      }
       return false;
     }, true);
     console.log('Deselect All button listener attached');
