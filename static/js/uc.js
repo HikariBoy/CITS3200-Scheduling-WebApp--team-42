@@ -7417,6 +7417,9 @@ async function openPublishConfirmation() {
       // Populate facilitator list with checkboxes
       publishFacilitatorsList = data.facilitators || [];
       renderPublishFacilitatorList();
+      
+      // Attach event listeners to buttons (do this after modal is shown)
+      attachPublishButtonListeners();
     } else {
       // Fallback to counting visible sessions
       document.getElementById('publish-session-count').textContent = '0';
@@ -7462,6 +7465,41 @@ function renderPublishFacilitatorList() {
   });
   
   listEl.innerHTML = html;
+}
+
+function attachPublishButtonListeners() {
+  console.log('Attaching publish button listeners...');
+  
+  const selectAllBtn = document.getElementById('publish-select-all-btn');
+  const selectChangedBtn = document.getElementById('publish-select-changed-btn');
+  const deselectAllBtn = document.getElementById('publish-deselect-all-btn');
+  
+  if (selectAllBtn) {
+    selectAllBtn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      selectAllFacilitators(true);
+    };
+    console.log('Select All button listener attached');
+  }
+  
+  if (selectChangedBtn) {
+    selectChangedBtn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      selectOnlyChangedFacilitators();
+    };
+    console.log('Select Changed button listener attached');
+  }
+  
+  if (deselectAllBtn) {
+    deselectAllBtn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      selectAllFacilitators(false);
+    };
+    console.log('Deselect All button listener attached');
+  }
 }
 
 function selectAllFacilitators(selectAll) {

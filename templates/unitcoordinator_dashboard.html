@@ -2614,9 +2614,9 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <label style="font-weight: 600; color: #374151;">Email Notifications</label>
           <div style="display: flex; gap: 8px;">
-            <button type="button" onclick="window.selectAllFacilitators(true); return false;" style="font-size: 12px; color: #3b82f6; background: none; border: none; cursor: pointer; text-decoration: underline;">Select All</button>
-            <button type="button" onclick="window.selectOnlyChangedFacilitators(); return false;" style="font-size: 12px; color: #f59e0b; background: none; border: none; cursor: pointer; text-decoration: underline;">Select Only Changed</button>
-            <button type="button" onclick="window.selectAllFacilitators(false); return false;" style="font-size: 12px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline;">Deselect All</button>
+            <button type="button" id="publish-select-all-btn" style="font-size: 12px; color: #3b82f6; background: none; border: none; cursor: pointer; text-decoration: underline;">Select All</button>
+            <button type="button" id="publish-select-changed-btn" style="font-size: 12px; color: #f59e0b; background: none; border: none; cursor: pointer; text-decoration: underline;">Select Only Changed</button>
+            <button type="button" id="publish-deselect-all-btn" style="font-size: 12px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline;">Deselect All</button>
           </div>
         </div>
         <div id="publish-facilitator-list" style="max-height: 150px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb;">
