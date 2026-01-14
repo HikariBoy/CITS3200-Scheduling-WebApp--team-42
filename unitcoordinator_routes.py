@@ -4994,28 +4994,40 @@ def list_facilitators(unit_id: int):
         skill_level = None
         skill_label = None
         
-        # Check if facilitator is unavailable on this date
+        # Check if facilitator is unavailable on this date (check both unit-specific AND global unavailability)
         if session_date:
+            # Check unit-specific unavailability first
             unavailability = Unavailability.query.filter_by(
                 user_id=fac.id,
                 unit_id=unit_id,
                 date=session_date
             ).first()
             
+            # Also check global unavailability (from other units' published schedules)
+            if not unavailability:
+                unavailability = Unavailability.query.filter_by(
+                    user_id=fac.id,
+                    unit_id=None,  # Global unavailability
+                    date=session_date
+                ).first()
+            
             if unavailability:
                 # Check if it's full day or if times overlap
                 if unavailability.is_full_day:
                     is_unavailable = True
-                    unavailability_reason = "Full day"
+                    unavailability_reason = "Unavailable (full day)"
                 elif session_start_time and session_end_time and unavailability.start_time and unavailability.end_time:
                     # Check time overlap: session overlaps if it starts before unavailability ends AND ends after unavailability starts
                     if session_start_time < unavailability.end_time and session_end_time > unavailability.start_time:
                         is_unavailable = True
-                        unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
+                        unavailability_reason = f"Unavailable ({unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')})"
                 else:
                     # If no session times provided, assume unavailable for the whole day
                     is_unavailable = True
-                    unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
+                    if unavailability.start_time and unavailability.end_time:
+                        unavailability_reason = f"Unavailable ({unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')})"
+                    else:
+                        unavailability_reason = "Unavailable"
         
         # Get skill level for this module if provided
         if module_id:
