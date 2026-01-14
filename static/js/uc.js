@@ -7475,29 +7475,42 @@ function attachPublishButtonListeners() {
   const deselectAllBtn = document.getElementById('publish-deselect-all-btn');
   
   if (selectAllBtn) {
-    selectAllBtn.onclick = function(e) {
+    // Remove any existing listeners first
+    selectAllBtn.replaceWith(selectAllBtn.cloneNode(true));
+    const newSelectAllBtn = document.getElementById('publish-select-all-btn');
+    newSelectAllBtn.addEventListener('click', function(e) {
+      console.log('SELECT ALL CLICKED!');
       e.preventDefault();
       e.stopPropagation();
       selectAllFacilitators(true);
-    };
+      return false;
+    }, true);
     console.log('Select All button listener attached');
   }
   
   if (selectChangedBtn) {
-    selectChangedBtn.onclick = function(e) {
+    selectChangedBtn.replaceWith(selectChangedBtn.cloneNode(true));
+    const newSelectChangedBtn = document.getElementById('publish-select-changed-btn');
+    newSelectChangedBtn.addEventListener('click', function(e) {
+      console.log('SELECT CHANGED CLICKED!');
       e.preventDefault();
       e.stopPropagation();
       selectOnlyChangedFacilitators();
-    };
+      return false;
+    }, true);
     console.log('Select Changed button listener attached');
   }
   
   if (deselectAllBtn) {
-    deselectAllBtn.onclick = function(e) {
+    deselectAllBtn.replaceWith(deselectAllBtn.cloneNode(true));
+    const newDeselectAllBtn = document.getElementById('publish-deselect-all-btn');
+    newDeselectAllBtn.addEventListener('click', function(e) {
+      console.log('DESELECT ALL CLICKED!');
       e.preventDefault();
       e.stopPropagation();
       selectAllFacilitators(false);
-    };
+      return false;
+    }, true);
     console.log('Deselect All button listener attached');
   }
 }
