@@ -2008,6 +2008,85 @@ def edit_facilitator_view(unit_id: int, email: str):
     units_data = []
     
     for u in all_facilitator_units:
+        # Get facilitator's assignments for this unit (only published sessions)
+        from datetime import datetime, timedelta
+        assignments = (
+            db.session.query(Assignment, Session, Module)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Assignment.facilitator_id == facilitator_user.id,
+                Module.unit_id == u.id,
+                Session.status == 'published'
+            )
+            .all()
+        )
+        
+        # Calculate KPIs
+        session_count = len(assignments)
+        total_hours = sum((s.end_time - s.start_time).total_seconds() / 3600.0 for _, s, _ in assignments)
+        
+        # This week hours
+        now = datetime.utcnow()
+        start_of_week = (now.replace(hour=0, minute=0, second=0, microsecond=0)
+                         - timedelta(days=now.weekday()))
+        end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        
+        this_week_hours = sum(
+            (s.end_time - s.start_time).total_seconds() / 3600.0 
+            for _, s, _ in assignments 
+            if start_of_week <= s.start_time < end_of_week
+        )
+        
+        active_sessions = len([
+            s for _, s, _ in assignments 
+            if start_of_week <= s.start_time < end_of_week
+        ])
+        
+        # Upcoming sessions
+        def format_session_date(dt):
+            return dt.strftime('%d/%m/%Y')
+        
+        upcoming_sessions = [
+            {
+                'id': a.id,
+                'session_id': s.id,
+                'module': m.module_name or 'Unknown Module',
+                'session_type': s.session_type or 'Session',
+                'start_time': s.start_time.isoformat(),
+                'end_time': s.end_time.isoformat(),
+                'location': s.location or 'TBA',
+                'is_confirmed': bool(a.is_confirmed),
+                'date': format_session_date(s.start_time),
+                'time': f"{s.start_time.strftime('%I:%M %p')} - {s.end_time.strftime('%I:%M %p')}",
+                'topic': m.module_name or 'Unknown Module',
+                'status': 'confirmed' if a.is_confirmed else 'pending',
+                'role': getattr(a, 'role', 'lead')
+            }
+            for a, s, m in assignments
+            if s.start_time >= now
+        ]
+        
+        # Past sessions
+        past_sessions = [
+            {
+                'id': a.id,
+                'session_id': s.id,
+                'module': m.module_name or 'Unknown Module',
+                'session_type': s.session_type or 'Session',
+                'start_time': s.start_time.isoformat(),
+                'end_time': s.end_time.isoformat(),
+                'location': s.location or 'TBA',
+                'is_confirmed': bool(a.is_confirmed),
+                'date': format_session_date(s.start_time),
+                'time': f"{s.start_time.strftime('%I:%M %p')} - {s.end_time.strftime('%I:%M %p')}",
+                'topic': m.module_name or 'Unknown Module',
+                'status': 'completed'
+            }
+            for a, s, m in assignments
+            if s.start_time < now
+        ]
+        
         # Determine if unit is active or completed
         is_active = False
         if u.end_date:
@@ -2015,7 +2094,7 @@ def edit_facilitator_view(unit_id: int, email: str):
         elif u.start_date:
             is_active = u.start_date <= today
         else:
-            is_active = True  # Default to active if no dates
+            is_active = len(upcoming_sessions) > 0
         
         # Check availability and skills for this unit
         unit_link = UnitFacilitator.query.filter_by(unit_id=u.id, user_id=facilitator_user.id).first()
@@ -2039,21 +2118,22 @@ def edit_facilitator_view(unit_id: int, email: str):
             'year': u.year,
             'start_date': u.start_date.isoformat() if u.start_date else None,
             'end_date': u.end_date.isoformat() if u.end_date else None,
-            'status': 'active' if is_active else 'completed',  # Required for dropdown filter
+            'status': 'active' if is_active else 'completed',
             'schedule_status': u.schedule_status.value if u.schedule_status else 'draft',
-            'availability_configured': unit_availability_configured,  # For nav tab warning
-            'skills_configured': unit_skills_count > 0,  # For nav tab warning
+            'availability_configured': unit_availability_configured,
+            'skills_configured': unit_skills_count > 0,
+            'sessions': session_count,
             'kpis': {
-                'this_week_hours': 0,
-                'active_sessions': 0,
-                'remaining_hours': 0,
-                'total_hours': 0,
-                'upcoming_sessions': 0,
-                'total_sessions': 0,
-                'completed_sessions': 0
+                'this_week_hours': round(this_week_hours, 1),
+                'total_hours': round(total_hours, 1),
+                'active_sessions': active_sessions,
+                'remaining_hours': round(total_hours - this_week_hours, 1) if total_hours > this_week_hours else 0,
+                'total_sessions': session_count,
+                'upcoming_sessions': len(upcoming_sessions),
+                'completed_sessions': len(past_sessions)
             },
-            'upcoming_sessions': [],
-            'past_sessions': []
+            'upcoming_sessions': upcoming_sessions,
+            'past_sessions': past_sessions
         }
         units_data.append(unit_data)
     
