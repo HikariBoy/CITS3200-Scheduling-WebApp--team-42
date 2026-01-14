@@ -1838,12 +1838,14 @@ def create_swap_request():
         return jsonify({'error': 'Target facilitator does not have required skills for this module'}), 400
     
     # Check availability for the session time
+    # Exclude the current session from conflict check (facilitator might already be assigned to it)
     is_available, reason = check_facilitator_availability(
         target_facilitator_id,
         session.start_time.date(),
         session.start_time.time(),
         session.end_time.time(),
-        module.unit_id
+        module.unit_id,
+        exclude_session_id=session.id
     )
     
     if not is_available:
@@ -1958,8 +1960,17 @@ def get_swap_requests():
     })
 
 
-def check_facilitator_availability(facilitator_id, session_date, session_start_time, session_end_time, unit_id):
-    """Check if a facilitator is available for a specific session time."""
+def check_facilitator_availability(facilitator_id, session_date, session_start_time, session_end_time, unit_id, exclude_session_id=None):
+    """Check if a facilitator is available for a specific session time.
+    
+    Args:
+        facilitator_id: ID of the facilitator to check
+        session_date: Date of the session
+        session_start_time: Start time of the session
+        session_end_time: End time of the session
+        unit_id: ID of the unit
+        exclude_session_id: Optional session ID to exclude from conflict check (for swap requests)
+    """
     
     # Check for GLOBAL unavailability conflicts
     unavailability_conflict = Unavailability.query.filter(
@@ -1979,7 +1990,8 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
         return False, "Facilitator has marked unavailability for this time"
     
     # Check for existing session assignments at the same time
-    conflicting_assignment = Assignment.query.join(Session).filter(
+    # Exclude the session being swapped (if provided)
+    conflict_query = Assignment.query.join(Session).filter(
         Assignment.facilitator_id == facilitator_id,
         db.func.date(Session.start_time) == session_date,
         db.or_(
@@ -1992,7 +2004,13 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
                 db.func.time(Session.end_time) >= session_end_time
             )
         )
-    ).first()
+    )
+    
+    # Exclude the session being swapped from conflict check
+    if exclude_session_id is not None:
+        conflict_query = conflict_query.filter(Session.id != exclude_session_id)
+    
+    conflicting_assignment = conflict_query.first()
     
     if conflicting_assignment:
         return False, "Facilitator has conflicting session assignment"
