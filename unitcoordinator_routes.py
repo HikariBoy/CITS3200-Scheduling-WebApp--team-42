@@ -4658,12 +4658,21 @@ def unpublish_schedule(unit_id: int):
             except Exception as notif_error:
                 logger.warning(f"Failed to create notification for swap rejection: {notif_error}")
         
-        # 6. Update unit status
+        # 6. Update session statuses back to draft
+        sessions_updated = 0
+        for module in unit.modules:
+            for session in module.sessions:
+                if session.status == 'published':
+                    session.status = 'draft'
+                    sessions_updated += 1
+        
+        # 7. Update unit status
         unit.schedule_status = ScheduleStatus.DRAFT
         unit.unpublished_at = datetime.utcnow()
         unit.unpublished_by = user.id
         
         db.session.commit()
+        print(f"✅ Unpublished {sessions_updated} sessions for unit {unit_id}")
         
         # 7. Send notifications to facilitators (if enabled)
         notifications_sent = 0
@@ -4726,6 +4735,7 @@ def unpublish_schedule(unit_id: int):
         return jsonify({
             "ok": True,
             "message": "Schedule unpublished successfully",
+            "sessions_unpublished": sessions_updated,
             "deleted_unavailability": deleted_unavail,
             "rejected_swaps": rejected_swaps,
             "notifications_sent": notifications_sent,
