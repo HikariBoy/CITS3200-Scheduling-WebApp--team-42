@@ -7483,9 +7483,9 @@ function attachPublishButtonListeners() {
       e.preventDefault();
       e.stopPropagation();
       try {
-        console.log('About to call selectAllFacilitators(true)');
-        selectAllFacilitators(true);
-        console.log('selectAllFacilitators(true) completed');
+        console.log('About to call selectAllPublishFacilitators(true)');
+        selectAllPublishFacilitators(true);
+        console.log('selectAllPublishFacilitators(true) completed');
       } catch (err) {
         console.error('ERROR in Select All:', err);
       }
@@ -7515,9 +7515,9 @@ function attachPublishButtonListeners() {
       e.preventDefault();
       e.stopPropagation();
       try {
-        console.log('About to call selectAllFacilitators(false)');
-        selectAllFacilitators(false);
-        console.log('selectAllFacilitators(false) completed');
+        console.log('About to call selectAllPublishFacilitators(false)');
+        selectAllPublishFacilitators(false);
+        console.log('selectAllPublishFacilitators(false) completed');
       } catch (err) {
         console.error('ERROR in Deselect All:', err);
       }
@@ -7527,8 +7527,8 @@ function attachPublishButtonListeners() {
   }
 }
 
-function selectAllFacilitators(selectAll) {
-  console.log('selectAllFacilitators called with:', selectAll);
+function selectAllPublishFacilitators(selectAll) {
+  console.log('selectAllPublishFacilitators called with:', selectAll);
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
   console.log('Found checkboxes:', checkboxes.length);
   checkboxes.forEach(cb => {
