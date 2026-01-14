@@ -715,6 +715,47 @@ document.addEventListener('DOMContentLoaded', function() {
                date1.getFullYear() === date2.getFullYear();
     }
     
+    // Helper function to generate consistent colors for unit codes
+    function getUnitColor(unitCode) {
+        // Predefined color palette for better visual distinction
+        const colors = [
+            '#3b82f6', // Blue
+            '#10b981', // Green
+            '#f59e0b', // Amber
+            '#ef4444', // Red
+            '#8b5cf6', // Purple
+            '#ec4899', // Pink
+            '#06b6d4', // Cyan
+            '#f97316', // Orange
+            '#14b8a6', // Teal
+            '#6366f1'  // Indigo
+        ];
+        
+        // Simple hash function to get consistent color for same unit code
+        let hash = 0;
+        for (let i = 0; i < unitCode.length; i++) {
+            hash = unitCode.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const index = Math.abs(hash) % colors.length;
+        return colors[index];
+    }
+    
+    // Helper function to get icon for session type
+    function getSessionIcon(sessionType) {
+        const type = (sessionType || '').toLowerCase();
+        
+        if (type.includes('lab')) return '🧪';
+        if (type.includes('tutorial')) return '📚';
+        if (type.includes('workshop')) return '💻';
+        if (type.includes('lecture')) return '🎓';
+        if (type.includes('seminar')) return '💬';
+        if (type.includes('practical')) return '🔧';
+        if (type.includes('computer')) return '💻';
+        if (type.includes('engineering')) return '⚙️';
+        
+        return '📝'; // Default icon
+    }
+    
     function createDayElement(dayNumber, isOtherMonth, dayDate = null) {
         const dayElement = document.createElement('div');
         dayElement.className = 'calendar-day';
@@ -797,17 +838,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     unit.upcoming_sessions.forEach(session => {
                         if (extractDateFromSessionDate(session.date) === formattedDate) {
                             const statusClass = 'confirmed'; // All sessions are now confirmed
+                            
+                            // Get unit color (hash unit code for consistent color)
+                            const unitColor = getUnitColor(unit.code);
+                            
+                            // Get session type icon
+                            const sessionIcon = getSessionIcon(session.session_type || session.topic);
+                            
                             // Truncate long session names
-                            const truncatedTopic = session.topic.length > 15 ? session.topic.substring(0, 15) + '...' : session.topic;
-                            const eventText = `📚 ${unit.code}<br>
-👤 ${truncatedTopic}<br>
-⏰ ${session.time}<br>
-📍 ${session.location}`;
+                            const truncatedTopic = session.topic.length > 20 ? session.topic.substring(0, 20) + '...' : session.topic;
+                            
+                            // Full details for tooltip
+                            const fullDetails = `${unit.code} - ${session.topic}\n${session.time}\nLocation: ${session.location}\nRole: ${session.role || 'Lead'}`;
+                            
+                            const eventText = `<div class="session-unit-badge" style="background: ${unitColor}">${unit.code}</div>
+<div class="session-title">${sessionIcon} ${truncatedTopic}</div>
+<div class="session-time">⏰ ${session.time.split(' - ')[0]}</div>
+<div class="session-location">📍 ${session.location.substring(0, 15)}</div>`;
+                            
                             allEvents.push({
                                 text: eventText,
                                 class: statusClass,
                                 session: session,
-                                unit: unit
+                                unit: unit,
+                                unitColor: unitColor,
+                                fullDetails: fullDetails
                             });
                         }
                     });
@@ -817,17 +872,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (unit.past_sessions) {
                     unit.past_sessions.forEach(session => {
                         if (extractDateFromSessionDate(session.date) === formattedDate) {
+                            // Get unit color
+                            const unitColor = getUnitColor(unit.code);
+                            const sessionIcon = getSessionIcon(session.session_type || session.topic);
+                            
                             // Truncate long session names
-                            const truncatedTopic = session.topic.length > 15 ? session.topic.substring(0, 15) + '...' : session.topic;
-                            const eventText = `📚 ${unit.code}<br>
-👤 ${truncatedTopic}<br>
-⏰ ${session.time}<br>
-📍 ${session.location}`;
+                            const truncatedTopic = session.topic.length > 20 ? session.topic.substring(0, 20) + '...' : session.topic;
+                            
+                            const fullDetails = `${unit.code} - ${session.topic}\n${session.time}\nLocation: ${session.location}\nCompleted`;
+                            
+                            const eventText = `<div class="session-unit-badge" style="background: ${unitColor}; opacity: 0.6">${unit.code}</div>
+<div class="session-title">${sessionIcon} ${truncatedTopic}</div>
+<div class="session-time">⏰ ${session.time.split(' - ')[0]}</div>
+<div class="session-location">📍 ${session.location.substring(0, 15)}</div>`;
+                            
                             allEvents.push({
                                 text: eventText,
                                 class: 'past',
                                 session: session,
-                                unit: unit
+                                unit: unit,
+                                unitColor: unitColor,
+                                fullDetails: fullDetails
                             });
                         }
                     });
@@ -848,7 +913,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const remainingCount = allEvents.length - maxSessions;
         
         let result = displayEvents.map(event => 
-            `<div class="event ${event.class}" title="${event.text}">${event.text}</div>`
+            `<div class="event ${event.class}" style="border-left: 4px solid ${event.unitColor || '#3b82f6'}" title="${event.fullDetails || event.text}">${event.text}</div>`
         ).join('');
         
         // Add overflow message if there are more sessions
