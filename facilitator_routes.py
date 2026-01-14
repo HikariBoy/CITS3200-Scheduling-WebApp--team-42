@@ -169,15 +169,35 @@ def dashboard():
         end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
         # Base query for user's assignments within this unit
-        # Only show published sessions to facilitators
+        # Check if unit schedule is published before showing sessions
+        unit = Unit.query.get(unit_id_int)
+        if not unit or unit.schedule_status != ScheduleStatus.PUBLISHED:
+            return jsonify({
+                "unit": {
+                    "id": access.id,
+                    "code": access.unit_code,
+                    "name": access.unit_name,
+                    "year": access.year,
+                    "semester": access.semester,
+                },
+                "kpis": {
+                    "this_week_hours": 0,
+                    "total_hours": 0,
+                    "active_sessions": 0,
+                },
+                "sessions": {
+                    "upcoming": [],
+                    "recent_past": [],
+                }
+            })
+        
         base_q = (
             db.session.query(Assignment, Session, Module)
             .join(Session, Assignment.session_id == Session.id)
             .join(Module, Session.module_id == Module.id)
             .filter(
                 Assignment.facilitator_id == user.id, 
-                Module.unit_id == unit_id_int,
-                Session.status == 'published'  # Only show published sessions
+                Module.unit_id == unit_id_int
             )
         )
 
@@ -293,18 +313,25 @@ def dashboard():
     # Get units data for JavaScript
     units_data = []
     for unit in units:
-        # Get assignments for this unit (only published sessions)
+        # Get assignments for this unit
+        # Show sessions if:
+        # 1. Unit schedule is published (unit.schedule_status == PUBLISHED), OR
+        # 2. Session is explicitly published (Session.status == 'published')
+        # This allows facilitators to see their assignments once UC publishes the schedule
         assignments = (
             db.session.query(Assignment, Session, Module)
             .join(Session, Assignment.session_id == Session.id)
             .join(Module, Session.module_id == Module.id)
             .filter(
                 Assignment.facilitator_id == user.id, 
-                Module.unit_id == unit.id,
-                Session.status == 'published'  # Only show published sessions
+                Module.unit_id == unit.id
             )
             .all()
         )
+        
+        # Filter by unit schedule status - only show if unit schedule is published
+        if unit.schedule_status != ScheduleStatus.PUBLISHED:
+            assignments = []
         
         # Get session count for this unit (sessions assigned to this facilitator)
         session_count = len(assignments)
@@ -407,16 +434,17 @@ def dashboard():
         }
         units_data.append(unit_data)
     
-    # Count today's sessions for the facilitator (only published sessions)
+    # Count today's sessions for the facilitator (only from published unit schedules)
     today = date.today()
     today_sessions_count = (
-        db.session.query(Assignment, Session, Module)
+        db.session.query(Assignment, Session, Module, Unit)
         .join(Session, Assignment.session_id == Session.id)
         .join(Module, Session.module_id == Module.id)
+        .join(Unit, Module.unit_id == Unit.id)
         .filter(
             Assignment.facilitator_id == user.id,
             db.func.date(Session.start_time) == today,
-            Session.status == 'published'  # Only show published sessions
+            Unit.schedule_status == ScheduleStatus.PUBLISHED  # Only show from published unit schedules
         )
         .count()
     )
