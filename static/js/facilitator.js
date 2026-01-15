@@ -4108,11 +4108,16 @@ async function handleSwapRequestSubmit(event) {
         }
         
         const data = await response.json();
-        showNotification(data.message || 'Swap request created successfully!', 'success');
+        showNotification(data.message || 'Swap request created successfully! Refreshing your schedule...', 'success');
         
         // Close modal and refresh data
         closeRequestSwapModal();
         loadSwapRequests();
+        
+        // Reload the page after a short delay to refresh calendar
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
         
     } catch (error) {
         console.error('Error creating swap request:', error);

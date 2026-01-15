@@ -1797,6 +1797,15 @@ def create_swap_request():
     session = requester_assignment.session
     module = session.module
     
+    # Validate session isn't in the past
+    from datetime import datetime
+    if session.start_time < datetime.utcnow():
+        return jsonify({'error': 'Cannot swap a session that has already occurred'}), 400
+    
+    # Validate session belongs to requester
+    if requester_assignment.facilitator_id != user.id:
+        return jsonify({'error': 'You are not assigned to this session'}), 403
+    
     # For the target assignment, we'll create a virtual assignment or use the same session
     # Since we're doing a direct notification system, we don't need actual assignment swapping
     # We'll use the same assignment ID for both (simplified approach)
@@ -1921,6 +1930,33 @@ def create_swap_request():
                 db.session.add(new_unavail)
         
         db.session.commit()
+        
+        # Send email notifications
+        try:
+            from email_service import send_session_swap_emails
+            
+            requester = User.query.get(user.id)
+            target = User.query.get(target_facilitator_id)
+            unit = Unit.query.get(module.unit_id)
+            
+            session_details = {
+                'session_name': f"{module.module_name} - {session.session_type or 'Session'}",
+                'date': session.start_time.strftime('%A, %B %d, %Y'),
+                'time': f"{session.start_time.strftime('%I:%M %p')} - {session.end_time.strftime('%I:%M %p')}",
+                'location': session.location or 'TBA'
+            }
+            
+            send_session_swap_emails(
+                requester_email=requester.email,
+                requester_name=requester.full_name,
+                target_email=target.email,
+                target_name=target.full_name,
+                session_details=session_details,
+                unit_code=unit.unit_code if unit else 'Unknown'
+            )
+        except Exception as email_error:
+            # Don't fail the swap if email fails
+            print(f"Warning: Failed to send swap notification emails: {email_error}")
         
         return jsonify({
             'success': True,
