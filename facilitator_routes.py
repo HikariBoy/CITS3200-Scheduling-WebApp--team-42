@@ -2223,13 +2223,14 @@ def get_available_facilitators():
         return jsonify({'error': 'Access denied to this unit'}), 403
     
     # Get all facilitators assigned to this unit (excluding the current user)
+    # Include ADMIN role since admins can also be facilitators
     unit_facilitators = (
         db.session.query(User)
         .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
         .filter(
             UnitFacilitator.unit_id == unit.id,
             User.id != user.id,  # Exclude current user
-            User.role.in_([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+            User.role.in_([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
         )
         .all()
     )
