@@ -9,6 +9,7 @@ from sqlalchemy import func
 from datetime import date
 from sqlalchemy.orm import aliased
 from sqlalchemy import or_
+import pytz
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
@@ -29,6 +30,24 @@ logger = logging.getLogger(__name__)
 unitcoordinator_bp = Blueprint(
     "unitcoordinator", __name__, url_prefix="/unitcoordinator"
 )
+
+# Timezone configuration - Perth/WA time
+PERTH_TZ = pytz.timezone('Australia/Perth')
+
+def to_perth_time(utc_dt):
+    """Convert UTC datetime to Perth time"""
+    if utc_dt is None:
+        return None
+    if utc_dt.tzinfo is None:
+        # Assume UTC if no timezone
+        utc_dt = pytz.utc.localize(utc_dt)
+    return utc_dt.astimezone(PERTH_TZ)
+
+# Register as Jinja2 filter
+@unitcoordinator_bp.app_template_filter('perth_time')
+def perth_time_filter(utc_dt):
+    """Jinja2 filter to convert UTC to Perth time"""
+    return to_perth_time(utc_dt)
 
 # ------------------------------------------------------------------------------
 # Helper Functions
@@ -6423,8 +6442,10 @@ def download_swap_history_csv():
         from_name = f"{swap.req_first or ''} {swap.req_last or ''}".strip() or swap.req_email
         to_name = f"{swap.tgt_first or ''} {swap.tgt_last or ''}".strip() or swap.tgt_email
         
-        swap_date = swap.created_at.strftime('%Y-%m-%d') if swap.created_at else ''
-        swap_time = swap.created_at.strftime('%H:%M:%S') if swap.created_at else ''
+        # Convert to Perth time
+        perth_created = to_perth_time(swap.created_at) if swap.created_at else None
+        swap_date = perth_created.strftime('%Y-%m-%d') if perth_created else ''
+        swap_time = perth_created.strftime('%H:%M:%S') if perth_created else ''
         
         session_date = swap.req_start.strftime('%Y-%m-%d') if swap.req_start else ''
         session_time = f"{swap.req_start.strftime('%H:%M')}-{swap.req_end.strftime('%H:%M')}" if swap.req_start and swap.req_end else ''

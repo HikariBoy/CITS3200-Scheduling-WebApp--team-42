@@ -1432,7 +1432,7 @@
                         </div>
                         <div class="flex items-center gap-1 text-xs text-gray-400">
                           <span class="material-icons" style="font-size: 14px;">schedule</span>
-                          {{ r.created_at.strftime("%b %d, %I:%M %p") if r.created_at else "—" }}
+                          {{ (r.created_at|perth_time).strftime("%b %d, %I:%M %p") if r.created_at else "—" }}
                         </div>
                       </div>
 
