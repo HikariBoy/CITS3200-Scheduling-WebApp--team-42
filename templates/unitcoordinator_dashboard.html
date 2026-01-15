@@ -1385,25 +1385,12 @@
             </div>
 
             <!-- summary stats row -->
-            <div class="grid grid-cols-3 gap-3 mb-4">
-              <div class="bg-white border rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-green-600">{{ approvals.approved_this_week or 0 }}</div>
-                <div class="text-xs text-gray-600">This Week</div>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="material-icons text-blue-600">swap_horiz</span>
+                <span class="text-sm text-gray-700">Total session transfers in this unit</span>
               </div>
-              <div class="bg-white border rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-blue-600">{{ approvals.total or 0 }}</div>
-                <div class="text-xs text-gray-600">Total Swaps</div>
-              </div>
-              <div class="bg-white border rounded-lg p-3 text-center">
-                <div class="text-xl font-bold text-purple-600">
-                  {% if approvals.total and approvals.total > 0 %}
-                    {{ ((approvals.approved_this_week or 0) * 100 / approvals.total)|round|int }}%
-                  {% else %}
-                    0%
-                  {% endif %}
-                </div>
-                <div class="text-xs text-gray-600">Activity Rate</div>
-              </div>
+              <div class="text-2xl font-bold text-blue-600">{{ approvals.total or 0 }}</div>
             </div>
 
             <!-- detailed swap history -->
