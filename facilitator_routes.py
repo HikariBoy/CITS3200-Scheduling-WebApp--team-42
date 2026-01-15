@@ -1867,8 +1867,58 @@ def create_swap_request():
         # Add the swap request
         db.session.add(swap_request)
         
+        # Get old facilitator ID before transfer
+        old_facilitator_id = requester_assignment.facilitator_id
+        
         # Transfer the assignment to the target facilitator
         requester_assignment.facilitator_id = target_facilitator_id
+        
+        # Handle auto-unavailability if the schedule is published
+        if session.status == 'published':
+            # Remove old facilitator's auto-unavailability for this session
+            old_unavail = Unavailability.query.filter_by(
+                user_id=old_facilitator_id,
+                unit_id=None,  # Global unavailability
+                source_session_id=session.id
+            ).first()
+            
+            if old_unavail:
+                db.session.delete(old_unavail)
+            
+            # Create new auto-unavailability for the target facilitator
+            session_date = session.start_time.date()
+            session_start_time = session.start_time.time()
+            session_end_time = session.end_time.time()
+            
+            # Check if it doesn't already exist
+            existing_unavail = Unavailability.query.filter_by(
+                user_id=target_facilitator_id,
+                unit_id=None,
+                date=session_date,
+                start_time=session_start_time,
+                end_time=session_end_time,
+                source_session_id=session.id
+            ).first()
+            
+            if not existing_unavail:
+                module_name = module.module_name if module else "Session"
+                session_type = session.session_type or "Session"
+                unit = Unit.query.get(module.unit_id)
+                unit_code = unit.unit_code if unit else "Unknown"
+                reason = f"Scheduled: {unit_code} - {module_name} ({session_type})"
+                
+                new_unavail = Unavailability(
+                    user_id=target_facilitator_id,
+                    unit_id=None,  # Global unavailability
+                    date=session_date,
+                    start_time=session_start_time,
+                    end_time=session_end_time,
+                    is_full_day=False,
+                    reason=reason,
+                    source_session_id=session.id
+                )
+                
+                db.session.add(new_unavail)
         
         db.session.commit()
         
