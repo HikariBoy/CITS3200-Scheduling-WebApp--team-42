@@ -1364,47 +1364,65 @@
           <section id="panel-team" class="uc-panel" role="tabpanel" aria-labelledby="tab-team" hidden>
             <div class="flex items-center justify-between mb-4">
               <div>
-                <h2 class="text-xl font-semibold">Session Swap Management</h2>
-                <p class="text-gray-600 text-sm">Review and approve session swap requests from facilitators</p>
+                <h2 class="text-xl font-semibold">Session Swap History</h2>
+                <p class="text-gray-600 text-sm">View all completed session transfers in this unit</p>
               </div>
-              {% if approvals and approvals.pending %}
-                <span class="uc-badge">{{ approvals.pending }} pending approvals</span>
-              {% endif %}
+            </div>
+
+            <!-- Info box explaining instant swap system -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div class="flex items-start gap-3">
+                <span class="material-icons text-blue-600">info</span>
+                <div>
+                  <h4 class="font-semibold text-blue-900 mb-1">How Session Swaps Work</h4>
+                  <p class="text-sm text-blue-800">
+                    Session swaps are <strong>instantly processed</strong> when facilitators submit them. 
+                    Both facilitators must confirm the swap beforehand. The system automatically updates 
+                    assignments, schedules, and unavailability across all units to prevent conflicts.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <!-- summary stats row -->
             <div class="uc-stats">
               <div class="uc-stat">
-                <div class="uc-stat__value uc-stat__value--orange">{{ approvals.pending or 0 }}</div>
-                <div class="uc-stat__label">Pending Approval</div>
-              </div>
-              <div class="uc-stat">
                 <div class="uc-stat__value uc-stat__value--green">{{ approvals.approved_this_week or 0 }}</div>
-                <div class="uc-stat__label">Approved This Week</div>
+                <div class="uc-stat__label">Swaps This Week</div>
               </div>
               <div class="uc-stat">
                 <div class="uc-stat__value uc-stat__value--blue">{{ approvals.total or 0 }}</div>
-                <div class="uc-stat__label">Total Requests</div>
+                <div class="uc-stat__label">Total Swaps</div>
+              </div>
+              <div class="uc-stat">
+                <div class="uc-stat__value uc-stat__value--purple">
+                  {% if approvals.total and approvals.total > 0 %}
+                    {{ ((approvals.approved_this_week or 0) * 100 / approvals.total)|round|int }}%
+                  {% else %}
+                    0%
+                  {% endif %}
+                </div>
+                <div class="uc-stat__label">Activity Rate</div>
               </div>
             </div>
 
-            <!-- detailed approval queue -->
+            <!-- detailed swap history -->
             <div class="mt-6">
               <header class="flex items-center gap-2 mb-3">
-                <span class="material-icons text-gray-700">task_alt</span>
-                <h3 class="font-semibold text-gray-900">Approval Queue</h3>
+                <span class="material-icons text-gray-700">history</span>
+                <h3 class="font-semibold text-gray-900">Recent Swap History</h3>
               </header>
 
               {% if pending_requests and pending_requests|length %}
                 <div class="space-y-4">
                   {% for r in pending_requests %}
-                    <article class="swap-card">
+                    <article class="swap-card" style="border-left: 4px solid #10b981;">
                       <header class="swap-card__hdr">
                         <div class="flex items-center gap-2">
-                          <span class="material-icons text-rose-500">swap_horiz</span>
-                          <h4 class="font-semibold">Pending Swap Request</h4>
-                          <span class="swap-chip">
-                            Submitted {{ r.created_at.strftime("%a %b %d, %I:%M %p") if r.created_at else "—" }}
+                          <span class="material-icons text-green-600">check_circle</span>
+                          <h4 class="font-semibold text-green-700">Completed Swap</h4>
+                          <span class="swap-chip" style="background-color: #d1fae5; color: #065f46;">
+                            ✓ Completed {{ r.created_at.strftime("%a %b %d, %I:%M %p") if r.created_at else "—" }}
                           </span>
                         </div>
                       </header>
@@ -1463,26 +1481,25 @@
                       </div>
 
 
-                      <footer class="swap-card__ftr">
-                        <form method="POST" action="{{ url_for('unitcoordinator.reject_swap', swap_id=r.id, unit=current_unit.id) }}">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <button type="submit" class="btn btn-reject">
-                            <span class="material-icons text-base">close</span> Reject
-                          </button>
-                        </form>
-                        <form method="POST" action="{{ url_for('unitcoordinator.approve_swap', swap_id=r.id, unit=current_unit.id) }}">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <button type="submit" class="btn btn-approve">
-                            <span class="material-icons text-base">check</span> Approve
-                          </button>
-                        </form>
+                      <footer class="swap-card__ftr" style="background-color: #f0fdf4; border-top: 1px solid #bbf7d0;">
+                        <div class="flex items-center gap-2 text-sm text-green-700">
+                          <span class="material-icons text-base">info</span>
+                          <span>
+                            <strong>Instant Transfer:</strong> Assignment and unavailability automatically updated. 
+                            Both facilitators received email notifications.
+                          </span>
+                        </div>
                       </footer>
                     </article>
 
                   {% endfor %}
                 </div>
               {% else %}
-                <div class="uc-panel-empty">No pending swap requests.</div>
+                <div class="uc-panel-empty">
+                  <span class="material-icons text-gray-400 text-5xl mb-2">swap_horiz</span>
+                  <p class="font-semibold text-gray-700">No Swaps Yet</p>
+                  <p class="text-sm text-gray-500">Session swaps will appear here once facilitators transfer sessions.</p>
+                </div>
               {% endif %}
             </div>
           </section>

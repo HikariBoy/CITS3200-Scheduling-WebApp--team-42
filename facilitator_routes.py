@@ -2237,15 +2237,7 @@ def get_available_facilitators():
     
     available_facilitators = []
     
-    print(f"\n{'='*80}")
-    print(f"🔍 DEBUGGING AVAILABLE FACILITATORS FOR SESSION {session.id}")
-    print(f"Session: {module.module_name} on {session.start_time}")
-    print(f"Checking {len(unit_facilitators)} facilitators in unit {unit.unit_code}")
-    print(f"{'='*80}\n")
-    
     for facilitator in unit_facilitators:
-        print(f"Checking: {facilitator.full_name} ({facilitator.email})")
-        
         # Check availability for the session time
         # Exclude the current session from conflict check (facilitator might already be assigned to it)
         is_available, reason = check_facilitator_availability(
@@ -2256,9 +2248,6 @@ def get_available_facilitators():
             unit.id,
             exclude_session_id=session.id
         )
-        
-        print(f"  Availability check: {'✅ AVAILABLE' if is_available else '❌ NOT AVAILABLE'}")
-        print(f"  Reason: {reason}")
         
         # Check if facilitator has required skills for this module
         has_skills = True
@@ -2271,16 +2260,11 @@ def get_available_facilitators():
         
         if facilitator_skill:
             skill_level = facilitator_skill.skill_level.value.replace('_', ' ').title()
-            print(f"  Skill level: {skill_level}")
             # Only include facilitators with some level of skill (not "no_interest")
             if facilitator_skill.skill_level.value == 'no_interest':
                 has_skills = False
-                print(f"  ❌ EXCLUDED: No interest in this module")
-        else:
-            print(f"  ⚠️  No skill record found")
         
         if is_available and has_skills:
-            print(f"  ✅ ADDED TO LIST as AVAILABLE")
             available_facilitators.append({
                 'id': facilitator.id,
                 'name': facilitator.full_name,
@@ -2289,7 +2273,6 @@ def get_available_facilitators():
                 'reason': 'Available'
             })
         elif not is_available:
-            print(f"  ⚠️  ADDED TO LIST as UNAVAILABLE")
             available_facilitators.append({
                 'id': facilitator.id,
                 'name': facilitator.full_name,
@@ -2298,10 +2281,6 @@ def get_available_facilitators():
                 'reason': reason,
                 'available': False
             })
-        else:
-            print(f"  ❌ NOT ADDED: Available but no skills")
-        
-        print()
     
     # Sort by availability status and name
     available_facilitators.sort(key=lambda x: (x.get('available', True), x['name']))
