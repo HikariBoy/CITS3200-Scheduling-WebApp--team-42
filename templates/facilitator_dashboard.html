@@ -796,7 +796,7 @@
     <!-- Header -->
     <div class="swaps-header">
       <h2>Session Swaps</h2>
-      <p class="swaps-subtitle">Request shift swaps when you cannot attend scheduled sessions.</p>
+      <p class="swaps-subtitle">Transfer sessions to colleagues when you cannot attend. Swaps are processed instantly after validation.</p>
     </div>
     
     <!-- Unit Information Card (hidden in unavailability view since it's global) -->
@@ -820,8 +820,19 @@
     
     <!-- Swap Requests Sections -->
     <div class="swap-requests-container">
-      <!-- Incoming Requests -->
-      <div class="requests-section incoming-requests">
+      <!-- Completed Swaps -->
+      <div class="requests-section">
+        <div class="section-header">
+          <span class="material-icons section-icon approved">check_circle</span>
+          <h3>Completed Swaps <span id="approved-count" class="count-badge">0</span></h3>
+        </div>
+        <div id="approved-requests-list" class="requests-list">
+          <!-- Completed swaps will be populated here -->
+        </div>
+      </div>
+      
+      <!-- Incoming Requests (Hidden - not used in current workflow) -->
+      <div class="requests-section incoming-requests" style="display: none;">
         <div class="section-header">
           <span class="material-icons section-icon incoming">inbox</span>
           <h3>Incoming Requests <span id="incoming-count" class="count-badge">0</span></h3>
@@ -831,20 +842,8 @@
         </div>
       </div>
       
-      
-      <!-- Approved Requests -->
-      <div class="requests-section">
-        <div class="section-header">
-          <span class="material-icons section-icon approved">check_circle</span>
-          <h3>Approved Requests <span id="approved-count" class="count-badge">0</span></h3>
-        </div>
-        <div id="approved-requests-list" class="requests-list">
-          <!-- Approved requests will be populated here -->
-        </div>
-      </div>
-      
-      <!-- Declined Requests -->
-      <div class="requests-section">
+      <!-- Declined Requests (Hidden - not used in current workflow) -->
+      <div class="requests-section" style="display: none;">
         <div class="section-header">
           <span class="material-icons section-icon declined">cancel</span>
           <h3>Declined Requests <span id="declined-count" class="count-badge">0</span></h3>
@@ -862,34 +861,34 @@
         <div class="step">
           <div class="step-number">1</div>
           <div class="step-content">
-            <h4>Submit Request</h4>
-            <p>Select the session you can't attend and suggest a replacement facilitator you've already spoken with.</p>
+            <h4>Discuss with Colleague</h4>
+            <p>Before submitting, speak with a colleague who can cover your session. Confirm they're available and willing to take it.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-number">2</div>
           <div class="step-content">
-            <h4>Faciiltator and Unit Coordinator Review</h4>
-            <p>Your suggested facilitator will first review the request, and once they approve the request, the request will go through to the unit coordinator for review and approval.</p>
+            <h4>Submit Swap Request</h4>
+            <p>Select the session you can't attend and choose the replacement facilitator you've already discussed with.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-number">3</div>
           <div class="step-content">
-            <h4>Get Notification</h4>
-            <p>You will receive a notification when your request is approved or if changes are needed.</p>
+            <h4>Instant Transfer</h4>
+            <p>The system validates availability and skills, then immediately transfers the session to your colleague.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-number">4</div>
           <div class="step-content">
             <h4>Schedule Updated</h4>
-            <p>Once approved, the schedule is automatically updated and all relevant parties are notified.</p>
+            <p>Both schedules are updated instantly. The session now appears on your colleague's calendar and is removed from yours.</p>
           </div>
         </div>
       </div>
       <div class="tip-box">
-        <strong>Tip:</strong> Always discuss with potential replacement facilitators before submitting a request. This helps ensure faster approval and shows consideration for your colleagues.
+        <strong>Important:</strong> Always discuss with your replacement facilitator BEFORE submitting. Once submitted, the swap happens immediately and cannot be undone. Make sure they're genuinely available and willing to cover the session.
       </div>
     </div>
   </div>
@@ -977,43 +976,43 @@
 <div id="request-swap-modal" class="modal-overlay" style="display: none;">
   <div class="modal-content">
     <div class="modal-header">
-      <h2>Request Session Swap</h2>
+      <h2>Transfer Session</h2>
       <button id="request-swap-modal-close" class="modal-close-btn">
         <span class="material-icons">close</span>
       </button>
     </div>
     <div class="modal-body">
-      <p class="modal-subtitle">Select a session you need to swap and provide details about your request.</p>
+      <p class="modal-subtitle">Select a session to transfer and choose a replacement facilitator. The transfer will happen immediately.</p>
       
       <form id="request-swap-form">
         <div class="form-group">
           <label for="session-select">Select Session*</label>
           <select id="session-select" name="session_id" required>
-            <option value="">Choose a session to swap</option>
+            <option value="">Choose a session to transfer</option>
             <!-- Sessions will be populated by JavaScript -->
           </select>
         </div>
         
         <div class="form-group">
-          <label for="suggested-facilitator">Suggested Replacement Facilitator*</label>
+          <label for="suggested-facilitator">Replacement Facilitator*</label>
           <select id="suggested-facilitator" name="suggested_facilitator_id" required>
             <option value="">Select a facilitator you've discussed with</option>
             <!-- Available facilitators will be populated by JavaScript -->
           </select>
-          <p class="form-help">Choose someone you've already spoken with about covering this session.</p>
+          <p class="form-help">Only facilitators with the required skills and availability are shown.</p>
         </div>
         
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" id="has-discussed" name="has_discussed" required>
             <span class="checkbox-custom"></span>
-            I have discussed this swap with the suggested facilitator
+            I confirm I have discussed this with the replacement facilitator and they have agreed to take this session
           </label>
         </div>
         
         <div class="modal-actions">
           <button type="button" id="cancel-swap-request" class="btn-secondary">Cancel</button>
-          <button type="submit" class="btn-primary">Submit Request</button>
+          <button type="submit" class="btn-primary">Transfer Session</button>
         </div>
       </form>
     </div>
