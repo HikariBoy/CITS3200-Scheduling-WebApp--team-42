@@ -1364,125 +1364,112 @@
           <section id="panel-team" class="uc-panel" role="tabpanel" aria-labelledby="tab-team" hidden>
             <div class="flex items-center justify-between mb-4">
               <div>
-                <h2 class="text-xl font-semibold">Session Swap Management</h2>
-                <p class="text-gray-600 text-sm">Review and approve session swap requests from facilitators</p>
+                <h2 class="text-xl font-semibold">Session Swap History</h2>
+                <p class="text-gray-600 text-sm">View all completed session transfers in this unit</p>
               </div>
-              {% if approvals and approvals.pending %}
-                <span class="uc-badge">{{ approvals.pending }} pending approvals</span>
-              {% endif %}
+              <button onclick="downloadSwapHistory()" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <span class="material-icons text-base">download</span>
+                Download CSV
+              </button>
+            </div>
+
+            <!-- Info box explaining instant swap system -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div class="flex items-start gap-2">
+                <span class="material-icons text-blue-600 text-lg">info</span>
+                <p class="text-xs text-blue-800">
+                  <strong>Instant Transfer:</strong> Swaps are automatically processed when submitted. 
+                  Both facilitators must confirm beforehand. System updates assignments and unavailability across all units.
+                </p>
+              </div>
             </div>
 
             <!-- summary stats row -->
-            <div class="uc-stats">
-              <div class="uc-stat">
-                <div class="uc-stat__value uc-stat__value--orange">{{ approvals.pending or 0 }}</div>
-                <div class="uc-stat__label">Pending Approval</div>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="material-icons text-blue-600">swap_horiz</span>
+                <span class="text-sm text-gray-700">Total session transfers in this unit</span>
               </div>
-              <div class="uc-stat">
-                <div class="uc-stat__value uc-stat__value--green">{{ approvals.approved_this_week or 0 }}</div>
-                <div class="uc-stat__label">Approved This Week</div>
-              </div>
-              <div class="uc-stat">
-                <div class="uc-stat__value uc-stat__value--blue">{{ approvals.total or 0 }}</div>
-                <div class="uc-stat__label">Total Requests</div>
-              </div>
+              <div class="text-2xl font-bold text-blue-600">{{ approvals.total or 0 }}</div>
             </div>
 
-            <!-- detailed approval queue -->
-            <div class="mt-6">
+            <!-- detailed swap history -->
+            <div>
               <header class="flex items-center gap-2 mb-3">
-                <span class="material-icons text-gray-700">task_alt</span>
-                <h3 class="font-semibold text-gray-900">Approval Queue</h3>
+                <span class="material-icons text-gray-700 text-lg">history</span>
+                <h3 class="text-sm font-semibold text-gray-900">Recent Swaps</h3>
               </header>
 
               {% if pending_requests and pending_requests|length %}
-                <div class="space-y-4">
+                <div class="space-y-3">
                   {% for r in pending_requests %}
-                    <article class="swap-card">
-                      <header class="swap-card__hdr">
+                    <article class="swap-card" style="border-left: 3px solid #10b981; padding: 12px;">
+                      <!-- Session info at top -->
+                      <div class="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
                         <div class="flex items-center gap-2">
-                          <span class="material-icons text-rose-500">swap_horiz</span>
-                          <h4 class="font-semibold">Pending Swap Request</h4>
-                          <span class="swap-chip">
-                            Submitted {{ r.created_at.strftime("%a %b %d, %I:%M %p") if r.created_at else "—" }}
-                          </span>
-                        </div>
-                      </header>
-
-                      <div class="swap-card__body">
-                        <!-- Left: requester -->
-                        <div class="swap-col">
-                          <div class="swap-person">
-                            <div class="swap-avatar">{{ (r.req_first or r.req_email|default(''))[:1] }}</div>
-                            <div>
-                              <div class="swap-name">
-                                {{ (r.req_first ~ ' ' ~ r.req_last)|trim if r.req_first or r.req_last else r.req_email }}
-                              </div>
-                              <div class="swap-sub">Requester</div>
-                            </div>
-                          </div>
-
-                          <div class="swap-side-title text-rose-600">Giving up</div>
-                          <div class="swap-side-session">
-                            <div class="title">{{ r.req_module or ("Session #" ~ r.req_sess_id) }}</div>
-                            <div class="meta">
+                          <span class="material-icons text-blue-600" style="font-size: 18px;">event</span>
+                          <div>
+                            <div class="text-sm font-semibold text-gray-900">{{ r.req_module or ("Session #" ~ r.req_sess_id) }}</div>
+                            <div class="text-xs text-gray-500">
                               {% if r.req_start and r.req_end %}
-                                {{ r.req_start.strftime("%A, %b %d") }} • {{ r.req_start.strftime("%H:%M") }}–{{ r.req_end.strftime("%H:%M") }}
+                                {{ r.req_start.strftime("%a, %b %d") }} • {{ r.req_start.strftime("%H:%M") }}–{{ r.req_end.strftime("%H:%M") }}
                               {% else %} — {% endif %}
                             </div>
                           </div>
                         </div>
+                        <div class="flex items-center gap-1 text-xs text-gray-400">
+                          <span class="material-icons" style="font-size: 14px;">schedule</span>
+                          {{ (r.created_at|perth_time).strftime("%b %d, %I:%M %p") if r.created_at else "—" }}
+                        </div>
+                      </div>
 
-                        <!-- Middle chevron -->
-                        <div class="swap-arrow">
-                          <span class="material-icons">chevron_right</span>
+                      <!-- People swap -->
+                      <div class="flex items-center gap-3">
+                        <!-- From person -->
+                        <div class="flex items-center gap-2 flex-1">
+                          <div class="swap-avatar" style="width: 32px; height: 32px; font-size: 14px;">{{ (r.req_first or r.req_email|default(''))[:1] }}</div>
+                          <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-900">
+                              {{ (r.req_first ~ ' ' ~ r.req_last)|trim if r.req_first or r.req_last else r.req_email }}
+                            </div>
+                            <div class="text-xs text-gray-500">{{ r.req_email }}</div>
+                          </div>
                         </div>
 
-                        <!-- Right: target -->
-                        <div class="swap-col">
-                          <div class="swap-person">
-                            <div class="swap-avatar">{{ (r.tgt_first or r.tgt_email|default(''))[:1] }}</div>
-                            <div>
-                              <div class="swap-name">
-                                {{ (r.tgt_first ~ ' ' ~ r.tgt_last)|trim if r.tgt_first or r.tgt_last else r.tgt_email }}
-                              </div>
-                              <div class="swap-sub">Target</div>
-                            </div>
-                          </div>
+                        <!-- Arrow -->
+                        <div class="flex flex-col items-center px-2">
+                          <span class="material-icons text-green-600" style="font-size: 20px;">arrow_forward</span>
+                        </div>
 
-                          <div class="swap-side-title text-emerald-700">Taking on</div>
-                          <div class="swap-side-session">
-                            <div class="title">{{ r.tgt_module or ("Session #" ~ r.tgt_sess_id) }}</div>
-                            <div class="meta">
-                              {% if r.tgt_start and r.tgt_end %}
-                                {{ r.tgt_start.strftime("%A, %b %d") }} • {{ r.tgt_start.strftime("%H:%M") }}–{{ r.tgt_end.strftime("%H:%M") }}
-                              {% else %} — {% endif %}
+                        <!-- To person -->
+                        <div class="flex items-center gap-2 flex-1">
+                          <div class="swap-avatar" style="width: 32px; height: 32px; font-size: 14px;">{{ (r.tgt_first or r.tgt_email|default(''))[:1] }}</div>
+                          <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-900">
+                              {{ (r.tgt_first ~ ' ' ~ r.tgt_last)|trim if r.tgt_first or r.tgt_last else r.tgt_email }}
                             </div>
+                            <div class="text-xs text-gray-500">{{ r.tgt_email }}</div>
                           </div>
                         </div>
                       </div>
 
 
-                      <footer class="swap-card__ftr">
-                        <form method="POST" action="{{ url_for('unitcoordinator.reject_swap', swap_id=r.id, unit=current_unit.id) }}">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <button type="submit" class="btn btn-reject">
-                            <span class="material-icons text-base">close</span> Reject
-                          </button>
-                        </form>
-                        <form method="POST" action="{{ url_for('unitcoordinator.approve_swap', swap_id=r.id, unit=current_unit.id) }}">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <button type="submit" class="btn btn-approve">
-                            <span class="material-icons text-base">check</span> Approve
-                          </button>
-                        </form>
+                      <footer class="swap-card__ftr" style="background-color: #f0fdf4; border-top: 1px solid #bbf7d0; padding: 8px;">
+                        <div class="flex items-center gap-2 text-xs text-green-700">
+                          <span class="material-icons" style="font-size: 14px;">check</span>
+                          <span>Auto-updated assignments, unavailability, and sent email notifications</span>
+                        </div>
                       </footer>
                     </article>
 
                   {% endfor %}
                 </div>
               {% else %}
-                <div class="uc-panel-empty">No pending swap requests.</div>
+                <div class="uc-panel-empty">
+                  <span class="material-icons text-gray-400 text-5xl mb-2">swap_horiz</span>
+                  <p class="font-semibold text-gray-700">No Swaps Yet</p>
+                  <p class="text-sm text-gray-500">Session swaps will appear here once facilitators transfer sessions.</p>
+                </div>
               {% endif %}
             </div>
           </section>
@@ -2614,9 +2601,9 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <label style="font-weight: 600; color: #374151;">Email Notifications</label>
           <div style="display: flex; gap: 8px;">
-            <button type="button" onclick="selectAllFacilitators(true)" style="font-size: 12px; color: #3b82f6; background: none; border: none; cursor: pointer; text-decoration: underline;">Select All</button>
-            <button type="button" onclick="selectOnlyChangedFacilitators()" style="font-size: 12px; color: #f59e0b; background: none; border: none; cursor: pointer; text-decoration: underline;">Select Only Changed</button>
-            <button type="button" onclick="selectAllFacilitators(false)" style="font-size: 12px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline;">Deselect All</button>
+            <button type="button" id="publish-select-all-btn" style="font-size: 12px; color: #3b82f6; background: none; border: none; cursor: pointer; text-decoration: underline;">Select All</button>
+            <button type="button" id="publish-select-changed-btn" style="font-size: 12px; color: #f59e0b; background: none; border: none; cursor: pointer; text-decoration: underline;">Select Only Changed</button>
+            <button type="button" id="publish-deselect-all-btn" style="font-size: 12px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline;">Deselect All</button>
           </div>
         </div>
         <div id="publish-facilitator-list" style="max-height: 150px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb;">

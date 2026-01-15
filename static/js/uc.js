@@ -6768,72 +6768,31 @@ function renderFacilitatorList() {
     return;
   }
   
-  // Separate available and unavailable facilitators
-  const availableFacilitators = filteredFacilitators.filter(f => !f.is_unavailable);
-  const unavailableFacilitators = filteredFacilitators.filter(f => f.is_unavailable);
-  
+  // Render all facilitators in one list (no separation)
   let html = '';
   
-  // Render Available section
-  if (availableFacilitators.length > 0) {
-    html += `
-      <div style="padding: 12px 16px; background: #f0fdf4; border-bottom: 2px solid #86efac; font-weight: 600; color: #166534; display: flex; align-items: center; gap: 8px;">
-        <span class="material-icons" style="font-size: 20px;">check_circle</span>
-        Available Facilitators (${availableFacilitators.length})
-      </div>
-    `;
+  html += filteredFacilitators.map((facilitator) => {
+    // Use selectedFacilitators to determine checked state (preserves user's selections during search)
+    const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
+    const isUnavailable = facilitator.is_unavailable;
     
-    html += availableFacilitators.map((facilitator) => {
-      // Use selectedFacilitators to determine checked state (preserves user's selections during search)
-      const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
-      
-      return `
-        <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
-          <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
-          <div class="facilitator-avatar">
-            ${getFacilitatorInitials(facilitator.name)}
-          </div>
-          <div class="facilitator-info">
-            <div class="facilitator-name">${facilitator.name}</div>
-            <div class="facilitator-email" style="display: flex; align-items: center; gap: 4px;">
-              ${facilitator.email}
-              ${facilitator.skill_label ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
-            </div>
+    return `
+      <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
+        <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
+        <div class="facilitator-avatar">
+          ${getFacilitatorInitials(facilitator.name)}
+        </div>
+        <div class="facilitator-info">
+          <div class="facilitator-name">${facilitator.name}</div>
+          <div class="facilitator-email">${facilitator.email}</div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+            ${facilitator.skill_label ? `<span style="padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
+            ${isUnavailable ? `<span style="padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 2px;"><span class="material-icons" style="font-size: 12px;">event_busy</span>${facilitator.unavailability_reason || 'Unavailable'}</span>` : ''}
           </div>
         </div>
-      `;
-    }).join('');
-  }
-  
-  // Render Unavailable section
-  if (unavailableFacilitators.length > 0) {
-    html += `
-      <div style="padding: 12px 16px; background: #fef3c7; border-bottom: 2px solid #fbbf24; font-weight: 600; color: #92400e; display: flex; align-items: center; gap: 8px; margin-top: ${availableFacilitators.length > 0 ? '8px' : '0'};">
-        <span class="material-icons" style="font-size: 20px;">warning</span>
-        Unavailable (${unavailableFacilitators.length})
       </div>
     `;
-    
-    html += unavailableFacilitators.map((facilitator) => {
-      return `
-        <div class="facilitator-item" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}" style="opacity: 0.6; background: #fef3c7; cursor: not-allowed;">
-          <div class="facilitator-avatar" style="background: #fbbf24;">
-            ${getFacilitatorInitials(facilitator.name)}
-          </div>
-          <div class="facilitator-info">
-            <div class="facilitator-name" style="color: #92400e;">${facilitator.name}</div>
-            <div class="facilitator-email" style="color: #92400e;">
-              <span class="material-icons" style="font-size: 14px; vertical-align: middle;">event_busy</span>
-              ${facilitator.unavailability_reason || 'Unavailable'}
-            </div>
-          </div>
-          <div style="margin-left: auto; padding: 4px 8px; background: #fbbf24; color: #78350f; border-radius: 4px; font-size: 11px; font-weight: 600;">
-            UNAVAILABLE
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
+  }).join('');
   
   facilitatorList.innerHTML = html;
   
@@ -7458,6 +7417,9 @@ async function openPublishConfirmation() {
       // Populate facilitator list with checkboxes
       publishFacilitatorsList = data.facilitators || [];
       renderPublishFacilitatorList();
+      
+      // Attach event listeners to buttons (do this after modal is shown)
+      attachPublishButtonListeners();
     } else {
       // Fallback to counting visible sessions
       document.getElementById('publish-session-count').textContent = '0';
@@ -7505,19 +7467,88 @@ function renderPublishFacilitatorList() {
   listEl.innerHTML = html;
 }
 
-function selectAllFacilitators(selectAll) {
+function attachPublishButtonListeners() {
+  console.log('Attaching publish button listeners...');
+  
+  const selectAllBtn = document.getElementById('publish-select-all-btn');
+  const selectChangedBtn = document.getElementById('publish-select-changed-btn');
+  const deselectAllBtn = document.getElementById('publish-deselect-all-btn');
+  
+  if (selectAllBtn) {
+    // Remove any existing listeners first
+    selectAllBtn.replaceWith(selectAllBtn.cloneNode(true));
+    const newSelectAllBtn = document.getElementById('publish-select-all-btn');
+    newSelectAllBtn.addEventListener('click', function(e) {
+      console.log('SELECT ALL CLICKED!');
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        console.log('About to call selectAllPublishFacilitators(true)');
+        selectAllPublishFacilitators(true);
+        console.log('selectAllPublishFacilitators(true) completed');
+      } catch (err) {
+        console.error('ERROR in Select All:', err);
+      }
+      return false;
+    }, true);
+    console.log('Select All button listener attached');
+  }
+  
+  if (selectChangedBtn) {
+    selectChangedBtn.replaceWith(selectChangedBtn.cloneNode(true));
+    const newSelectChangedBtn = document.getElementById('publish-select-changed-btn');
+    newSelectChangedBtn.addEventListener('click', function(e) {
+      console.log('SELECT CHANGED CLICKED!');
+      e.preventDefault();
+      e.stopPropagation();
+      selectOnlyChangedFacilitators();
+      return false;
+    }, true);
+    console.log('Select Changed button listener attached');
+  }
+  
+  if (deselectAllBtn) {
+    deselectAllBtn.replaceWith(deselectAllBtn.cloneNode(true));
+    const newDeselectAllBtn = document.getElementById('publish-deselect-all-btn');
+    newDeselectAllBtn.addEventListener('click', function(e) {
+      console.log('DESELECT ALL CLICKED!');
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        console.log('About to call selectAllPublishFacilitators(false)');
+        selectAllPublishFacilitators(false);
+        console.log('selectAllPublishFacilitators(false) completed');
+      } catch (err) {
+        console.error('ERROR in Deselect All:', err);
+      }
+      return false;
+    }, true);
+    console.log('Deselect All button listener attached');
+  }
+}
+
+function selectAllPublishFacilitators(selectAll) {
+  console.log('selectAllPublishFacilitators called with:', selectAll);
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
-  checkboxes.forEach(cb => cb.checked = selectAll);
+  console.log('Found checkboxes:', checkboxes.length);
+  checkboxes.forEach(cb => {
+    cb.checked = selectAll;
+  });
   updatePublishCount();
 }
 
 function selectOnlyChangedFacilitators() {
+  console.log('selectOnlyChangedFacilitators called');
   const checkboxes = document.querySelectorAll('#publish-facilitator-list input[type="checkbox"]');
+  console.log('Found checkboxes:', checkboxes.length);
+  let changedCount = 0;
   checkboxes.forEach(cb => {
     // Check if this facilitator has changes (stored in data attribute)
     const hasChanges = cb.dataset.hasChanges === 'true';
+    if (hasChanges) changedCount++;
     cb.checked = hasChanges;
   });
+  console.log('Facilitators with changes:', changedCount);
   updatePublishCount();
 }
 
@@ -8420,3 +8451,43 @@ resetCreateUnitWizard = function() {
   originalResetWizard();
   resetCoordinators();
 };
+
+// ===== Swap History CSV Download =====
+function downloadSwapHistory() {
+  // Get current unit ID from the page
+  const unitId = window.CURRENT_UNIT_ID || document.querySelector('[data-unit-id]')?.dataset.unitId;
+  
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  // Fetch swap data from the backend
+  fetch(`/unitcoordinator/swap-history-csv?unit_id=${unitId}`, {
+    headers: {
+      'X-CSRFToken': CSRF_TOKEN
+    }
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Failed to fetch swap history');
+    }
+    return response.blob();
+  })
+  .then(blob => {
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `swap_history_unit_${unitId}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    showSimpleNotification('Swap history downloaded successfully', 'success');
+  })
+  .catch(error => {
+    console.error('Error downloading swap history:', error);
+    showSimpleNotification('Error downloading swap history', 'error');
+  });
+}

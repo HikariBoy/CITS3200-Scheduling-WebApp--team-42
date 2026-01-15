@@ -1458,3 +1458,200 @@ Your Scheduling Team
         traceback.print_exc()
         print(f"{'='*60}\n")
         return False
+
+
+def send_session_swap_emails(requester_email, requester_name, target_email, target_name, 
+                             session_details, unit_code, base_url=None):
+    """
+    Send emails to both facilitators involved in a session swap.
+    
+    Args:
+        requester_email: Email of facilitator who requested the swap
+        requester_name: Name of requester
+        target_email: Email of facilitator who received the session
+        target_name: Name of target
+        session_details: Dict with session_name, date, time, location
+        unit_code: Unit code
+        base_url: Base URL for links
+    """
+    use_mock = os.environ.get('USE_MOCK_EMAIL', 'false').lower() == 'true'
+    
+    if base_url is None:
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    
+    # Email to target facilitator (who received the session)
+    target_subject = f"New Session Assigned - {unit_code}"
+    target_body_html = f"""
+    <html>
+      <head>
+        <style>
+          body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+          .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+          .header {{ background-color: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+          .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+          .session-box {{ background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb; }}
+          .detail-row {{ margin: 10px 0; }}
+          .label {{ font-weight: bold; color: #6b7280; }}
+          .button {{ display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; margin-top: 20px; }}
+          .footer {{ text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }}
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0;">Session Transferred to You</h1>
+          </div>
+          <div class="content">
+            <p>Hi {target_name},</p>
+            
+            <p>A session has been transferred to you by <strong>{requester_name}</strong>.</p>
+            
+            <div class="session-box">
+              <h3 style="margin-top: 0; color: #2563eb;">Session Details</h3>
+              <div class="detail-row">
+                <span class="label">Unit:</span> {unit_code}
+              </div>
+              <div class="detail-row">
+                <span class="label">Session:</span> {session_details.get('session_name', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Date:</span> {session_details.get('date', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Time:</span> {session_details.get('time', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Location:</span> {session_details.get('location', 'TBA')}
+              </div>
+            </div>
+            
+            <p>This session is now on your schedule. Please review your updated calendar.</p>
+            
+            <a href="{base_url}/facilitator/dashboard" class="button">View My Schedule</a>
+            
+            <div class="footer">
+              <p>This is an automated notification from ScheduleME.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    
+    # Email to requester (confirmation)
+    requester_subject = f"Session Swap Confirmed - {unit_code}"
+    requester_body_html = f"""
+    <html>
+      <head>
+        <style>
+          body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+          .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+          .header {{ background-color: #10b981; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+          .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+          .session-box {{ background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981; }}
+          .detail-row {{ margin: 10px 0; }}
+          .label {{ font-weight: bold; color: #6b7280; }}
+          .button {{ display: inline-block; padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; margin-top: 20px; }}
+          .footer {{ text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }}
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0;">✓ Session Swap Confirmed</h1>
+          </div>
+          <div class="content">
+            <p>Hi {requester_name},</p>
+            
+            <p>Your session has been successfully transferred to <strong>{target_name}</strong>.</p>
+            
+            <div class="session-box">
+              <h3 style="margin-top: 0; color: #10b981;">Transferred Session</h3>
+              <div class="detail-row">
+                <span class="label">Unit:</span> {unit_code}
+              </div>
+              <div class="detail-row">
+                <span class="label">Session:</span> {session_details.get('session_name', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Date:</span> {session_details.get('date', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Time:</span> {session_details.get('time', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Transferred to:</span> {target_name}
+              </div>
+            </div>
+            
+            <p>This session has been removed from your schedule.</p>
+            
+            <a href="{base_url}/facilitator/dashboard" class="button">View My Schedule</a>
+            
+            <div class="footer">
+              <p>This is an automated notification from ScheduleME.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    
+    if use_mock:
+        print(f"\n{'='*60}")
+        print("📧 MOCK EMAIL - Session Swap Notification (Target)")
+        print(f"To: {target_email}")
+        print(f"Subject: {target_subject}")
+        print(f"Session: {session_details.get('session_name')} on {session_details.get('date')}")
+        print(f"{'='*60}\n")
+        
+        print(f"\n{'='*60}")
+        print("📧 MOCK EMAIL - Session Swap Confirmation (Requester)")
+        print(f"To: {requester_email}")
+        print(f"Subject: {requester_subject}")
+        print(f"Session: {session_details.get('session_name')} transferred to {target_name}")
+        print(f"{'='*60}\n")
+        return True
+    
+    # Send real emails
+    try:
+        ses_client = boto3.client(
+            'ses',
+            region_name=os.environ.get('SES_REGION', 'ap-southeast-1'),
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+        )
+        
+        sender_email = os.environ.get('SES_SENDER_EMAIL', 'noreply@scheduleme.com')
+        
+        # Send to target
+        ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [target_email]},
+            Message={
+                'Subject': {'Data': target_subject, 'Charset': 'UTF-8'},
+                'Body': {'Html': {'Data': target_body_html, 'Charset': 'UTF-8'}}
+            }
+        )
+        
+        # Send to requester
+        ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [requester_email]},
+            Message={
+                'Subject': {'Data': requester_subject, 'Charset': 'UTF-8'},
+                'Body': {'Html': {'Data': requester_body_html, 'Charset': 'UTF-8'}}
+            }
+        )
+        
+        print(f"✅ Swap notification emails sent to {target_email} and {requester_email}")
+        return True
+        
+    except ClientError as e:
+        print(f"❌ AWS ClientError sending swap emails: {e.response['Error']['Message']}")
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected error sending swap emails: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False

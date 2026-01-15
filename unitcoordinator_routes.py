@@ -9,6 +9,7 @@ from sqlalchemy import func
 from datetime import date
 from sqlalchemy.orm import aliased
 from sqlalchemy import or_
+import pytz
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
@@ -29,6 +30,24 @@ logger = logging.getLogger(__name__)
 unitcoordinator_bp = Blueprint(
     "unitcoordinator", __name__, url_prefix="/unitcoordinator"
 )
+
+# Timezone configuration - Perth/WA time
+PERTH_TZ = pytz.timezone('Australia/Perth')
+
+def to_perth_time(utc_dt):
+    """Convert UTC datetime to Perth time"""
+    if utc_dt is None:
+        return None
+    if utc_dt.tzinfo is None:
+        # Assume UTC if no timezone
+        utc_dt = pytz.utc.localize(utc_dt)
+    return utc_dt.astimezone(PERTH_TZ)
+
+# Register as Jinja2 filter
+@unitcoordinator_bp.app_template_filter('perth_time')
+def perth_time_filter(utc_dt):
+    """Jinja2 filter to convert UTC to Perth time"""
+    return to_perth_time(utc_dt)
 
 # ------------------------------------------------------------------------------
 # Helper Functions
@@ -346,6 +365,10 @@ def _parse_time_range(s: str):
     return h1, m1, h2, m2
 
 def _pending_swaps_for_unit(unit_id):
+    """
+    Get completed (approved) swap requests for a unit to show in swap history.
+    Note: Despite the function name, this now returns APPROVED swaps since we use instant approval.
+    """
     RA = aliased(Assignment)   # requester assignment
     TA = aliased(Assignment)   # target assignment
     RS = aliased(Session)
@@ -367,7 +390,7 @@ def _pending_swaps_for_unit(unit_id):
             RS.id.label("req_sess_id"),
             TS.id.label("tgt_sess_id"),
 
-            # people
+            # people - use SwapRequest.requester_id and target_id to get ORIGINAL facilitators
             RU.first_name.label("req_first"),
             RU.last_name.label("req_last"),
             RU.email.label("req_email"),
@@ -389,12 +412,13 @@ def _pending_swaps_for_unit(unit_id):
         .join(TA, TA.id == SwapRequest.target_assignment_id)
         .join(TS, TS.id == TA.session_id)
         .join(TM, TM.id == TS.module_id)
-        # your schema links Assignment -> User via facilitator_id
-        .join(RU, RU.id == RA.facilitator_id)
-        .join(TU, TU.id == TA.facilitator_id)
+        # CRITICAL: Use SwapRequest.requester_id and target_id to get ORIGINAL facilitators
+        # NOT the current assignment facilitator_id (which has been updated after swap)
+        .join(RU, RU.id == SwapRequest.requester_id)
+        .join(TU, TU.id == SwapRequest.target_id)
         .filter(or_(RM.unit_id == unit_id, TM.unit_id == unit_id))
-        .filter(SwapRequest.status == SwapStatus.PENDING)
-        .order_by(SwapRequest.created_at.asc())
+        .filter(SwapRequest.status == SwapStatus.APPROVED)  # Changed from PENDING to APPROVED
+        .order_by(SwapRequest.created_at.desc())  # Most recent first
     )
     return q.all()
 
@@ -2008,6 +2032,85 @@ def edit_facilitator_view(unit_id: int, email: str):
     units_data = []
     
     for u in all_facilitator_units:
+        # Get facilitator's assignments for this unit (only published sessions)
+        from datetime import datetime, timedelta
+        assignments = (
+            db.session.query(Assignment, Session, Module)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Assignment.facilitator_id == facilitator_user.id,
+                Module.unit_id == u.id,
+                Session.status == 'published'
+            )
+            .all()
+        )
+        
+        # Calculate KPIs
+        session_count = len(assignments)
+        total_hours = sum((s.end_time - s.start_time).total_seconds() / 3600.0 for _, s, _ in assignments)
+        
+        # This week hours
+        now = datetime.utcnow()
+        start_of_week = (now.replace(hour=0, minute=0, second=0, microsecond=0)
+                         - timedelta(days=now.weekday()))
+        end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        
+        this_week_hours = sum(
+            (s.end_time - s.start_time).total_seconds() / 3600.0 
+            for _, s, _ in assignments 
+            if start_of_week <= s.start_time < end_of_week
+        )
+        
+        active_sessions = len([
+            s for _, s, _ in assignments 
+            if start_of_week <= s.start_time < end_of_week
+        ])
+        
+        # Upcoming sessions
+        def format_session_date(dt):
+            return dt.strftime('%d/%m/%Y')
+        
+        upcoming_sessions = [
+            {
+                'id': a.id,
+                'session_id': s.id,
+                'module': m.module_name or 'Unknown Module',
+                'session_type': s.session_type or 'Session',
+                'start_time': s.start_time.isoformat(),
+                'end_time': s.end_time.isoformat(),
+                'location': s.location or 'TBA',
+                'is_confirmed': bool(a.is_confirmed),
+                'date': format_session_date(s.start_time),
+                'time': f"{s.start_time.strftime('%I:%M %p')} - {s.end_time.strftime('%I:%M %p')}",
+                'topic': m.module_name or 'Unknown Module',
+                'status': 'confirmed' if a.is_confirmed else 'pending',
+                'role': getattr(a, 'role', 'lead')
+            }
+            for a, s, m in assignments
+            if s.start_time >= now
+        ]
+        
+        # Past sessions
+        past_sessions = [
+            {
+                'id': a.id,
+                'session_id': s.id,
+                'module': m.module_name or 'Unknown Module',
+                'session_type': s.session_type or 'Session',
+                'start_time': s.start_time.isoformat(),
+                'end_time': s.end_time.isoformat(),
+                'location': s.location or 'TBA',
+                'is_confirmed': bool(a.is_confirmed),
+                'date': format_session_date(s.start_time),
+                'time': f"{s.start_time.strftime('%I:%M %p')} - {s.end_time.strftime('%I:%M %p')}",
+                'topic': m.module_name or 'Unknown Module',
+                'status': 'completed'
+            }
+            for a, s, m in assignments
+            if s.start_time < now
+        ]
+        
         # Determine if unit is active or completed
         is_active = False
         if u.end_date:
@@ -2015,7 +2118,7 @@ def edit_facilitator_view(unit_id: int, email: str):
         elif u.start_date:
             is_active = u.start_date <= today
         else:
-            is_active = True  # Default to active if no dates
+            is_active = len(upcoming_sessions) > 0
         
         # Check availability and skills for this unit
         unit_link = UnitFacilitator.query.filter_by(unit_id=u.id, user_id=facilitator_user.id).first()
@@ -2039,21 +2142,22 @@ def edit_facilitator_view(unit_id: int, email: str):
             'year': u.year,
             'start_date': u.start_date.isoformat() if u.start_date else None,
             'end_date': u.end_date.isoformat() if u.end_date else None,
-            'status': 'active' if is_active else 'completed',  # Required for dropdown filter
+            'status': 'active' if is_active else 'completed',
             'schedule_status': u.schedule_status.value if u.schedule_status else 'draft',
-            'availability_configured': unit_availability_configured,  # For nav tab warning
-            'skills_configured': unit_skills_count > 0,  # For nav tab warning
+            'availability_configured': unit_availability_configured,
+            'skills_configured': unit_skills_count > 0,
+            'sessions': session_count,
             'kpis': {
-                'this_week_hours': 0,
-                'active_sessions': 0,
-                'remaining_hours': 0,
-                'total_hours': 0,
-                'upcoming_sessions': 0,
-                'total_sessions': 0,
-                'completed_sessions': 0
+                'this_week_hours': round(this_week_hours, 1),
+                'total_hours': round(total_hours, 1),
+                'active_sessions': active_sessions,
+                'remaining_hours': round(total_hours - this_week_hours, 1) if total_hours > this_week_hours else 0,
+                'total_sessions': session_count,
+                'upcoming_sessions': len(upcoming_sessions),
+                'completed_sessions': len(past_sessions)
             },
-            'upcoming_sessions': [],
-            'past_sessions': []
+            'upcoming_sessions': upcoming_sessions,
+            'past_sessions': past_sessions
         }
         units_data.append(unit_data)
     
@@ -4658,12 +4762,21 @@ def unpublish_schedule(unit_id: int):
             except Exception as notif_error:
                 logger.warning(f"Failed to create notification for swap rejection: {notif_error}")
         
-        # 6. Update unit status
+        # 6. Update session statuses back to draft
+        sessions_updated = 0
+        for module in unit.modules:
+            for session in module.sessions:
+                if session.status == 'published':
+                    session.status = 'draft'
+                    sessions_updated += 1
+        
+        # 7. Update unit status
         unit.schedule_status = ScheduleStatus.DRAFT
         unit.unpublished_at = datetime.utcnow()
         unit.unpublished_by = user.id
         
         db.session.commit()
+        print(f"✅ Unpublished {sessions_updated} sessions for unit {unit_id}")
         
         # 7. Send notifications to facilitators (if enabled)
         notifications_sent = 0
@@ -4726,6 +4839,7 @@ def unpublish_schedule(unit_id: int):
         return jsonify({
             "ok": True,
             "message": "Schedule unpublished successfully",
+            "sessions_unpublished": sessions_updated,
             "deleted_unavailability": deleted_unavail,
             "rejected_swaps": rejected_swaps,
             "notifications_sent": notifications_sent,
@@ -4904,28 +5018,40 @@ def list_facilitators(unit_id: int):
         skill_level = None
         skill_label = None
         
-        # Check if facilitator is unavailable on this date
+        # Check if facilitator is unavailable on this date (check both unit-specific AND global unavailability)
         if session_date:
+            # Check unit-specific unavailability first
             unavailability = Unavailability.query.filter_by(
                 user_id=fac.id,
                 unit_id=unit_id,
                 date=session_date
             ).first()
             
+            # Also check global unavailability (from other units' published schedules)
+            if not unavailability:
+                unavailability = Unavailability.query.filter_by(
+                    user_id=fac.id,
+                    unit_id=None,  # Global unavailability
+                    date=session_date
+                ).first()
+            
             if unavailability:
                 # Check if it's full day or if times overlap
                 if unavailability.is_full_day:
                     is_unavailable = True
-                    unavailability_reason = "Full day"
+                    unavailability_reason = "Unavailable (full day)"
                 elif session_start_time and session_end_time and unavailability.start_time and unavailability.end_time:
                     # Check time overlap: session overlaps if it starts before unavailability ends AND ends after unavailability starts
                     if session_start_time < unavailability.end_time and session_end_time > unavailability.start_time:
                         is_unavailable = True
-                        unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
+                        unavailability_reason = f"Unavailable ({unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')})"
                 else:
                     # If no session times provided, assume unavailable for the whole day
                     is_unavailable = True
-                    unavailability_reason = f"{unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')}"
+                    if unavailability.start_time and unavailability.end_time:
+                        unavailability_reason = f"Unavailable ({unavailability.start_time.strftime('%H:%M')} - {unavailability.end_time.strftime('%H:%M')})"
+                    else:
+                        unavailability_reason = "Unavailable"
         
         # Get skill level for this module if provided
         if module_id:
@@ -6273,4 +6399,78 @@ def apply_bulk_staffing(unit_id: int):
         db.session.rollback()
 
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@unitcoordinator_bp.route("/swap-history-csv")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def download_swap_history_csv():
+    """Download swap history as CSV for a unit"""
+    unit_id = request.args.get('unit_id', type=int)
+    
+    if not unit_id:
+        return jsonify({'error': 'Missing unit_id'}), 400
+    
+    # Get unit
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'error': 'Unit not found'}), 404
+    
+    # Get swap history using the same function as the dashboard
+    swaps = _pending_swaps_for_unit(unit_id)
+    
+    # Create CSV in memory
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Swap Date',
+        'Swap Time',
+        'From Facilitator',
+        'From Email',
+        'To Facilitator',
+        'To Email',
+        'Session Module',
+        'Session Date',
+        'Session Time',
+        'Session Location',
+        'Reason'
+    ])
+    
+    # Write data
+    for swap in swaps:
+        from_name = f"{swap.req_first or ''} {swap.req_last or ''}".strip() or swap.req_email
+        to_name = f"{swap.tgt_first or ''} {swap.tgt_last or ''}".strip() or swap.tgt_email
+        
+        # Convert to Perth time
+        perth_created = to_perth_time(swap.created_at) if swap.created_at else None
+        swap_date = perth_created.strftime('%Y-%m-%d') if perth_created else ''
+        swap_time = perth_created.strftime('%H:%M:%S') if perth_created else ''
+        
+        session_date = swap.req_start.strftime('%Y-%m-%d') if swap.req_start else ''
+        session_time = f"{swap.req_start.strftime('%H:%M')}-{swap.req_end.strftime('%H:%M')}" if swap.req_start and swap.req_end else ''
+        
+        writer.writerow([
+            swap_date,
+            swap_time,
+            from_name,
+            swap.req_email,
+            to_name,
+            swap.tgt_email,
+            swap.req_module or '',
+            session_date,
+            session_time,
+            '',  # Location not in current query
+            swap.reason or ''
+        ])
+    
+    # Prepare response
+    output.seek(0)
+    return send_file(
+        BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'swap_history_{unit.unit_code}_{datetime.now().strftime("%Y%m%d")}.csv'
+    )
 

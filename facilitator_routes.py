@@ -294,6 +294,26 @@ def dashboard():
     units_data = []
     for unit in units:
         # Get assignments for this unit (only published sessions)
+        print(f"DEBUG: Fetching assignments for user {user.id}, unit {unit.id}")
+        
+        # First check: How many assignments exist for this user in this unit (regardless of status)?
+        all_assignments = (
+            db.session.query(Assignment, Session, Module)
+            .join(Session, Assignment.session_id == Session.id)
+            .join(Module, Session.module_id == Module.id)
+            .filter(
+                Assignment.facilitator_id == user.id, 
+                Module.unit_id == unit.id
+            )
+            .all()
+        )
+        print(f"DEBUG: Found {len(all_assignments)} total assignments for user in unit")
+        
+        # Check session statuses
+        for a, s, m in all_assignments:
+            print(f"DEBUG: Session {s.id} status = '{s.status}', module = {m.module_name}")
+        
+        # Now filter for published sessions only
         assignments = (
             db.session.query(Assignment, Session, Module)
             .join(Session, Assignment.session_id == Session.id)
@@ -305,6 +325,7 @@ def dashboard():
             )
             .all()
         )
+        print(f"DEBUG: Found {len(assignments)} published assignments")
         
         # Get session count for this unit (sessions assigned to this facilitator)
         session_count = len(assignments)
@@ -1776,6 +1797,15 @@ def create_swap_request():
     session = requester_assignment.session
     module = session.module
     
+    # Validate session isn't in the past
+    from datetime import datetime
+    if session.start_time < datetime.utcnow():
+        return jsonify({'error': 'Cannot swap a session that has already occurred'}), 400
+    
+    # Validate session belongs to requester
+    if requester_assignment.facilitator_id != user.id:
+        return jsonify({'error': 'You are not assigned to this session'}), 403
+    
     # For the target assignment, we'll create a virtual assignment or use the same session
     # Since we're doing a direct notification system, we don't need actual assignment swapping
     # We'll use the same assignment ID for both (simplified approach)
@@ -1817,12 +1847,14 @@ def create_swap_request():
         return jsonify({'error': 'Target facilitator does not have required skills for this module'}), 400
     
     # Check availability for the session time
+    # Exclude the current session from conflict check (facilitator might already be assigned to it)
     is_available, reason = check_facilitator_availability(
         target_facilitator_id,
         session.start_time.date(),
         session.start_time.time(),
         session.end_time.time(),
-        module.unit_id
+        module.unit_id,
+        exclude_session_id=session.id
     )
     
     if not is_available:
@@ -1844,10 +1876,87 @@ def create_swap_request():
         # Add the swap request
         db.session.add(swap_request)
         
+        # Get old facilitator ID before transfer
+        old_facilitator_id = requester_assignment.facilitator_id
+        
         # Transfer the assignment to the target facilitator
         requester_assignment.facilitator_id = target_facilitator_id
         
+        # Handle auto-unavailability if the schedule is published
+        if session.status == 'published':
+            # Remove old facilitator's auto-unavailability for this session
+            old_unavail = Unavailability.query.filter_by(
+                user_id=old_facilitator_id,
+                unit_id=None,  # Global unavailability
+                source_session_id=session.id
+            ).first()
+            
+            if old_unavail:
+                db.session.delete(old_unavail)
+            
+            # Create new auto-unavailability for the target facilitator
+            session_date = session.start_time.date()
+            session_start_time = session.start_time.time()
+            session_end_time = session.end_time.time()
+            
+            # Check if it doesn't already exist
+            existing_unavail = Unavailability.query.filter_by(
+                user_id=target_facilitator_id,
+                unit_id=None,
+                date=session_date,
+                start_time=session_start_time,
+                end_time=session_end_time,
+                source_session_id=session.id
+            ).first()
+            
+            if not existing_unavail:
+                module_name = module.module_name if module else "Session"
+                session_type = session.session_type or "Session"
+                unit = Unit.query.get(module.unit_id)
+                unit_code = unit.unit_code if unit else "Unknown"
+                reason = f"Scheduled: {unit_code} - {module_name} ({session_type})"
+                
+                new_unavail = Unavailability(
+                    user_id=target_facilitator_id,
+                    unit_id=None,  # Global unavailability
+                    date=session_date,
+                    start_time=session_start_time,
+                    end_time=session_end_time,
+                    is_full_day=False,
+                    reason=reason,
+                    source_session_id=session.id
+                )
+                
+                db.session.add(new_unavail)
+        
         db.session.commit()
+        
+        # Send email notifications
+        try:
+            from email_service import send_session_swap_emails
+            
+            requester = User.query.get(user.id)
+            target = User.query.get(target_facilitator_id)
+            unit = Unit.query.get(module.unit_id)
+            
+            session_details = {
+                'session_name': f"{module.module_name} - {session.session_type or 'Session'}",
+                'date': session.start_time.strftime('%A, %B %d, %Y'),
+                'time': f"{session.start_time.strftime('%I:%M %p')} - {session.end_time.strftime('%I:%M %p')}",
+                'location': session.location or 'TBA'
+            }
+            
+            send_session_swap_emails(
+                requester_email=requester.email,
+                requester_name=requester.full_name,
+                target_email=target.email,
+                target_name=target.full_name,
+                session_details=session_details,
+                unit_code=unit.unit_code if unit else 'Unknown'
+            )
+        except Exception as email_error:
+            # Don't fail the swap if email fails
+            print(f"Warning: Failed to send swap notification emails: {email_error}")
         
         return jsonify({
             'success': True,
@@ -1937,11 +2046,21 @@ def get_swap_requests():
     })
 
 
-def check_facilitator_availability(facilitator_id, session_date, session_start_time, session_end_time, unit_id):
-    """Check if a facilitator is available for a specific session time."""
+def check_facilitator_availability(facilitator_id, session_date, session_start_time, session_end_time, unit_id, exclude_session_id=None):
+    """Check if a facilitator is available for a specific session time.
+    
+    Args:
+        facilitator_id: ID of the facilitator to check
+        session_date: Date of the session
+        session_start_time: Start time of the session
+        session_end_time: End time of the session
+        unit_id: ID of the unit
+        exclude_session_id: Optional session ID to exclude from conflict check (for swap requests)
+    """
     
     # Check for GLOBAL unavailability conflicts
-    unavailability_conflict = Unavailability.query.filter(
+    # Exclude auto-unavailability from the session being checked (for reverse swaps)
+    unavailability_query = Unavailability.query.filter(
         Unavailability.user_id == facilitator_id,
         Unavailability.unit_id.is_(None),  # Global unavailability
         Unavailability.date == session_date,
@@ -1952,13 +2071,25 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
                 Unavailability.end_time >= session_end_time
             )
         )
-    ).first()
+    )
+    
+    # Exclude auto-unavailability from the session being swapped
+    if exclude_session_id is not None:
+        unavailability_query = unavailability_query.filter(
+            db.or_(
+                Unavailability.source_session_id.is_(None),  # Manual unavailability
+                Unavailability.source_session_id != exclude_session_id  # Different session
+            )
+        )
+    
+    unavailability_conflict = unavailability_query.first()
     
     if unavailability_conflict:
         return False, "Facilitator has marked unavailability for this time"
     
     # Check for existing session assignments at the same time
-    conflicting_assignment = Assignment.query.join(Session).filter(
+    # Exclude the session being swapped (if provided)
+    conflict_query = Assignment.query.join(Session).filter(
         Assignment.facilitator_id == facilitator_id,
         db.func.date(Session.start_time) == session_date,
         db.or_(
@@ -1971,7 +2102,13 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
                 db.func.time(Session.end_time) >= session_end_time
             )
         )
-    ).first()
+    )
+    
+    # Exclude the session being swapped from conflict check
+    if exclude_session_id is not None:
+        conflict_query = conflict_query.filter(Session.id != exclude_session_id)
+    
+    conflicting_assignment = conflict_query.first()
     
     if conflicting_assignment:
         return False, "Facilitator has conflicting session assignment"
@@ -2086,13 +2223,14 @@ def get_available_facilitators():
         return jsonify({'error': 'Access denied to this unit'}), 403
     
     # Get all facilitators assigned to this unit (excluding the current user)
+    # Include ADMIN role since admins can also be facilitators
     unit_facilitators = (
         db.session.query(User)
         .join(UnitFacilitator, User.id == UnitFacilitator.user_id)
         .filter(
             UnitFacilitator.unit_id == unit.id,
             User.id != user.id,  # Exclude current user
-            User.role.in_([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+            User.role.in_([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
         )
         .all()
     )
@@ -2101,12 +2239,14 @@ def get_available_facilitators():
     
     for facilitator in unit_facilitators:
         # Check availability for the session time
+        # Exclude the current session from conflict check (facilitator might already be assigned to it)
         is_available, reason = check_facilitator_availability(
             facilitator.id,
             session.start_time.date(),
             session.start_time.time(),
             session.end_time.time(),
-            unit.id
+            unit.id,
+            exclude_session_id=session.id
         )
         
         # Check if facilitator has required skills for this module
