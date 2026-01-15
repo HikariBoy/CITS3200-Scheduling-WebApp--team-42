@@ -1417,64 +1417,51 @@
                 <div class="space-y-3">
                   {% for r in pending_requests %}
                     <article class="swap-card" style="border-left: 3px solid #10b981; padding: 12px;">
-                      <header class="swap-card__hdr" style="padding: 0; margin-bottom: 8px;">
+                      <!-- Session info at top -->
+                      <div class="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
                         <div class="flex items-center gap-2">
-                          <span class="material-icons text-green-600 text-base">check_circle</span>
-                          <span class="text-xs text-gray-500">
-                            {{ r.created_at.strftime("%b %d, %I:%M %p") if r.created_at else "—" }}
-                          </span>
-                        </div>
-                      </header>
-
-                      <div class="swap-card__body">
-                        <!-- Left: requester -->
-                        <div class="swap-col">
-                          <div class="swap-person">
-                            <div class="swap-avatar">{{ (r.req_first or r.req_email|default(''))[:1] }}</div>
-                            <div>
-                              <div class="swap-name">
-                                {{ (r.req_first ~ ' ' ~ r.req_last)|trim if r.req_first or r.req_last else r.req_email }}
-                              </div>
-                              <div class="swap-sub">Requester</div>
-                            </div>
-                          </div>
-
-                          <div class="swap-side-title text-rose-600">Giving up</div>
-                          <div class="swap-side-session">
-                            <div class="title">{{ r.req_module or ("Session #" ~ r.req_sess_id) }}</div>
-                            <div class="meta">
+                          <span class="material-icons text-blue-600" style="font-size: 18px;">event</span>
+                          <div>
+                            <div class="text-sm font-semibold text-gray-900">{{ r.req_module or ("Session #" ~ r.req_sess_id) }}</div>
+                            <div class="text-xs text-gray-500">
                               {% if r.req_start and r.req_end %}
-                                {{ r.req_start.strftime("%A, %b %d") }} • {{ r.req_start.strftime("%H:%M") }}–{{ r.req_end.strftime("%H:%M") }}
+                                {{ r.req_start.strftime("%a, %b %d") }} • {{ r.req_start.strftime("%H:%M") }}–{{ r.req_end.strftime("%H:%M") }}
                               {% else %} — {% endif %}
                             </div>
                           </div>
                         </div>
+                        <div class="flex items-center gap-1 text-xs text-gray-400">
+                          <span class="material-icons" style="font-size: 14px;">schedule</span>
+                          {{ r.created_at.strftime("%b %d, %I:%M %p") if r.created_at else "—" }}
+                        </div>
+                      </div>
 
-                        <!-- Middle chevron -->
-                        <div class="swap-arrow">
-                          <span class="material-icons">chevron_right</span>
+                      <!-- People swap -->
+                      <div class="flex items-center gap-3">
+                        <!-- From person -->
+                        <div class="flex items-center gap-2 flex-1">
+                          <div class="swap-avatar" style="width: 32px; height: 32px; font-size: 14px;">{{ (r.req_first or r.req_email|default(''))[:1] }}</div>
+                          <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-900">
+                              {{ (r.req_first ~ ' ' ~ r.req_last)|trim if r.req_first or r.req_last else r.req_email }}
+                            </div>
+                            <div class="text-xs text-gray-500">{{ r.req_email }}</div>
+                          </div>
                         </div>
 
-                        <!-- Right: target -->
-                        <div class="swap-col">
-                          <div class="swap-person">
-                            <div class="swap-avatar">{{ (r.tgt_first or r.tgt_email|default(''))[:1] }}</div>
-                            <div>
-                              <div class="swap-name">
-                                {{ (r.tgt_first ~ ' ' ~ r.tgt_last)|trim if r.tgt_first or r.tgt_last else r.tgt_email }}
-                              </div>
-                              <div class="swap-sub">Target</div>
-                            </div>
-                          </div>
+                        <!-- Arrow -->
+                        <div class="flex flex-col items-center px-2">
+                          <span class="material-icons text-green-600" style="font-size: 20px;">arrow_forward</span>
+                        </div>
 
-                          <div class="swap-side-title text-emerald-700">Taking on</div>
-                          <div class="swap-side-session">
-                            <div class="title">{{ r.tgt_module or ("Session #" ~ r.tgt_sess_id) }}</div>
-                            <div class="meta">
-                              {% if r.tgt_start and r.tgt_end %}
-                                {{ r.tgt_start.strftime("%A, %b %d") }} • {{ r.tgt_start.strftime("%H:%M") }}–{{ r.tgt_end.strftime("%H:%M") }}
-                              {% else %} — {% endif %}
+                        <!-- To person -->
+                        <div class="flex items-center gap-2 flex-1">
+                          <div class="swap-avatar" style="width: 32px; height: 32px; font-size: 14px;">{{ (r.tgt_first or r.tgt_email|default(''))[:1] }}</div>
+                          <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-900">
+                              {{ (r.tgt_first ~ ' ' ~ r.tgt_last)|trim if r.tgt_first or r.tgt_last else r.tgt_email }}
                             </div>
+                            <div class="text-xs text-gray-500">{{ r.tgt_email }}</div>
                           </div>
                         </div>
                       </div>
