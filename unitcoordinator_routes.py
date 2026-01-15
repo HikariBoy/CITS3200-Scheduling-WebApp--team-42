@@ -346,6 +346,10 @@ def _parse_time_range(s: str):
     return h1, m1, h2, m2
 
 def _pending_swaps_for_unit(unit_id):
+    """
+    Get completed (approved) swap requests for a unit to show in swap history.
+    Note: Despite the function name, this now returns APPROVED swaps since we use instant approval.
+    """
     RA = aliased(Assignment)   # requester assignment
     TA = aliased(Assignment)   # target assignment
     RS = aliased(Session)
@@ -393,8 +397,8 @@ def _pending_swaps_for_unit(unit_id):
         .join(RU, RU.id == RA.facilitator_id)
         .join(TU, TU.id == TA.facilitator_id)
         .filter(or_(RM.unit_id == unit_id, TM.unit_id == unit_id))
-        .filter(SwapRequest.status == SwapStatus.PENDING)
-        .order_by(SwapRequest.created_at.asc())
+        .filter(SwapRequest.status == SwapStatus.APPROVED)  # Changed from PENDING to APPROVED
+        .order_by(SwapRequest.created_at.desc())  # Most recent first
     )
     return q.all()
 
