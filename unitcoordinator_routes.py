@@ -6380,3 +6380,75 @@ def apply_bulk_staffing(unit_id: int):
 
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
+@unitcoordinator_bp.route("/swap-history-csv")
+@login_required
+@role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
+def download_swap_history_csv():
+    """Download swap history as CSV for a unit"""
+    unit_id = request.args.get('unit_id', type=int)
+    
+    if not unit_id:
+        return jsonify({'error': 'Missing unit_id'}), 400
+    
+    # Get unit
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'error': 'Unit not found'}), 404
+    
+    # Get swap history using the same function as the dashboard
+    swaps = _pending_swaps_for_unit(unit_id)
+    
+    # Create CSV in memory
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Swap Date',
+        'Swap Time',
+        'From Facilitator',
+        'From Email',
+        'To Facilitator',
+        'To Email',
+        'Session Module',
+        'Session Date',
+        'Session Time',
+        'Session Location',
+        'Reason'
+    ])
+    
+    # Write data
+    for swap in swaps:
+        from_name = f"{swap.req_first or ''} {swap.req_last or ''}".strip() or swap.req_email
+        to_name = f"{swap.tgt_first or ''} {swap.tgt_last or ''}".strip() or swap.tgt_email
+        
+        swap_date = swap.created_at.strftime('%Y-%m-%d') if swap.created_at else ''
+        swap_time = swap.created_at.strftime('%H:%M:%S') if swap.created_at else ''
+        
+        session_date = swap.req_start.strftime('%Y-%m-%d') if swap.req_start else ''
+        session_time = f"{swap.req_start.strftime('%H:%M')}-{swap.req_end.strftime('%H:%M')}" if swap.req_start and swap.req_end else ''
+        
+        writer.writerow([
+            swap_date,
+            swap_time,
+            from_name,
+            swap.req_email,
+            to_name,
+            swap.tgt_email,
+            swap.req_module or '',
+            session_date,
+            session_time,
+            '',  # Location not in current query
+            swap.reason or ''
+        ])
+    
+    # Prepare response
+    output.seek(0)
+    return send_file(
+        BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'swap_history_{unit.unit_code}_{datetime.now().strftime("%Y%m%d")}.csv'
+    )
+

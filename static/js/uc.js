@@ -8451,3 +8451,43 @@ resetCreateUnitWizard = function() {
   originalResetWizard();
   resetCoordinators();
 };
+
+// ===== Swap History CSV Download =====
+function downloadSwapHistory() {
+  // Get current unit ID from the page
+  const unitId = window.CURRENT_UNIT_ID || document.querySelector('[data-unit-id]')?.dataset.unitId;
+  
+  if (!unitId) {
+    showSimpleNotification('No unit selected', 'error');
+    return;
+  }
+  
+  // Fetch swap data from the backend
+  fetch(`/unitcoordinator/swap-history-csv?unit_id=${unitId}`, {
+    headers: {
+      'X-CSRFToken': CSRF_TOKEN
+    }
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Failed to fetch swap history');
+    }
+    return response.blob();
+  })
+  .then(blob => {
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `swap_history_unit_${unitId}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    showSimpleNotification('Swap history downloaded successfully', 'success');
+  })
+  .catch(error => {
+    console.error('Error downloading swap history:', error);
+    showSimpleNotification('Error downloading swap history', 'error');
+  });
+}
