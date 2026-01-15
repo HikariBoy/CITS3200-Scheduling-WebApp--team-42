@@ -3860,12 +3860,14 @@ async function loadUserAssignments() {
                 
                 if (sessions && sessions.length > 0) {
                     sessions.forEach(session => {
-                        // The backend provides 'assignment_id' as the assignment ID
-                        const assignmentId = session.assignment_id || session.id;
-                        if (assignmentId) {
+                        // Backend returns 'id' as assignment ID and 'session_id' as session ID
+                        const assignmentId = session.id; // This is the assignment ID from backend
+                        const sessionId = session.session_id; // This is the actual session ID
+                        
+                        if (assignmentId && sessionId) {
                             currentUserAssignments.push({
-                                id: assignmentId, // This is the assignment ID from backend
-                                session_id: session.session_id,
+                                id: assignmentId, // Assignment ID
+                                session_id: sessionId, // Session ID
                                 module: session.module || 'Unknown Module', // Handle null module names
                                 session_type: session.session_type || 'Session', // Better default for session type
                                 start_time: session.start_time,

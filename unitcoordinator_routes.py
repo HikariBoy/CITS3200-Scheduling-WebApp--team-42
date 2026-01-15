@@ -390,7 +390,7 @@ def _pending_swaps_for_unit(unit_id):
             RS.id.label("req_sess_id"),
             TS.id.label("tgt_sess_id"),
 
-            # people
+            # people - use SwapRequest.requester_id and target_id to get ORIGINAL facilitators
             RU.first_name.label("req_first"),
             RU.last_name.label("req_last"),
             RU.email.label("req_email"),
@@ -412,9 +412,10 @@ def _pending_swaps_for_unit(unit_id):
         .join(TA, TA.id == SwapRequest.target_assignment_id)
         .join(TS, TS.id == TA.session_id)
         .join(TM, TM.id == TS.module_id)
-        # your schema links Assignment -> User via facilitator_id
-        .join(RU, RU.id == RA.facilitator_id)
-        .join(TU, TU.id == TA.facilitator_id)
+        # CRITICAL: Use SwapRequest.requester_id and target_id to get ORIGINAL facilitators
+        # NOT the current assignment facilitator_id (which has been updated after swap)
+        .join(RU, RU.id == SwapRequest.requester_id)
+        .join(TU, TU.id == SwapRequest.target_id)
         .filter(or_(RM.unit_id == unit_id, TM.unit_id == unit_id))
         .filter(SwapRequest.status == SwapStatus.APPROVED)  # Changed from PENDING to APPROVED
         .order_by(SwapRequest.created_at.desc())  # Most recent first
