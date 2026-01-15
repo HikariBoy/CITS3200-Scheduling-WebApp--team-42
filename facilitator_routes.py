@@ -2059,7 +2059,8 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
     """
     
     # Check for GLOBAL unavailability conflicts
-    unavailability_conflict = Unavailability.query.filter(
+    # Exclude auto-unavailability from the session being checked (for reverse swaps)
+    unavailability_query = Unavailability.query.filter(
         Unavailability.user_id == facilitator_id,
         Unavailability.unit_id.is_(None),  # Global unavailability
         Unavailability.date == session_date,
@@ -2070,7 +2071,18 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
                 Unavailability.end_time >= session_end_time
             )
         )
-    ).first()
+    )
+    
+    # Exclude auto-unavailability from the session being swapped
+    if exclude_session_id is not None:
+        unavailability_query = unavailability_query.filter(
+            db.or_(
+                Unavailability.source_session_id.is_(None),  # Manual unavailability
+                Unavailability.source_session_id != exclude_session_id  # Different session
+            )
+        )
+    
+    unavailability_conflict = unavailability_query.first()
     
     if unavailability_conflict:
         return False, "Facilitator has marked unavailability for this time"
