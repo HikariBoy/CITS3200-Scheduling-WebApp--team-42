@@ -3666,34 +3666,46 @@ def auto_assign_facilitators(unit_id: int):
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def check_csv_availability(unit_id: int):
     """
-    Check if a CSV report is available for download
+    Check if a CSV report is available for download.
+    Now always returns True if the schedule is published (generates on-demand).
     """
     user = get_current_user()
     unit = _get_user_unit_or_404(user, unit_id)
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
-    # Check if report exists in database
-    if unit.csv_report_filename:
-        # Verify the file still exists
-        import tempfile
-        import os
-        
-        temp_dir = tempfile.gettempdir()
-        csv_filepath = os.path.join(temp_dir, unit.csv_report_filename)
-        
-        # Check if file exists
-        if os.path.exists(csv_filepath):
-            return jsonify({
-                "ok": True,
-                "csv_available": True,
-                "csv_download_url": f"/unitcoordinator/units/{unit_id}/download_schedule_report"
-            })
-        else:
-            # File was cleaned up, clear from database
-            unit.csv_report_filename = None
-            unit.csv_report_generated_at = None
-            db.session.commit()
+    # Check if unit has any published sessions with assignments
+    has_published_assignments = (
+        db.session.query(Assignment.id)
+        .join(Session, Session.id == Assignment.session_id)
+        .join(Module, Module.id == Session.module_id)
+        .filter(Module.unit_id == unit_id)
+        .filter(Session.status == 'published')
+        .first() is not None
+    )
+    
+    if has_published_assignments:
+        return jsonify({
+            "ok": True,
+            "csv_available": True,
+            "csv_download_url": f"/unitcoordinator/units/{unit_id}/download_schedule_report"
+        })
+    
+    # Also check if there are any assignments at all (even draft)
+    has_any_assignments = (
+        db.session.query(Assignment.id)
+        .join(Session, Session.id == Assignment.session_id)
+        .join(Module, Module.id == Session.module_id)
+        .filter(Module.unit_id == unit_id)
+        .first() is not None
+    )
+    
+    if has_any_assignments:
+        return jsonify({
+            "ok": True,
+            "csv_available": True,
+            "csv_download_url": f"/unitcoordinator/units/{unit_id}/download_schedule_report"
+        })
     
     return jsonify({
         "ok": True,
@@ -3706,45 +3718,126 @@ def check_csv_availability(unit_id: int):
 @role_required([UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def download_schedule_report(unit_id: int):
     """
-    Download the CSV report from the last auto-assignment run
+    Generate and download a CSV report of the current schedule on-demand.
+    No longer relies on cached temp files - generates fresh from database.
     """
     from flask import Response
     from datetime import datetime
+    import io
     
     user = get_current_user()
     unit = _get_user_unit_or_404(user, unit_id)
     if not unit:
         return jsonify({"ok": False, "error": "Unit not found or unauthorized"}), 404
     
-    # Check if report exists in database
-    if not unit.csv_report_filename:
+    # Get all assignments for this unit
+    assignments = (
+        db.session.query(Assignment, Session, Module, User)
+        .join(Session, Session.id == Assignment.session_id)
+        .join(Module, Module.id == Session.module_id)
+        .join(User, User.id == Assignment.facilitator_id)
+        .filter(Module.unit_id == unit_id)
+        .order_by(Session.start_time, Module.module_name)
+        .all()
+    )
+    
+    if not assignments:
         return jsonify({
             "ok": False, 
-            "error": "No report available. Please run auto-assignment first."
+            "error": "No assignments found. Please assign facilitators first."
         }), 404
     
-    # Read CSV content from temporary file
-    import tempfile
-    import os
+    # Generate CSV content
+    output = io.StringIO()
+    writer = csv.writer(output)
     
-    temp_dir = tempfile.gettempdir()
-    csv_filepath = os.path.join(temp_dir, unit.csv_report_filename)
+    # Header
+    unit_display_name = f"{unit.unit_code} - {unit.unit_name}"
+    writer.writerow([f"SCHEDULE REPORT - {unit_display_name}"])
+    writer.writerow([f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+    writer.writerow([])
     
-    try:
-        with open(csv_filepath, 'r', encoding='utf-8') as f:
-            csv_content = f.read()
-    except FileNotFoundError:
-        # File was cleaned up, clear from database
-        unit.csv_report_filename = None
-        unit.csv_report_generated_at = None
-        db.session.commit()
-        return jsonify({
-            "ok": False, 
-            "error": "Report file not found. Please run auto-assignment again."
-        }), 404
+    # === SECTION 1: Overview Statistics ===
+    writer.writerow(["OVERVIEW STATISTICS"])
+    writer.writerow(["Metric", "Value"])
+    
+    total_assignments = len(assignments)
+    unique_facilitators = len(set(a[3].id for a in assignments))
+    total_sessions = len(set(a[1].id for a in assignments))
+    
+    # Calculate total hours
+    total_hours = 0
+    for assignment, session, module, facilitator in assignments:
+        duration = (session.end_time - session.start_time).total_seconds() / 3600
+        total_hours += duration
+    
+    writer.writerow(["Total Assignments", total_assignments])
+    writer.writerow(["Total Sessions", total_sessions])
+    writer.writerow(["Total Facilitators Used", unique_facilitators])
+    writer.writerow(["Total Hours Scheduled", f"{total_hours:.1f}"])
+    writer.writerow([])
+    
+    # === SECTION 2: Per-Facilitator Hours Summary ===
+    writer.writerow(["PER-FACILITATOR HOURS SUMMARY"])
+    writer.writerow(["Facilitator Name", "Email", "Total Hours", "Session Count", "Lead Count", "Support Count"])
+    
+    facilitator_stats = {}
+    for assignment, session, module, facilitator in assignments:
+        fac_id = facilitator.id
+        duration = (session.end_time - session.start_time).total_seconds() / 3600
+        role = getattr(assignment, 'role', 'lead') or 'lead'
+        
+        if fac_id not in facilitator_stats:
+            facilitator_stats[fac_id] = {
+                'name': facilitator.full_name,
+                'email': facilitator.email,
+                'total_hours': 0,
+                'session_count': 0,
+                'lead_count': 0,
+                'support_count': 0
+            }
+        
+        facilitator_stats[fac_id]['total_hours'] += duration
+        facilitator_stats[fac_id]['session_count'] += 1
+        if role == 'lead':
+            facilitator_stats[fac_id]['lead_count'] += 1
+        else:
+            facilitator_stats[fac_id]['support_count'] += 1
+    
+    # Sort by total hours descending
+    sorted_facilitators = sorted(facilitator_stats.values(), key=lambda x: x['total_hours'], reverse=True)
+    for fac in sorted_facilitators:
+        writer.writerow([
+            fac['name'],
+            fac['email'],
+            f"{fac['total_hours']:.1f}",
+            fac['session_count'],
+            fac['lead_count'],
+            fac['support_count']
+        ])
+    writer.writerow([])
+    
+    # === SECTION 3: Detailed Assignment List ===
+    writer.writerow(["DETAILED ASSIGNMENT LIST"])
+    writer.writerow(["Date", "Time", "Module", "Session Type", "Location", "Facilitator", "Email", "Role"])
+    
+    for assignment, session, module, facilitator in assignments:
+        role = getattr(assignment, 'role', 'lead') or 'lead'
+        writer.writerow([
+            session.start_time.strftime('%Y-%m-%d'),
+            f"{session.start_time.strftime('%H:%M')} - {session.end_time.strftime('%H:%M')}",
+            module.module_name,
+            session.session_type or 'Session',
+            session.location or 'TBA',
+            facilitator.full_name,
+            facilitator.email,
+            role.title()
+        ])
+    
+    csv_content = output.getvalue()
     
     # Generate filename with timestamp
-    timestamp_str = unit.csv_report_generated_at.strftime('%Y%m%d_%H%M%S') if unit.csv_report_generated_at else datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"schedule_report_{unit.unit_code}_{timestamp_str}.csv"
     
     # Return as downloadable file
