@@ -1655,3 +1655,141 @@ def send_session_swap_emails(requester_email, requester_name, target_email, targ
         import traceback
         traceback.print_exc()
         return False
+
+
+def send_uc_swap_notification(uc_emails, uc_names, requester_name, target_name, 
+                               session_details, unit_code, base_url=None):
+    """
+    Send email notification to Unit Coordinators when a swap occurs.
+    
+    Args:
+        uc_emails: List of UC email addresses
+        uc_names: List of UC names (corresponding to emails)
+        requester_name: Name of facilitator who gave up the session
+        target_name: Name of facilitator who took the session
+        session_details: Dict with session_name, date, time, location
+        unit_code: Unit code
+        base_url: Base URL for links
+    """
+    use_mock = os.environ.get('USE_MOCK_EMAIL', 'false').lower() == 'true'
+    
+    if base_url is None:
+        base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    
+    if not uc_emails:
+        print("⚠️  No Unit Coordinators found to notify about swap")
+        return True
+    
+    subject = f"Session Swap Notification - {unit_code}"
+    
+    # Create email body
+    body_html = f"""
+    <html>
+      <head>
+        <style>
+          body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+          .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+          .header {{ background-color: #f59e0b; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+          .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+          .session-box {{ background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }}
+          .swap-info {{ background-color: #fef3c7; padding: 15px; border-radius: 6px; margin: 15px 0; }}
+          .detail-row {{ margin: 10px 0; }}
+          .label {{ font-weight: bold; color: #6b7280; }}
+          .button {{ display: inline-block; padding: 12px 24px; background-color: #f59e0b; color: white; text-decoration: none; border-radius: 6px; margin-top: 20px; }}
+          .footer {{ text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }}
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0;">🔄 Session Swap Notification</h1>
+          </div>
+          <div class="content">
+            <p>Hi,</p>
+            
+            <p>A session swap has been completed in <strong>{unit_code}</strong>.</p>
+            
+            <div class="swap-info">
+              <div style="margin: 8px 0;">
+                <strong>From:</strong> {requester_name}
+              </div>
+              <div style="margin: 8px 0;">
+                <strong>To:</strong> {target_name}
+              </div>
+            </div>
+            
+            <div class="session-box">
+              <h3 style="margin-top: 0; color: #f59e0b;">Session Details</h3>
+              <div class="detail-row">
+                <span class="label">Unit:</span> {unit_code}
+              </div>
+              <div class="detail-row">
+                <span class="label">Session:</span> {session_details.get('session_name', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Date:</span> {session_details.get('date', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Time:</span> {session_details.get('time', 'N/A')}
+              </div>
+              <div class="detail-row">
+                <span class="label">Location:</span> {session_details.get('location', 'TBA')}
+              </div>
+            </div>
+            
+            <p>This is an automated notification for your records. The schedule has been updated accordingly.</p>
+            
+            <a href="{base_url}/unitcoordinator/dashboard" class="button">View Schedule</a>
+            
+            <div class="footer">
+              <p>This is an automated notification from ScheduleME.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    
+    if use_mock:
+        print(f"\n{'='*60}")
+        print("📧 MOCK EMAIL - UC Swap Notification")
+        print(f"To: {', '.join(uc_emails)}")
+        print(f"Subject: {subject}")
+        print(f"Swap: {requester_name} → {target_name}")
+        print(f"Session: {session_details.get('session_name')} on {session_details.get('date')}")
+        print(f"{'='*60}\n")
+        return True
+    
+    # Send real emails
+    try:
+        ses_client = boto3.client(
+            'ses',
+            region_name=os.environ.get('SES_REGION', 'ap-southeast-1'),
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+        )
+        
+        sender_email = os.environ.get('SES_SENDER_EMAIL', 'noreply@scheduleme.com')
+        
+        # Send to all UCs
+        for uc_email in uc_emails:
+            ses_client.send_email(
+                Source=sender_email,
+                Destination={'ToAddresses': [uc_email]},
+                Message={
+                    'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                    'Body': {'Html': {'Data': body_html, 'Charset': 'UTF-8'}}
+                }
+            )
+        
+        print(f"✅ UC swap notification emails sent to {len(uc_emails)} coordinator(s)")
+        return True
+        
+    except ClientError as e:
+        print(f"❌ AWS ClientError sending UC swap emails: {e.response['Error']['Message']}")
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected error sending UC swap emails: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False

@@ -1933,7 +1933,7 @@ def create_swap_request():
         
         # Send email notifications
         try:
-            from email_service import send_session_swap_emails
+            from email_service import send_session_swap_emails, send_uc_swap_notification
             
             requester = User.query.get(user.id)
             target = User.query.get(target_facilitator_id)
@@ -1946,6 +1946,7 @@ def create_swap_request():
                 'location': session.location or 'TBA'
             }
             
+            # Send emails to facilitators
             send_session_swap_emails(
                 requester_email=requester.email,
                 requester_name=requester.full_name,
@@ -1954,6 +1955,27 @@ def create_swap_request():
                 session_details=session_details,
                 unit_code=unit.unit_code if unit else 'Unknown'
             )
+            
+            # Send notification to Unit Coordinators
+            unit_coordinators = (
+                db.session.query(User)
+                .join(UnitCoordinator, User.id == UnitCoordinator.user_id)
+                .filter(UnitCoordinator.unit_id == module.unit_id)
+                .all()
+            )
+            
+            if unit_coordinators:
+                uc_emails = [uc.email for uc in unit_coordinators]
+                uc_names = [uc.full_name for uc in unit_coordinators]
+                
+                send_uc_swap_notification(
+                    uc_emails=uc_emails,
+                    uc_names=uc_names,
+                    requester_name=requester.full_name,
+                    target_name=target.full_name,
+                    session_details=session_details,
+                    unit_code=unit.unit_code if unit else 'Unknown'
+                )
         except Exception as email_error:
             # Don't fail the swap if email fails
             print(f"Warning: Failed to send swap notification emails: {email_error}")
