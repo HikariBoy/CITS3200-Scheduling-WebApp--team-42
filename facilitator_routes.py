@@ -1762,7 +1762,7 @@ def request_swap():
 
 @facilitator_bp.route('/swap-requests', methods=['POST'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def create_swap_request():
     """Create a new swap request via API."""
     user = get_current_user()
@@ -1993,7 +1993,7 @@ def create_swap_request():
 
 @facilitator_bp.route('/swap-requests', methods=['GET'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def get_swap_requests():
     """Get user's swap requests grouped by status, filtered by unit."""
     user = get_current_user()
@@ -2140,7 +2140,7 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
 
 @facilitator_bp.route('/swap-requests/<int:request_id>/facilitator-response', methods=['POST'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def facilitator_response_to_swap(request_id):
     """Handle facilitator response to swap request (approve/decline)."""
     user = get_current_user()
@@ -2209,7 +2209,7 @@ def facilitator_response_to_swap(request_id):
 
 @facilitator_bp.route('/available-facilitators', methods=['GET'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def get_available_facilitators():
     """Get available facilitators for a specific session swap."""
     user = get_current_user()
