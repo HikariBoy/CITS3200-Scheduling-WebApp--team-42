@@ -3927,14 +3927,24 @@ function updateUnitInfoDisplay(unit) {
 // Populate session dropdown
 function populateSessionDropdown() {
     const sessionSelect = document.getElementById('session-select');
-    if (!sessionSelect) return;
+    if (!sessionSelect) {
+        console.error('Session select element not found!');
+        return;
+    }
+    
+    console.log('🔍 Populating session dropdown...');
+    console.log('Current unit ID:', window.currentUnitId);
+    console.log('Current user assignments:', currentUserAssignments);
+    console.log('Units data:', window.unitsData);
     
     // Clear existing options
     sessionSelect.innerHTML = '<option value="">Choose a session to swap</option>';
     
     // Add sessions from current user's assignments for the current unit
     if (currentUserAssignments && currentUserAssignments.length > 0) {
+        console.log(`✅ Found ${currentUserAssignments.length} assignments to populate`);
         currentUserAssignments.forEach(assignment => {
+            console.log('Adding assignment:', assignment);
             const option = document.createElement('option');
             option.value = assignment.id;
             // Format: session name, date and time, location
@@ -3942,10 +3952,11 @@ function populateSessionDropdown() {
             const dateTime = formatDateTime(assignment.start_time, assignment.end_time);
             const location = assignment.venue;
             
-            option.textContent = `${sessionName}\n${dateTime}\n${location}`;
+            option.textContent = `${sessionName} - ${dateTime} - ${location}`;
             sessionSelect.appendChild(option);
         });
     } else {
+        console.warn('❌ No assignments found for current unit');
         // Show no sessions message
         const option = document.createElement('option');
         option.value = "";
