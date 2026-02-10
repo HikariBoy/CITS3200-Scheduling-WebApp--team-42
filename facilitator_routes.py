@@ -1777,6 +1777,16 @@ def create_swap_request():
     has_discussed = data.get('has_discussed', False)
     unit_id = data.get('unit_id')  # Optional unit context
     
+    print(f"\n{'='*80}")
+    print(f"🔍 SWAP REQUEST DEBUG")
+    print(f"Current user: {user.email} (ID: {user.id})")
+    print(f"Requester assignment ID: {requester_assignment_id}")
+    print(f"Target assignment ID: {target_assignment_id}")
+    print(f"Target facilitator ID: {target_facilitator_id}")
+    print(f"Has discussed: {has_discussed}")
+    print(f"Unit ID: {unit_id}")
+    print(f"{'='*80}\n")
+    
     # Validate required fields
     if not all([requester_assignment_id, target_assignment_id, target_facilitator_id]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -1790,7 +1800,16 @@ def create_swap_request():
         facilitator_id=user.id
     ).first()
     
+    print(f"🔍 Querying for assignment with ID={requester_assignment_id} and facilitator_id={user.id}")
+    print(f"Result: {requester_assignment}")
+    
     if not requester_assignment:
+        # Check if assignment exists at all
+        any_assignment = Assignment.query.filter_by(id=requester_assignment_id).first()
+        if any_assignment:
+            print(f"❌ Assignment {requester_assignment_id} exists but belongs to user {any_assignment.facilitator_id}, not {user.id}")
+        else:
+            print(f"❌ Assignment {requester_assignment_id} does not exist in database")
         return jsonify({'error': 'Invalid requester assignment selection'}), 400
     
     # Get the session and module from requester assignment
