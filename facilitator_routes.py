@@ -1830,15 +1830,10 @@ def create_swap_request():
     # We'll use the same assignment ID for both (simplified approach)
     target_assignment_id = requester_assignment_id
     
-    # Check if swap request already exists
-    existing_request = SwapRequest.query.filter_by(
-        requester_id=user.id,
-        requester_assignment_id=requester_assignment_id,
-        target_assignment_id=target_assignment_id
-    ).first()
-    
-    if existing_request:
-        return jsonify({'error': 'Swap request already exists for these assignments'}), 400
+    # Note: We don't check for existing swap requests because:
+    # 1. Sessions can be swapped multiple times (A→B, then B→C, then C→A, etc.)
+    # 2. The assignment ownership changes after each swap
+    # 3. We already validated that the current user owns this assignment (line 1798-1801)
     
     # Verify target facilitator exists and has access to the unit
     target_facilitator = User.query.get(target_facilitator_id)
