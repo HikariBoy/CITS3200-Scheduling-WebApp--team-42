@@ -1762,7 +1762,7 @@ def request_swap():
 
 @facilitator_bp.route('/swap-requests', methods=['POST'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def create_swap_request():
     """Create a new swap request via API."""
     user = get_current_user()
@@ -1777,6 +1777,16 @@ def create_swap_request():
     has_discussed = data.get('has_discussed', False)
     unit_id = data.get('unit_id')  # Optional unit context
     
+    print(f"\n{'='*80}")
+    print(f"🔍 SWAP REQUEST DEBUG")
+    print(f"Current user: {user.email} (ID: {user.id})")
+    print(f"Requester assignment ID: {requester_assignment_id}")
+    print(f"Target assignment ID: {target_assignment_id}")
+    print(f"Target facilitator ID: {target_facilitator_id}")
+    print(f"Has discussed: {has_discussed}")
+    print(f"Unit ID: {unit_id}")
+    print(f"{'='*80}\n")
+    
     # Validate required fields
     if not all([requester_assignment_id, target_assignment_id, target_facilitator_id]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -1790,7 +1800,16 @@ def create_swap_request():
         facilitator_id=user.id
     ).first()
     
+    print(f"🔍 Querying for assignment with ID={requester_assignment_id} and facilitator_id={user.id}")
+    print(f"Result: {requester_assignment}")
+    
     if not requester_assignment:
+        # Check if assignment exists at all
+        any_assignment = Assignment.query.filter_by(id=requester_assignment_id).first()
+        if any_assignment:
+            print(f"❌ Assignment {requester_assignment_id} exists but belongs to user {any_assignment.facilitator_id}, not {user.id}")
+        else:
+            print(f"❌ Assignment {requester_assignment_id} does not exist in database")
         return jsonify({'error': 'Invalid requester assignment selection'}), 400
     
     # Get the session and module from requester assignment
@@ -1811,15 +1830,10 @@ def create_swap_request():
     # We'll use the same assignment ID for both (simplified approach)
     target_assignment_id = requester_assignment_id
     
-    # Check if swap request already exists
-    existing_request = SwapRequest.query.filter_by(
-        requester_id=user.id,
-        requester_assignment_id=requester_assignment_id,
-        target_assignment_id=target_assignment_id
-    ).first()
-    
-    if existing_request:
-        return jsonify({'error': 'Swap request already exists for these assignments'}), 400
+    # Note: We don't check for existing swap requests because:
+    # 1. Sessions can be swapped multiple times (A→B, then B→C, then C→A, etc.)
+    # 2. The assignment ownership changes after each swap
+    # 3. We already validated that the current user owns this assignment (line 1798-1801)
     
     # Verify target facilitator exists and has access to the unit
     target_facilitator = User.query.get(target_facilitator_id)
@@ -1933,7 +1947,7 @@ def create_swap_request():
         
         # Send email notifications
         try:
-            from email_service import send_session_swap_emails
+            from email_service import send_session_swap_emails, send_uc_swap_notification
             
             requester = User.query.get(user.id)
             target = User.query.get(target_facilitator_id)
@@ -1946,6 +1960,7 @@ def create_swap_request():
                 'location': session.location or 'TBA'
             }
             
+            # Send emails to facilitators
             send_session_swap_emails(
                 requester_email=requester.email,
                 requester_name=requester.full_name,
@@ -1954,6 +1969,27 @@ def create_swap_request():
                 session_details=session_details,
                 unit_code=unit.unit_code if unit else 'Unknown'
             )
+            
+            # Send notification to Unit Coordinators
+            unit_coordinators = (
+                db.session.query(User)
+                .join(UnitCoordinator, User.id == UnitCoordinator.user_id)
+                .filter(UnitCoordinator.unit_id == module.unit_id)
+                .all()
+            )
+            
+            if unit_coordinators:
+                uc_emails = [uc.email for uc in unit_coordinators]
+                uc_names = [uc.full_name for uc in unit_coordinators]
+                
+                send_uc_swap_notification(
+                    uc_emails=uc_emails,
+                    uc_names=uc_names,
+                    requester_name=requester.full_name,
+                    target_name=target.full_name,
+                    session_details=session_details,
+                    unit_code=unit.unit_code if unit else 'Unknown'
+                )
         except Exception as email_error:
             # Don't fail the swap if email fails
             print(f"Warning: Failed to send swap notification emails: {email_error}")
@@ -1971,7 +2007,7 @@ def create_swap_request():
 
 @facilitator_bp.route('/swap-requests', methods=['GET'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def get_swap_requests():
     """Get user's swap requests grouped by status, filtered by unit."""
     user = get_current_user()
@@ -2118,7 +2154,7 @@ def check_facilitator_availability(facilitator_id, session_date, session_start_t
 
 @facilitator_bp.route('/swap-requests/<int:request_id>/facilitator-response', methods=['POST'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def facilitator_response_to_swap(request_id):
     """Handle facilitator response to swap request (approve/decline)."""
     user = get_current_user()
@@ -2187,7 +2223,7 @@ def facilitator_response_to_swap(request_id):
 
 @facilitator_bp.route('/available-facilitators', methods=['GET'])
 @login_required
-@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR])
+@role_required([UserRole.FACILITATOR, UserRole.UNIT_COORDINATOR, UserRole.ADMIN])
 def get_available_facilitators():
     """Get available facilitators for a specific session swap."""
     user = get_current_user()
