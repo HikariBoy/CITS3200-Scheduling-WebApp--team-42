@@ -535,23 +535,27 @@ def profile():
     today = date.today()
     
     # Get user's units for display (via UnitCoordinator relationship)
-    units = (
+    unit_rows = (
         db.session.query(Unit, func.count(Session.id))
         .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
         .outerjoin(Module, Module.unit_id == Unit.id)
         .outerjoin(Session, Session.module_id == Module.id)
         .filter(UnitCoordinator.user_id == user.id)
         .group_by(Unit.id)
-        .order_by(Unit.unit_code.asc())
         .all()
     )
-    
-    # Add session counts to units
+
     units_with_counts = []
-    for unit, session_count in units:
+    for unit, session_count in unit_rows:
         setattr(unit, "session_count", int(session_count or 0))
         units_with_counts.append(unit)
-    
+
+    units_with_counts.sort(key=lambda u: (
+        0 if (u.start_date and u.start_date <= today and (not u.end_date or u.end_date >= today)) else
+        1 if (u.start_date and u.start_date > today) else 2,
+        -(u.year or 0), u.unit_code or ''
+    ))
+
     return render_template("profile.html", user=user, units=units_with_counts, today=today)
 
 @unitcoordinator_bp.route("/account-settings")
@@ -822,13 +826,24 @@ def dashboard():
         .outerjoin(Session, Session.module_id == Module.id)
         .filter(UnitCoordinator.user_id == user.id)
         .group_by(Unit.id)
-        .order_by(Unit.unit_code.asc())
         .all()
     )
     units = []
+    today = date.today()
     for u, cnt in rows:
         setattr(u, "session_count", int(cnt or 0))
         units.append(u)
+
+    def _unit_sort_key(u):
+        if u.start_date and u.start_date <= today and (not u.end_date or u.end_date >= today):
+            priority = 0  # currently active
+        elif u.start_date and u.start_date > today:
+            priority = 1  # upcoming
+        else:
+            priority = 2  # past or undated
+        return (priority, -(u.year or 0), u.unit_code or '')
+
+    units.sort(key=_unit_sort_key)
 
     # Which unit is selected (via ?unit=) — otherwise first
     selected_id = request.args.get("unit", type=int)
@@ -1174,13 +1189,24 @@ def admin_dashboard():
         .outerjoin(Module, Module.unit_id == Unit.id)
         .outerjoin(Session, Session.module_id == Module.id)
         .group_by(Unit.id)
-        .order_by(Unit.unit_code.asc())
         .all()
     )
     units = []
+    today = date.today()
     for u, cnt in rows:
         setattr(u, "session_count", int(cnt or 0))
         units.append(u)
+
+    def _unit_sort_key(u):
+        if u.start_date and u.start_date <= today and (not u.end_date or u.end_date >= today):
+            priority = 0
+        elif u.start_date and u.start_date > today:
+            priority = 1
+        else:
+            priority = 2
+        return (priority, -(u.year or 0), u.unit_code or '')
+
+    units.sort(key=_unit_sort_key)
 
     # Which unit is selected (via ?unit=) — otherwise first
     selected_id = request.args.get("unit", type=int)
@@ -2426,7 +2452,7 @@ def upload_setup_csv():
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
     try:
-        text = file.read().decode("utf-8", errors="replace")
+        text = file.read().decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(text))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to read CSV: {e}"}), 400
@@ -3743,10 +3769,25 @@ def download_schedule_report(unit_id: int):
     
     if not assignments:
         return jsonify({
-            "ok": False, 
+            "ok": False,
             "error": "No assignments found. Please assign facilitators first."
         }), 404
-    
+
+    # Build skill level lookup: {(facilitator_id, module_id): display_string}
+    skill_level_names = {
+        SkillLevel.PROFICIENT: 'Proficient',
+        SkillLevel.HAVE_RUN_BEFORE: 'Have Run Before',
+        SkillLevel.HAVE_SOME_SKILL: 'Have Some Skill',
+        SkillLevel.NO_INTEREST: 'No Interest',
+    }
+    fac_ids = list({a[3].id for a in assignments})
+    mod_ids = list({a[2].id for a in assignments})
+    skills = FacilitatorSkill.query.filter(
+        FacilitatorSkill.facilitator_id.in_(fac_ids),
+        FacilitatorSkill.module_id.in_(mod_ids)
+    ).all()
+    skill_lookup = {(s.facilitator_id, s.module_id): skill_level_names.get(s.skill_level, 'Unknown') for s in skills}
+
     # Generate CSV content
     output = io.StringIO()
     writer = csv.writer(output)
@@ -3819,10 +3860,11 @@ def download_schedule_report(unit_id: int):
     
     # === SECTION 3: Detailed Assignment List ===
     writer.writerow(["DETAILED ASSIGNMENT LIST"])
-    writer.writerow(["Date", "Time", "Module", "Session Type", "Location", "Facilitator", "Email", "Role"])
-    
+    writer.writerow(["Date", "Time", "Module", "Session Type", "Location", "Facilitator", "Email", "Role", "Skill Level"])
+
     for assignment, session, module, facilitator in assignments:
         role = getattr(assignment, 'role', 'lead') or 'lead'
+        skill_level = skill_lookup.get((facilitator.id, module.id), 'Not Declared')
         writer.writerow([
             session.start_time.strftime('%Y-%m-%d'),
             f"{session.start_time.strftime('%H:%M')} - {session.end_time.strftime('%H:%M')}",
@@ -3831,7 +3873,8 @@ def download_schedule_report(unit_id: int):
             session.location or 'TBA',
             facilitator.full_name,
             facilitator.email,
-            role.title()
+            role.title(),
+            skill_level
         ])
     
     csv_content = output.getvalue()
@@ -3871,7 +3914,7 @@ def upload_sessions_csv(unit_id: int):
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
     try:
-        text = file.read().decode("utf-8", errors="replace")
+        text = file.read().decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(text))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to read CSV: {e}"}), 400
@@ -5247,7 +5290,7 @@ def upload_cas_csv(unit_id: int):
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
     try:
-        text = file.read().decode("utf-8", errors="replace")
+        text = file.read().decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(text))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to read CSV: {e}"}), 400
@@ -5569,7 +5612,7 @@ def upload_cas_csv(unit_id: int):
                     start_time=start_dt,
                     end_time=end_dt,
                     day_of_week=start_dt.weekday(),
-                    location=location_in or None,
+                    location=venue_obj.name if venue_obj else (location_in or None),
                     required_skills=None,
                     max_facilitators=1,
                 )

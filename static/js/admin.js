@@ -285,25 +285,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const facilitatorCards = document.querySelectorAll('.facilitator-card');
   const resultsCount = document.getElementById('resultsCount');
 
+  // Server-side search: navigate to ?search=<term>&page=1 so all pages are searched
+  let searchDebounceTimer = null;
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(function () {
+        const params = new URLSearchParams(window.location.search);
+        const term = searchInput.value.trim();
+        if (term) {
+          params.set('search', term);
+        } else {
+          params.delete('search');
+        }
+        params.set('page', '1');
+        window.location.search = params.toString();
+      }, 400);
+    });
+  }
+
+  // Client-side filter for position and status dropdowns (filters current page results)
   function filterFacilitators() {
-    const searchTerm = searchInput.value.toLowerCase();
-    const positionValue = positionFilter.value;
-    const statusValue = statusFilter.value;
+    const positionValue = positionFilter ? positionFilter.value : '';
+    const statusValue = statusFilter ? statusFilter.value : '';
 
     facilitatorCards.forEach(card => {
-      const name = card.querySelector('.facilitator-name').textContent.toLowerCase();
-      const email = card.querySelector('.facilitator-email').textContent.toLowerCase();
-      const positionBadge = card.querySelector('.badge-position') ? card.querySelector('.badge-position').textContent.toLowerCase() : '';
-      const statusBadge = card.querySelector('.badge-status').textContent.toLowerCase();
-
-      const matchesSearch = searchTerm === '' || name.includes(searchTerm) || email.includes(searchTerm);
+      const statusBadge = card.querySelector('.badge-status') ? card.querySelector('.badge-status').textContent.toLowerCase() : '';
 
       let matchesPosition = true;
       if (positionValue !== '') {
-        // Get the actual role from data-role attribute for accurate filtering
         const roleAttribute = card.querySelector('.badge-position')?.getAttribute('data-role') || '';
         const normalizedRole = roleAttribute.toLowerCase();
-        
         if (positionValue === 'admin') {
           matchesPosition = normalizedRole === 'admin';
         } else if (positionValue === 'facilitator') {
@@ -315,24 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let matchesStatus = true;
       if (statusValue !== '') {
-        // Normalize both the filter value and badge text for comparison
         const normalizedFilterValue = statusValue.replace('_', ' ').toLowerCase();
         const normalizedBadgeText = statusBadge.replace('_', ' ').toLowerCase();
         matchesStatus = normalizedBadgeText.includes(normalizedFilterValue);
       }
 
-      if (matchesSearch && matchesPosition && matchesStatus) {
-        card.style.display = 'flex';
-      } else {
-        card.style.display = 'none';
-      }
+      card.style.display = (matchesPosition && matchesStatus) ? 'flex' : 'none';
     });
 
     updateResultsCount();
   }
 
-  // Add event listeners for search and filters
-  if (searchInput) searchInput.addEventListener('input', filterFacilitators);
   if (positionFilter) positionFilter.addEventListener('change', filterFacilitators);
   if (statusFilter) statusFilter.addEventListener('change', filterFacilitators);
 
