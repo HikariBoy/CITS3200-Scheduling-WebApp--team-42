@@ -1279,8 +1279,16 @@
                         </div>
                       </div>
 
-                      <!-- Right: skills + placeholders -->
+                      <!-- Right: skills + remove button -->
                       <div class="min-w-[420px]">
+                        <div class="flex justify-end mb-2">
+                          <button type="button"
+                                  onclick="removeFacilitatorFromUnit({{ unit.id }}, '{{ f.email|e }}', '{{ f.name|e }}')"
+                                  class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-red-200 text-xs font-medium text-red-500 hover:text-red-700 hover:border-red-400 hover:bg-red-50 transition-colors">
+                            <span class="material-icons" style="font-size: 14px;">person_remove</span>
+                            Remove from unit
+                          </button>
+                        </div>
                         <div class="text-sm text-gray-500 mb-1">Skills</div>
                         {% if f.skills and f.skills|length %}
                           <div class="flex flex-wrap gap-2 mb-3">

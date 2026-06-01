@@ -360,6 +360,34 @@ async function removeCoordinatorInEditModal(unitId, coordinatorId, coordinatorNa
   }
 }
 
+async function removeFacilitatorFromUnit(unitId, email, name) {
+  if (!confirm(`Remove ${name} from this unit?\n\nThis will unlink them from the unit but will not delete their account.`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/unitcoordinator/units/${unitId}/facilitators/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN || ''
+      }
+    });
+
+    const result = await response.json();
+
+    if (result.ok) {
+      showSimpleNotification(`${name} removed from unit.`, 'success');
+      setTimeout(() => window.location.reload(), 800);
+    } else {
+      alert(result.error || 'Failed to remove facilitator.');
+    }
+  } catch (error) {
+    console.error('Error removing facilitator:', error);
+    showSimpleNotification('An error occurred. Please try again.', 'error');
+  }
+}
+
 // Also add this to handle clicking outside the modal
 document.addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById("createUnitModal");
