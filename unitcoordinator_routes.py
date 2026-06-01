@@ -535,23 +535,27 @@ def profile():
     today = date.today()
     
     # Get user's units for display (via UnitCoordinator relationship)
-    units = (
+    unit_rows = (
         db.session.query(Unit, func.count(Session.id))
         .join(UnitCoordinator, UnitCoordinator.unit_id == Unit.id)
         .outerjoin(Module, Module.unit_id == Unit.id)
         .outerjoin(Session, Session.module_id == Module.id)
         .filter(UnitCoordinator.user_id == user.id)
         .group_by(Unit.id)
-        .order_by(Unit.unit_code.asc())
         .all()
     )
-    
-    # Add session counts to units
+
     units_with_counts = []
-    for unit, session_count in units:
+    for unit, session_count in unit_rows:
         setattr(unit, "session_count", int(session_count or 0))
         units_with_counts.append(unit)
-    
+
+    units_with_counts.sort(key=lambda u: (
+        0 if (u.start_date and u.start_date <= today and (not u.end_date or u.end_date >= today)) else
+        1 if (u.start_date and u.start_date > today) else 2,
+        -(u.year or 0), u.unit_code or ''
+    ))
+
     return render_template("profile.html", user=user, units=units_with_counts, today=today)
 
 @unitcoordinator_bp.route("/account-settings")
@@ -822,13 +826,24 @@ def dashboard():
         .outerjoin(Session, Session.module_id == Module.id)
         .filter(UnitCoordinator.user_id == user.id)
         .group_by(Unit.id)
-        .order_by(Unit.unit_code.asc())
         .all()
     )
     units = []
+    today = date.today()
     for u, cnt in rows:
         setattr(u, "session_count", int(cnt or 0))
         units.append(u)
+
+    def _unit_sort_key(u):
+        if u.start_date and u.start_date <= today and (not u.end_date or u.end_date >= today):
+            priority = 0  # currently active
+        elif u.start_date and u.start_date > today:
+            priority = 1  # upcoming
+        else:
+            priority = 2  # past or undated
+        return (priority, -(u.year or 0), u.unit_code or '')
+
+    units.sort(key=_unit_sort_key)
 
     # Which unit is selected (via ?unit=) — otherwise first
     selected_id = request.args.get("unit", type=int)
@@ -1174,13 +1189,24 @@ def admin_dashboard():
         .outerjoin(Module, Module.unit_id == Unit.id)
         .outerjoin(Session, Session.module_id == Module.id)
         .group_by(Unit.id)
-        .order_by(Unit.unit_code.asc())
         .all()
     )
     units = []
+    today = date.today()
     for u, cnt in rows:
         setattr(u, "session_count", int(cnt or 0))
         units.append(u)
+
+    def _unit_sort_key(u):
+        if u.start_date and u.start_date <= today and (not u.end_date or u.end_date >= today):
+            priority = 0
+        elif u.start_date and u.start_date > today:
+            priority = 1
+        else:
+            priority = 2
+        return (priority, -(u.year or 0), u.unit_code or '')
+
+    units.sort(key=_unit_sort_key)
 
     # Which unit is selected (via ?unit=) — otherwise first
     selected_id = request.args.get("unit", type=int)
