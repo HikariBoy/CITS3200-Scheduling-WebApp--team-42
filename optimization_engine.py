@@ -505,18 +505,19 @@ def calculate_facilitator_score(facilitator, session, current_assignments, total
     
     return score
 
-def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fairness=None):
+def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fairness=None, facilitator_max_sessions=None):
     """
     Main function to generate optimal facilitator-to-session assignments
     Uses enhanced fairness algorithm to ensure equal distribution of hours
     Now supports multiple facilitators per session (lead and support staff)
-    
+
     Args:
         facilitators: List of facilitator data dictionaries
         unit_id: Optional unit ID to filter sessions (if None, gets sessions from all units)
         w_skill: Weight for skill priority (0.0-1.0). If None, uses 0.5 (50%).
         w_fairness: Weight for fairness priority (0.0-1.0). If None, uses 0.5 (50%).
-    
+        facilitator_max_sessions: Optional dict {facilitator_id: max_sessions} — hard cap per facilitator.
+
     Note: Availability is a hard constraint (always checked), not a weighted factor.
     """
     # Use provided weights or fall back to defaults (50/50 balance)
@@ -525,15 +526,20 @@ def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fai
         'skill': w_skill if w_skill is not None else 0.5,
         'fairness': w_fairness if w_fairness is not None else 0.5
     }
-    
+
+    max_sessions_cap = facilitator_max_sessions or {}
+
     sessions = get_real_sessions(unit_id)
-    
+
     if not facilitators:
         return [], ["No facilitators found in database"]
-    
+
     assignments = []
     conflicts = []
-    
+
+    # Track sessions assigned per facilitator (for UC-set max_sessions hard cap)
+    sessions_count_per_facilitator = {}
+
     # PERFORMANCE OPTIMIZATION: Batch load all unavailability data once
     # This prevents N×M database queries (one per facilitator-session pair)
     facilitator_ids = [f['id'] for f in facilitators]
@@ -577,43 +583,49 @@ def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fai
                 # Skip if already assigned to this session
                 if any(a['facilitator']['id'] == facilitator['id'] for a in session_assignments):
                     continue
-                
+
+                # UC-set max sessions cap (hard constraint)
+                fac_id = facilitator['id']
+                if fac_id in max_sessions_cap:
+                    if sessions_count_per_facilitator.get(fac_id, 0) >= max_sessions_cap[fac_id]:
+                        continue
+
                 # Check for time conflicts (hard constraint)
                 if check_time_conflict(facilitator, session, assignments):
                     continue
-                
+
                 # Check for location conflicts (hard constraint)
                 if check_location_conflict(facilitator, session, assignments):
                     continue
-                
+
                 # Check for unavailability (hard constraint)
                 if check_availability(facilitator, session, unavailability_map) == 0.0:
                     continue
-                
+
                 score = calculate_facilitator_score(
-                    facilitator, 
-                    session, 
-                    assignments, 
+                    facilitator,
+                    session,
+                    assignments,
                     total_hours_per_facilitator,
                     unavailability_map,
                     weights
                 )
-                
+
                 # If score is 0, hard constraint violated (unavailable, no interest, etc.) - skip this facilitator
                 if score == 0.0:
                     continue
-                
+
                 # Bonus for lead roles: prefer higher skill levels
                 skill_score = get_skill_score(facilitator, session)
                 score = score + (skill_score * 0.1)  # Add 10% bonus based on skill
-                
+
                 # Add small random variation (±5%) to introduce diversity while maintaining quality
                 score = score * (1 + random.uniform(-0.05, 0.05))
-                
+
                 if score > best_score:
                     best_score = score
                     best_facilitator = facilitator
-            
+
             # Assign lead if found
             if best_facilitator and best_score > 0:
                 assignment = {
@@ -624,10 +636,10 @@ def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fai
                 }
                 session_assignments.append(assignment)
                 assignments.append(assignment)
-                
-                # 🆕 STEP 3 FIX: Update fairness data after each assignment
-                # This ensures support staff selection uses updated hour counts
+
+                # Update fairness and session count trackers
                 total_hours_per_facilitator[best_facilitator['id']] = total_hours_per_facilitator.get(best_facilitator['id'], 0) + session['duration_hours']
+                sessions_count_per_facilitator[best_facilitator['id']] = sessions_count_per_facilitator.get(best_facilitator['id'], 0) + 1
             else:
                 # Could not fill this lead position
                 conflict_msg = f"Could not assign lead staff {lead_slot + 1}/{lead_staff_needed} for {session['module_name']} ({format_session_time(session)})"
@@ -647,39 +659,45 @@ def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fai
                 # Skip if already assigned to this session
                 if any(a['facilitator']['id'] == facilitator['id'] for a in session_assignments):
                     continue
-                
+
+                # UC-set max sessions cap (hard constraint)
+                fac_id = facilitator['id']
+                if fac_id in max_sessions_cap:
+                    if sessions_count_per_facilitator.get(fac_id, 0) >= max_sessions_cap[fac_id]:
+                        continue
+
                 # Check for time conflicts (hard constraint)
                 if check_time_conflict(facilitator, session, assignments):
                     continue
-                
+
                 # Check for location conflicts (hard constraint)
                 if check_location_conflict(facilitator, session, assignments):
                     continue
-                
+
                 # Check for unavailability (hard constraint)
                 if check_availability(facilitator, session, unavailability_map) == 0.0:
                     continue
-                
+
                 score = calculate_facilitator_score(
-                    facilitator, 
-                    session, 
-                    assignments, 
+                    facilitator,
+                    session,
+                    assignments,
                     total_hours_per_facilitator,
                     unavailability_map,
                     weights
                 )
-                
+
                 # If score is 0, hard constraint violated (unavailable, no interest, etc.) - skip this facilitator
                 if score == 0.0:
                     continue
-                
+
                 # Add small random variation (±5%) to introduce diversity while maintaining quality
                 score = score * (1 + random.uniform(-0.05, 0.05))
-                
+
                 if score > best_score:
                     best_score = score
                     best_facilitator = facilitator
-            
+
             # Assign support if found
             if best_facilitator and best_score > 0:
                 assignment = {
@@ -690,10 +708,10 @@ def generate_optimal_assignments(facilitators, unit_id=None, w_skill=None, w_fai
                 }
                 session_assignments.append(assignment)
                 assignments.append(assignment)
-                
-                # 🆕 STEP 3 FIX: Update fairness data after each assignment
-                # This ensures subsequent support staff selection uses updated hour counts
+
+                # Update fairness and session count trackers
                 total_hours_per_facilitator[best_facilitator['id']] = total_hours_per_facilitator.get(best_facilitator['id'], 0) + session['duration_hours']
+                sessions_count_per_facilitator[best_facilitator['id']] = sessions_count_per_facilitator.get(best_facilitator['id'], 0) + 1
             else:
                 # Could not fill this support position
                 conflict_msg = f"Could not assign support staff {support_slot + 1}/{support_staff_needed} for {session['module_name']} ({format_session_time(session)})"

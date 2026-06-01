@@ -3568,13 +3568,22 @@ def auto_assign_facilitators(unit_id: int):
         # Availability is a hard constraint (always checked, not weighted)
         w_skill = request_data.get('w_skill', 0.50)  # Default: 50%
         w_fairness = request_data.get('w_fairness', 0.50)  # Default: 50%
-        
+
+        # Per-facilitator max sessions cap (hard constraint, UC-set in settings modal)
+        # JSON keys are strings; convert to {int: int}
+        raw_caps = request_data.get('facilitator_max_sessions', {}) or {}
+        facilitator_max_sessions = {
+            int(k): int(v) for k, v in raw_caps.items()
+            if str(v).lstrip('-').isdigit() and int(v) > 0
+        }
+
         # Generate assignments using the optimization algorithm (filtered to this unit only)
         assignments, conflicts = generate_optimal_assignments(
-            facilitators, 
+            facilitators,
             unit_id,
             w_skill=w_skill,
-            w_fairness=w_fairness
+            w_fairness=w_fairness,
+            facilitator_max_sessions=facilitator_max_sessions
         )
         
         if not assignments:

@@ -5095,6 +5095,13 @@ async function autoAssignFacilitators() {
     
     // selectedFacilitators already loaded above for validation
     
+    // Load max sessions caps
+    let facilitatorMaxSessions = {};
+    try {
+      const savedMs = localStorage.getItem(`autoAssignMaxSessions_unit_${unitId}`);
+      if (savedMs) facilitatorMaxSessions = JSON.parse(savedMs);
+    } catch (e) { facilitatorMaxSessions = {}; }
+
     const url = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE, unitId);
     const response = await fetch(url, {
       method: 'POST',
@@ -5103,10 +5110,10 @@ async function autoAssignFacilitators() {
         'X-CSRFToken': window.CSRF_TOKEN
       },
       body: JSON.stringify({
-        w_skill: weights.skill / 100,        // Convert percentage to decimal (0.0-1.0)
-        w_fairness: weights.fairness / 100,  // Convert percentage to decimal (0.0-1.0)
-        included_facilitators: selectedFacilitators  // null = never saved (include all), [] = explicitly none, [1,2,3] = specific IDs
-        // Note: Availability is a hard constraint (always checked), not sent as weight
+        w_skill: weights.skill / 100,
+        w_fairness: weights.fairness / 100,
+        included_facilitators: selectedFacilitators,
+        facilitator_max_sessions: facilitatorMaxSessions
       })
     });
 
@@ -7980,6 +7987,13 @@ async function loadFacilitatorsForSelection(unitId) {
     } catch (e) {
       console.error('Error loading saved facilitator selections:', e);
     }
+
+    // Load saved max sessions per facilitator
+    let savedMaxSessions = {};
+    try {
+      const savedMs = localStorage.getItem(`autoAssignMaxSessions_unit_${unitId}`);
+      if (savedMs) savedMaxSessions = JSON.parse(savedMs);
+    } catch (e) { savedMaxSessions = {}; }
     
     // If no saved selections (null = never saved), select all by default
     // If saved is empty array [], that means user explicitly deselected all
@@ -8010,11 +8024,21 @@ async function loadFacilitatorsForSelection(unitId) {
             ${showEmailSeparately ? `<span style="font-size: 12px; color: #9ca3af;">${email}</span>` : ''}
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            ${hasManualUnavailability 
+            <div style="display: flex; align-items: center; gap: 4px;" title="Max sessions this facilitator can be assigned (leave blank for no limit)" onclick="event.stopPropagation(); event.preventDefault();">
+              <span style="font-size: 11px; color: #6b7280; white-space: nowrap;">Max:</span>
+              <input type="number" min="1"
+                     class="facilitator-max-sessions"
+                     data-facilitator-id="${facilitator.id}"
+                     value="${savedMaxSessions[facilitator.id] || ''}"
+                     placeholder="∞"
+                     style="width: 46px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; background: white;"
+                     onclick="event.stopPropagation()">
+            </div>
+            ${hasManualUnavailability
               ? `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #10b981; font-weight: 500;" title="Has manual unavailability set">
                    <span class="material-icons" style="font-size: 16px;">check_circle</span>
                    Unavail. Set
-                 </span>` 
+                 </span>`
               : `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ef4444; font-weight: 500;" title="No manual unavailability set">
                    <span class="material-icons" style="font-size: 16px;">cancel</span>
                    No Unavail.
@@ -8104,18 +8128,28 @@ function updateWeightDisplay(type, value) {
 }
 
 function resetToRecommended() {
+  const unitId = getUnitId();
+
   // Recommended defaults: balanced 50/50
   autoAssignWeights = {
     skill: 50,
     fairness: 50
   };
-  
+
   document.getElementById('skill-weight-slider').value = 50;
   document.getElementById('fairness-weight-slider').value = 50;
-  
+
   updateWeightDisplay('skill', 50);
-  
-  showSimpleNotification('Reset to recommended settings (50/50 balance)', 'success');
+
+  // Clear max sessions inputs
+  document.querySelectorAll('.facilitator-max-sessions').forEach(input => {
+    input.value = '';
+  });
+  if (unitId) {
+    localStorage.removeItem(`autoAssignMaxSessions_unit_${unitId}`);
+  }
+
+  showSimpleNotification('Reset to recommended settings (50/50 balance, no session caps)', 'success');
 }
 
 function saveAutoAssignSettings() {
@@ -8151,10 +8185,20 @@ function saveAutoAssignSettings() {
     document.querySelectorAll('.facilitator-checkbox:checked').forEach(checkbox => {
       selectedFacilitators.push(parseInt(checkbox.dataset.facilitatorId));
     });
-    
+
     const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
     localStorage.setItem(facilitatorStorageKey, JSON.stringify(selectedFacilitators));
-    
+
+    // Save max sessions per facilitator
+    const maxSessions = {};
+    document.querySelectorAll('.facilitator-max-sessions').forEach(input => {
+      const val = parseInt(input.value);
+      if (!isNaN(val) && val > 0) {
+        maxSessions[parseInt(input.dataset.facilitatorId)] = val;
+      }
+    });
+    localStorage.setItem(`autoAssignMaxSessions_unit_${unitId}`, JSON.stringify(maxSessions));
+
     showSimpleNotification(`Settings saved! ${selectedFacilitators.length} facilitator(s) will be included in auto-assignment.`, 'success');
     closeAutoAssignSettings();
   } catch (error) {
