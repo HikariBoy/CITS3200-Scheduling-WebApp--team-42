@@ -2426,7 +2426,7 @@ def upload_setup_csv():
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
     try:
-        text = file.read().decode("utf-8", errors="replace")
+        text = file.read().decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(text))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to read CSV: {e}"}), 400
@@ -3888,7 +3888,7 @@ def upload_sessions_csv(unit_id: int):
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
     try:
-        text = file.read().decode("utf-8", errors="replace")
+        text = file.read().decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(text))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to read CSV: {e}"}), 400
@@ -5264,7 +5264,7 @@ def upload_cas_csv(unit_id: int):
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
     try:
-        text = file.read().decode("utf-8", errors="replace")
+        text = file.read().decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(StringIO(text))
     except Exception as e:
         return jsonify({"ok": False, "error": f"Failed to read CSV: {e}"}), 400
