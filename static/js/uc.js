@@ -4842,7 +4842,8 @@ function renderDaySessions(sessions, dayDate) {
        status: session.status || session.extendedProps?.status || 'scheduled',
        module_id: session.module_id || session.extendedProps?.module_id || null,
        lead_staff_required: session.extendedProps?.lead_staff_required ?? session.lead_staff_required ?? 1,
-       support_staff_required: session.extendedProps?.support_staff_required ?? session.support_staff_required ?? 0
+       support_staff_required: session.extendedProps?.support_staff_required ?? session.support_staff_required ?? 0,
+       facilitators: session.extendedProps?.facilitators || session.facilitators || []
      }).replace(/"/g, '&quot;')})">
       <div class="session-header">
         <div class="session-facilitator ${session.facilitator ? '' : 'unassigned'}" onclick="event.stopPropagation(); openFacilitatorModal(this)">
@@ -5365,7 +5366,11 @@ async function loadListSessionData() {
         location: session.extendedProps?.location || session.extendedProps?.venue || 'TBA',
         facilitator: getSessionFacilitator(session),
         moduleType: session.extendedProps?.module_type || 'Workshop',
-        students: session.extendedProps?.students || 0
+        students: session.extendedProps?.students || 0,
+        module_id: session.extendedProps?.module_id || session.module_id || null,
+        lead_staff_required: session.extendedProps?.lead_staff_required ?? session.lead_staff_required ?? 1,
+        support_staff_required: session.extendedProps?.support_staff_required ?? session.support_staff_required ?? 0,
+        facilitators: session.extendedProps?.facilitators || session.facilitators || []
       }));
       
       // Re-render list view if it's currently active
@@ -6014,7 +6019,8 @@ function renderListView() {
          status: session.status,
          module_id: session.module_id || null,
          lead_staff_required: session.lead_staff_required ?? 1,
-         support_staff_required: session.support_staff_required ?? 0
+         support_staff_required: session.support_staff_required ?? 0,
+         facilitators: session.facilitators || []
        }).replace(/"/g, '&quot;')})">
         <div class="session-item-header">
           <div class="session-title">
@@ -6037,7 +6043,8 @@ function renderListView() {
               status: session.status,
               module_id: session.module_id || null,
               lead_staff_required: session.lead_staff_required ?? 1,
-              support_staff_required: session.support_staff_required ?? 0
+              support_staff_required: session.support_staff_required ?? 0,
+              facilitators: session.facilitators || []
             }).replace(/"/g, '&quot;')})">
               <span class="material-icons">visibility</span>
             </button>
@@ -6867,12 +6874,12 @@ function renderFacilitatorList() {
             ${facilitator.skill_label ? `<span style="padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
             ${isUnavailable ? `<span style="padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 2px;"><span class="material-icons" style="font-size: 12px;">event_busy</span>${facilitator.unavailability_reason || 'Unavailable'}</span>` : ''}
           </div>
-        </div>
-        <div class="fac-role-toggle" id="role-toggle-${facilitator.id}" style="display:${isSelected ? 'flex' : 'none'}; gap:4px; margin-left:auto; flex-shrink:0;">
-          <button type="button" onclick="setFacilitatorRole('${facilitator.id}', 'lead', event)"
-            style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid ${currentRole === 'lead' ? '#4f46e5' : '#d1d5db'}; background:${currentRole === 'lead' ? '#4f46e5' : '#fff'}; color:${currentRole === 'lead' ? '#fff' : '#6b7280'};">Lead</button>
-          <button type="button" onclick="setFacilitatorRole('${facilitator.id}', 'support', event)"
-            style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid ${currentRole === 'support' ? '#4f46e5' : '#d1d5db'}; background:${currentRole === 'support' ? '#4f46e5' : '#fff'}; color:${currentRole === 'support' ? '#fff' : '#6b7280'};">Support</button>
+          <div class="fac-role-toggle" id="role-toggle-${facilitator.id}" style="display:${isSelected ? 'flex' : 'none'}; gap:4px; margin-top:6px;">
+            <button type="button" onclick="setFacilitatorRole('${facilitator.id}', 'lead', event)"
+              style="padding:3px 12px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid ${currentRole === 'lead' ? '#4f46e5' : '#d1d5db'}; background:${currentRole === 'lead' ? '#4f46e5' : '#fff'}; color:${currentRole === 'lead' ? '#fff' : '#6b7280'};">Lead</button>
+            <button type="button" onclick="setFacilitatorRole('${facilitator.id}', 'support', event)"
+              style="padding:3px 12px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid ${currentRole === 'support' ? '#4f46e5' : '#d1d5db'}; background:${currentRole === 'support' ? '#4f46e5' : '#fff'}; color:${currentRole === 'support' ? '#fff' : '#6b7280'};">Support</button>
+          </div>
         </div>
       </div>
     `;
@@ -7288,95 +7295,34 @@ function openSessionDetailsModal(sessionData) {
   const modal = document.getElementById('session-details-modal');
   if (!modal) return;
   
-  // Debug: Log the session data being passed
-  console.log('=== MODAL DEBUG START ===');
-  console.log('Session data passed to modal:', sessionData);
-  console.log('Session title:', sessionData.title);
-  console.log('Session name:', sessionData.name);
-  console.log('Session session_name:', sessionData.session_name);
-  console.log('Session location:', sessionData.location);
-  console.log('Session facilitator:', sessionData.facilitator);
-  console.log('Session moduleType:', sessionData.moduleType);
-  console.log('Session status:', sessionData.status);
-  
-  // Populate modal with session data
-  // Fix: Use the title field which is correctly passed from session cards
   const sessionName = sessionData.title || sessionData.name || sessionData.session_name || 'Unknown Session';
-  console.log('Using session name:', sessionName);
-  
-  // Fix: Use the location field which should contain the actual venue
   const location = sessionData.location || 'TBA';
-  console.log('Using location:', location);
   
   // Update modal elements
   const nameEl = document.getElementById('modal-session-name');
   const datetimeEl = document.getElementById('modal-session-datetime');
   const locationEl = document.getElementById('modal-session-location');
-  const facilitatorEl = document.getElementById('modal-session-facilitator');
+  const leadsEl = document.getElementById('modal-session-leads');
+  const supportsEl = document.getElementById('modal-session-supports');
   const typeEl = document.getElementById('modal-session-type');
   const statusEl = document.getElementById('modal-session-status');
-  
-  console.log('Modal elements found:', {
-    nameEl: !!nameEl,
-    datetimeEl: !!datetimeEl,
-    locationEl: !!locationEl,
-    facilitatorEl: !!facilitatorEl,
-    typeEl: !!typeEl,
-    statusEl: !!statusEl
-  });
-  
+
   if (nameEl) nameEl.textContent = sessionName;
   if (datetimeEl) datetimeEl.textContent = sessionData.day + ' ' + sessionData.time;
   if (locationEl) locationEl.textContent = location;
-  
-  // Check if session card has updated facilitator data
+
+  // Populate lead/support rows from facilitators array
+  const facilitators = sessionData.facilitators || [];
+  const leads = facilitators.filter(f => f.role === 'lead' || !f.role);
+  const supports = facilitators.filter(f => f.role === 'support');
+  if (leadsEl) leadsEl.textContent = leads.length ? leads.map(f => f.name).join(', ') : 'Unassigned';
+  if (supportsEl) supportsEl.textContent = supports.length ? supports.map(f => f.name).join(', ') : 'None';
+
   const sessionCard = document.querySelector(`[data-session-id="${sessionData.id}"]`);
-  let facilitatorName = 'Unassigned';
-  let sessionStatus = 'Scheduled';
-  
-  if (sessionCard) {
-    const updatedFacilitatorNames = sessionCard.getAttribute('data-facilitator-names');
-    const updatedStatus = sessionCard.getAttribute('data-session-status');
-    
-    // Prioritize updated facilitator names over original session data
-    if (updatedFacilitatorNames) {
-      facilitatorName = updatedFacilitatorNames;
-    } else {
-      // Fall back to original session data, but extract name from email if needed
-      const originalFacilitator = sessionData.facilitator || 'Unassigned';
-      if (originalFacilitator !== 'Unassigned' && originalFacilitator.includes('@')) {
-        // If it's an email, try to get the name from the facilitator list
-        const facilitatorObj = allFacilitators.find(f => f.email === originalFacilitator);
-        facilitatorName = facilitatorObj ? facilitatorObj.name : originalFacilitator;
-      } else {
-        facilitatorName = originalFacilitator;
-      }
-    }
-    
-    if (updatedStatus) {
-      sessionStatus = updatedStatus.charAt(0).toUpperCase() + updatedStatus.slice(1);
-    } else {
-      sessionStatus = sessionData.status ? sessionData.status.charAt(0).toUpperCase() + sessionData.status.slice(1) : 'Scheduled';
-    }
-  } else {
-    // No session card found, use original data
-    const originalFacilitator = sessionData.facilitator || 'Unassigned';
-    if (originalFacilitator !== 'Unassigned' && originalFacilitator.includes('@')) {
-      // If it's an email, try to get the name from the facilitator list
-      const facilitatorObj = allFacilitators.find(f => f.email === originalFacilitator);
-      facilitatorName = facilitatorObj ? facilitatorObj.name : originalFacilitator;
-    } else {
-      facilitatorName = originalFacilitator;
-    }
-    sessionStatus = sessionData.status ? sessionData.status.charAt(0).toUpperCase() + sessionData.status.slice(1) : 'Scheduled';
-  }
-  
-  if (facilitatorEl) facilitatorEl.textContent = facilitatorName;
+  const sessionStatus = sessionCard?.getAttribute('data-session-status') || sessionData.status || 'scheduled';
   if (typeEl) typeEl.textContent = sessionData.moduleType || 'Workshop';
-  if (statusEl) statusEl.textContent = sessionStatus;
-  
-  console.log('=== MODAL DEBUG END ===');
-  
+  if (statusEl) statusEl.textContent = sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1);
+
   // Store session ID and staffing data for save/delete
   modal.dataset.sessionId = sessionData.id;
   modal.dataset.moduleId = sessionData.module_id || '';
