@@ -5798,7 +5798,10 @@ def get_dashboard_sessions(unit_id: int):
             "time": f"{session.start_time.strftime('%I:%M %p')} - {session.end_time.strftime('%I:%M %p')}",
             "location": session.location or "TBA",
             "status": status,
-            "facilitators": facilitators
+            "facilitators": facilitators,
+            "module_id": session.module_id,
+            "lead_staff_required": session.lead_staff_required or 1,
+            "support_staff_required": session.support_staff_required or 0
         })
 
     # Process upcoming sessions
@@ -5835,7 +5838,10 @@ def get_dashboard_sessions(unit_id: int):
             "time": session.start_time.strftime("%I:%M %p"),
             "location": session.location or "TBA",
             "status": status,
-            "facilitators": facilitators
+            "facilitators": facilitators,
+            "module_id": session.module_id,
+            "lead_staff_required": session.lead_staff_required or 1,
+            "support_staff_required": session.support_staff_required or 0
         })
 
     # Get facilitator session counts for bar chart
