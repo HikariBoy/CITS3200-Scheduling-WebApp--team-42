@@ -185,25 +185,33 @@ def check_availability(facilitator, session, unavailability_map=None):
     
     # Check each unavailability entry for this facilitator
     for unavailability in unavailabilities:
-        # Skip if not for this date
-        if unavailability.date != session_date:
-            continue
-        
+        # Determine whether this entry covers the session date
+        if unavailability.is_recurring:
+            # Quick range check before expanding all dates
+            if session_date < unavailability.date:
+                continue
+            if unavailability.recurring_end_date and session_date > unavailability.recurring_end_date:
+                continue
+            if session_date not in unavailability.get_recurring_dates():
+                continue
+        else:
+            if unavailability.date != session_date:
+                continue
+
         # Check if it's a full day unavailability
         if unavailability.is_full_day:
             return 0.0  # Not available for full day
-        
+
         # Check if the session time conflicts with the unavailability time block
         if unavailability.start_time and unavailability.end_time:
             session_start = session_start_time
             session_end = session_end_time
             unavail_start = unavailability.start_time
             unavail_end = unavailability.end_time
-            
-            # Check if sessions overlap
+
             if (session_start < unavail_end and session_end > unavail_start):
                 return 0.0  # Conflict detected
-    
+
     # If we get here, no conflict was found
     return 1.0
 
