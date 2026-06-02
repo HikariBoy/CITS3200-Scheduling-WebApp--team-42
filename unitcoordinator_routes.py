@@ -3568,13 +3568,22 @@ def auto_assign_facilitators(unit_id: int):
         # Availability is a hard constraint (always checked, not weighted)
         w_skill = request_data.get('w_skill', 0.50)  # Default: 50%
         w_fairness = request_data.get('w_fairness', 0.50)  # Default: 50%
-        
+
+        # Per-facilitator max sessions cap (hard constraint, UC-set in settings modal)
+        # JSON keys are strings; convert to {int: int}
+        raw_caps = request_data.get('facilitator_max_sessions', {}) or {}
+        facilitator_max_sessions = {
+            int(k): int(v) for k, v in raw_caps.items()
+            if str(v).lstrip('-').isdigit() and int(v) > 0
+        }
+
         # Generate assignments using the optimization algorithm (filtered to this unit only)
         assignments, conflicts = generate_optimal_assignments(
-            facilitators, 
+            facilitators,
             unit_id,
             w_skill=w_skill,
-            w_fairness=w_fairness
+            w_fairness=w_fairness,
+            facilitator_max_sessions=facilitator_max_sessions
         )
         
         if not assignments:
@@ -4380,6 +4389,7 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
     try:
         data = request.get_json()
         facilitator_ids = data.get('facilitator_ids', [])
+        facilitator_roles = data.get('facilitator_roles', {})  # {str(id): 'lead'|'support'}
         
         # Allow empty list to unassign all facilitators
         # if not facilitator_ids:
@@ -4478,11 +4488,14 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
                 continue
             
             # Create assignment
+            role = facilitator_roles.get(str(facilitator_id), 'lead')
+            if role not in ('lead', 'support'):
+                role = 'lead'
             assignment = Assignment(
                 session_id=session_id,
                 facilitator_id=facilitator_id,
-                is_confirmed=False,  # Default to unconfirmed
-                role='lead'  # Default role
+                is_confirmed=False,
+                role=role
             )
             db.session.add(assignment)
         
@@ -5139,6 +5152,21 @@ def list_facilitators(unit_id: int):
         except ValueError:
             pass  # Invalid module ID, ignore
 
+    session_id_str = request.args.get('session_id')
+    session_id = None
+    if session_id_str:
+        try:
+            session_id = int(session_id_str)
+        except ValueError:
+            pass
+
+    # Build a map of facilitator_id -> role for pre-assigned facilitators
+    assigned_role_map = {}
+    if session_id:
+        existing_assignments = Assignment.query.filter_by(session_id=session_id).all()
+        for a in existing_assignments:
+            assigned_role_map[a.facilitator_id] = a.role or 'lead'
+
     facs = (
         db.session.query(User)
         .join(UnitFacilitator, UnitFacilitator.user_id == User.id)
@@ -5218,9 +5246,10 @@ def list_facilitators(unit_id: int):
             "is_unavailable": is_unavailable,
             "unavailability_reason": unavailability_reason,
             "skill_level": skill_level,
-            "skill_label": skill_label
+            "skill_label": skill_label,
+            "assigned_role": assigned_role_map.get(fac.id)
         })
-    
+
     return jsonify({"ok": True, "facilitators": facilitators})
 
 

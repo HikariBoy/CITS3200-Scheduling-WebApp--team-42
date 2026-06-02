@@ -360,6 +360,34 @@ async function removeCoordinatorInEditModal(unitId, coordinatorId, coordinatorNa
   }
 }
 
+async function removeFacilitatorFromUnit(unitId, email, name) {
+  if (!confirm(`Remove ${name} from this unit?\n\nThis will delete their assignments, skills, and availability for this unit.\nTheir account and data in other units will not be affected.`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/unitcoordinator/units/${unitId}/facilitators/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN || ''
+      }
+    });
+
+    const result = await response.json();
+
+    if (result.ok) {
+      showSimpleNotification(`${name} removed from unit.`, 'success');
+      setTimeout(() => window.location.reload(), 800);
+    } else {
+      alert(result.error || 'Failed to remove facilitator.');
+    }
+  } catch (error) {
+    console.error('Error removing facilitator:', error);
+    showSimpleNotification('An error occurred. Please try again.', 'error');
+  }
+}
+
 // Also add this to handle clicking outside the modal
 document.addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById("createUnitModal");
@@ -1961,13 +1989,12 @@ async function openInspector(ev) {
   // ---- staffing fields ----
   const leadStaffInput = document.getElementById('inspLeadStaff');
   const supportStaffInput = document.getElementById('inspSupportStaff');
-  
-  if (leadStaffInput) {
-    leadStaffInput.value = ev.extendedProps?.lead_staff_required || 1;
-  }
-  if (supportStaffInput) {
-    supportStaffInput.value = ev.extendedProps?.support_staff_required || 0;
-  }
+
+  if (leadStaffInput) leadStaffInput.value = ev.extendedProps?.lead_staff_required || 1;
+  if (supportStaffInput) supportStaffInput.value = ev.extendedProps?.support_staff_required || 0;
+
+  const applyToModuleCheckbox = document.getElementById('inspApplyStaffingToModule');
+  if (applyToModuleCheckbox) applyToModuleCheckbox.checked = false;
 
   // ---- timing controls (start/end + presets) ----
   ensureTimePickers();
@@ -2039,9 +2066,30 @@ function wireInspectorButtons(ev) {
     if (!data.ok) {
         alert(data.error || 'Failed to update');
     } else {
+        // If "apply to module" is ticked, bulk-update all sessions in the same module
+        const applyToModule = document.getElementById('inspApplyStaffingToModule')?.checked;
+        if (applyToModule) {
+          const moduleId = ev.extendedProps?.module_id;
+          const unitId = getUnitId();
+          if (moduleId && unitId) {
+            await fetch(`/unitcoordinator/units/${unitId}/bulk-staffing/apply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+              body: JSON.stringify({
+                type: 'module',
+                value: String(moduleId),
+                lead_staff_required: parseInt(leadStaff),
+                support_staff_required: parseInt(supportStaff),
+                respect_overrides: false
+              })
+            });
+          }
+          // Uncheck after applying so it doesn't carry over to next open
+          document.getElementById('inspApplyStaffingToModule').checked = false;
+        }
+
         // Update the current event with the new data
         if (window.__editingEvent) {
-          // Update the event properties
           window.__editingEvent.setStart(pStart);
           window.__editingEvent.setEnd(pEnd);
           window.__editingEvent.setExtendedProp('session_name', name);
@@ -2049,23 +2097,10 @@ function wireInspectorButtons(ev) {
           window.__editingEvent.setExtendedProp('venue_id', null);
           window.__editingEvent.setExtendedProp('lead_staff_required', leadStaff);
           window.__editingEvent.setExtendedProp('support_staff_required', supportStaff);
-          
-          // Update the title with proper formatting
-          let displayTitle = name;
-          window.__editingEvent.setProp('title', displayTitle);
-          
-          console.log('Updated event locally:', {
-            id: window.__editingEvent.id,
-            title: displayTitle,
-            venue: ''
-          });
-          
-          // Refresh review step if we're on it
-          if (currentStep === 5) {
-            populateReview();
-          }
+          window.__editingEvent.setProp('title', name);
+          if (currentStep === 5) populateReview();
         }
-        
+
         closeInspector();
     }
   };
@@ -3738,10 +3773,10 @@ function updateTodaysSessions(sessions) {
           <div class="session-card-facilitator">
             <span class="session-card-fac-label">Facilitators:</span>
             <div class="session-card-fac-value">
-              ${session.facilitators?.length > 0 
+              ${session.facilitators?.length > 0
                 ? session.facilitators.map(f => {
-                    const roleBadge = f.role === 'lead' 
-                      ? '<span class="role-badge lead">Lead</span>' 
+                    const roleBadge = f.role === 'lead'
+                      ? '<span class="role-badge lead">Lead</span>'
                       : '<span class="role-badge support">Support</span>';
                     return `${f.name || 'Unknown'} ${roleBadge}`;
                   }).join(', ')
@@ -4804,7 +4839,10 @@ function renderDaySessions(sessions, dayDate) {
        location: session.location || session.extendedProps?.location || 'TBA',
        facilitator: session.facilitator || session.extendedProps?.facilitator_name || 'Unassigned',
        moduleType: session.module_type || session.extendedProps?.module_type || 'Workshop',
-       status: session.status || session.extendedProps?.status || 'scheduled'
+       status: session.status || session.extendedProps?.status || 'scheduled',
+       module_id: session.module_id || session.extendedProps?.module_id || null,
+       lead_staff_required: session.extendedProps?.lead_staff_required ?? session.lead_staff_required ?? 1,
+       support_staff_required: session.extendedProps?.support_staff_required ?? session.support_staff_required ?? 0
      }).replace(/"/g, '&quot;')})">
       <div class="session-header">
         <div class="session-facilitator ${session.facilitator ? '' : 'unassigned'}" onclick="event.stopPropagation(); openFacilitatorModal(this)">
@@ -4834,8 +4872,8 @@ function renderDaySessions(sessions, dayDate) {
             <span class="material-icons">person</span>
             <span class="facilitator-list">
               ${session.facilitators.map(f => {
-                const roleBadge = f.role === 'lead' 
-                  ? '<span class="role-badge lead">Lead</span>' 
+                const roleBadge = f.role === 'lead'
+                  ? '<span class="role-badge lead">Lead</span>'
                   : '<span class="role-badge support">Support</span>';
                 return `${f.name} ${roleBadge}`;
               }).join(', ')}
@@ -4852,6 +4890,28 @@ function renderDaySessions(sessions, dayDate) {
     </div>
   `;
     }).join('');
+}
+
+// Staffing status badge: "1/1 Lead ✓  0/1 Support ✗"
+function getStaffingStatusHTML(session) {
+  const leadRequired   = session.extendedProps?.lead_staff_required    ?? session.lead_staff_required    ?? 1;
+  const supportRequired = session.extendedProps?.support_staff_required ?? session.support_staff_required ?? 0;
+  const facilitators   = session.facilitators || [];
+  const leadAssigned   = facilitators.filter(f => f.role === 'lead').length;
+  const supportAssigned = facilitators.filter(f => f.role === 'support').length;
+  const leadMet        = leadAssigned >= leadRequired;
+  const supportMet     = supportRequired === 0 || supportAssigned >= supportRequired;
+
+  const leadColor  = leadMet    ? '#16a34a' : '#dc2626';
+  const leadIcon   = leadMet    ? '✓' : '✗';
+  const suppColor  = supportMet ? '#16a34a' : '#dc2626';
+  const suppIcon   = supportMet ? '✓' : '✗';
+
+  let html = `<span style="font-size:11px; font-weight:600; color:${leadColor};">${leadAssigned}/${leadRequired} Lead ${leadIcon}</span>`;
+  if (supportRequired > 0) {
+    html += `<span style="font-size:11px; font-weight:600; color:${suppColor}; margin-left:8px;">${supportAssigned}/${supportRequired} Support ${suppIcon}</span>`;
+  }
+  return html;
 }
 
 // Helper functions
@@ -5095,6 +5155,13 @@ async function autoAssignFacilitators() {
     
     // selectedFacilitators already loaded above for validation
     
+    // Load max sessions caps
+    let facilitatorMaxSessions = {};
+    try {
+      const savedMs = localStorage.getItem(`autoAssignMaxSessions_unit_${unitId}`);
+      if (savedMs) facilitatorMaxSessions = JSON.parse(savedMs);
+    } catch (e) { facilitatorMaxSessions = {}; }
+
     const url = withUnitId(window.FLASK_ROUTES.AUTO_ASSIGN_TEMPLATE, unitId);
     const response = await fetch(url, {
       method: 'POST',
@@ -5103,10 +5170,10 @@ async function autoAssignFacilitators() {
         'X-CSRFToken': window.CSRF_TOKEN
       },
       body: JSON.stringify({
-        w_skill: weights.skill / 100,        // Convert percentage to decimal (0.0-1.0)
-        w_fairness: weights.fairness / 100,  // Convert percentage to decimal (0.0-1.0)
-        included_facilitators: selectedFacilitators  // null = never saved (include all), [] = explicitly none, [1,2,3] = specific IDs
-        // Note: Availability is a hard constraint (always checked), not sent as weight
+        w_skill: weights.skill / 100,
+        w_fairness: weights.fairness / 100,
+        included_facilitators: selectedFacilitators,
+        facilitator_max_sessions: facilitatorMaxSessions
       })
     });
 
@@ -5944,7 +6011,10 @@ function renderListView() {
          location: session.location,
          facilitator: session.facilitator || 'Unassigned',
          moduleType: session.module_type || session.moduleType,
-         status: session.status
+         status: session.status,
+         module_id: session.module_id || null,
+         lead_staff_required: session.lead_staff_required ?? 1,
+         support_staff_required: session.support_staff_required ?? 0
        }).replace(/"/g, '&quot;')})">
         <div class="session-item-header">
           <div class="session-title">
@@ -5964,7 +6034,10 @@ function renderListView() {
               location: session.location,
               facilitator: session.facilitator || 'Unassigned',
               moduleType: session.module_type || session.moduleType,
-              status: session.status
+              status: session.status,
+              module_id: session.module_id || null,
+              lead_staff_required: session.lead_staff_required ?? 1,
+              support_staff_required: session.support_staff_required ?? 0
             }).replace(/"/g, '&quot;')})">
               <span class="material-icons">visibility</span>
             </button>
@@ -6692,8 +6765,8 @@ async function loadFacilitators() {
     `;
     
     let url = withUnitId(LIST_FACILITATORS_TEMPLATE, currentUnitId);
-    
-    // Add session date, time, and module if available
+
+    // Add session date, time, module, and session_id if available
     if (currentSessionData?.date) {
       url += `?session_date=${currentSessionData.date}`;
       if (currentSessionData?.startTime) {
@@ -6704,6 +6777,9 @@ async function loadFacilitators() {
       }
       if (currentSessionData?.moduleId) {
         url += `&module_id=${currentSessionData.moduleId}`;
+      }
+      if (currentSessionData?.id && !String(currentSessionData.id).startsWith('temp-')) {
+        url += `&session_id=${currentSessionData.id}`;
       }
     }
     
@@ -6733,7 +6809,8 @@ async function loadFacilitators() {
           selectedFacilitators.push({
             id: String(facilitator.id),
             name: facilitator.name,
-            email: facilitator.email
+            email: facilitator.email,
+            role: facilitator.assigned_role || 'lead'
           });
         }
       });
@@ -6772,10 +6849,11 @@ function renderFacilitatorList() {
   let html = '';
   
   html += filteredFacilitators.map((facilitator) => {
-    // Use selectedFacilitators to determine checked state (preserves user's selections during search)
-    const isSelected = selectedFacilitators.some(f => String(f.id) === String(facilitator.id));
+    const selectedEntry = selectedFacilitators.find(f => String(f.id) === String(facilitator.id));
+    const isSelected = !!selectedEntry;
+    const currentRole = selectedEntry?.role || 'lead';
     const isUnavailable = facilitator.is_unavailable;
-    
+
     return `
       <div class="facilitator-item ${isSelected ? 'selected' : ''}" data-facilitator-id="${facilitator.id}" data-facilitator-name="${facilitator.name}" data-facilitator-email="${facilitator.email}">
         <input type="checkbox" class="facilitator-checkbox" id="facilitator-${facilitator.id}" ${isSelected ? 'checked' : ''} onclick="toggleFacilitatorSelection('${facilitator.id}', '${facilitator.name}', '${facilitator.email}', false, event)">
@@ -6789,6 +6867,12 @@ function renderFacilitatorList() {
             ${facilitator.skill_label ? `<span style="padding: 2px 6px; background: ${facilitator.skill_level === 'no_interest' ? '#fee2e2' : '#dcfce7'}; color: ${facilitator.skill_level === 'no_interest' ? '#991b1b' : '#166534'}; border-radius: 4px; font-size: 11px; font-weight: 600;">${facilitator.skill_label}</span>` : ''}
             ${isUnavailable ? `<span style="padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 2px;"><span class="material-icons" style="font-size: 12px;">event_busy</span>${facilitator.unavailability_reason || 'Unavailable'}</span>` : ''}
           </div>
+        </div>
+        <div class="fac-role-toggle" id="role-toggle-${facilitator.id}" style="display:${isSelected ? 'flex' : 'none'}; gap:4px; margin-left:auto; flex-shrink:0;">
+          <button type="button" onclick="setFacilitatorRole('${facilitator.id}', 'lead', event)"
+            style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid ${currentRole === 'lead' ? '#4f46e5' : '#d1d5db'}; background:${currentRole === 'lead' ? '#4f46e5' : '#fff'}; color:${currentRole === 'lead' ? '#fff' : '#6b7280'};">Lead</button>
+          <button type="button" onclick="setFacilitatorRole('${facilitator.id}', 'support', event)"
+            style="padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid ${currentRole === 'support' ? '#4f46e5' : '#d1d5db'}; background:${currentRole === 'support' ? '#4f46e5' : '#fff'}; color:${currentRole === 'support' ? '#fff' : '#6b7280'};">Support</button>
         </div>
       </div>
     `;
@@ -6833,19 +6917,21 @@ function toggleFacilitatorSelection(facilitatorId, facilitatorName, facilitatorE
     const newFacilitator = {
       id: normalizedId,
       name: facilitatorName,
-      email: facilitatorEmail
+      email: facilitatorEmail,
+      role: 'lead'
     };
     selectedFacilitators.push(newFacilitator);
-    console.log('Added facilitator to selection:', newFacilitator);
-    console.log('Current selectedFacilitators:', selectedFacilitators);
     checkbox.checked = true;
     facilitatorItem.classList.add('selected');
+    const toggleEl = document.getElementById(`role-toggle-${normalizedId}`);
+    if (toggleEl) toggleEl.style.display = 'flex';
   } else {
     // Remove from selection
     selectedFacilitators = selectedFacilitators.filter(f => String(f.id) !== normalizedId);
-    console.log('Removed facilitator from selection. Current selectedFacilitators:', selectedFacilitators);
     checkbox.checked = false;
     facilitatorItem.classList.remove('selected');
+    const toggleEl = document.getElementById(`role-toggle-${normalizedId}`);
+    if (toggleEl) toggleEl.style.display = 'none';
   }
   
   updateSelectButton();
@@ -6855,7 +6941,7 @@ function toggleFacilitatorSelection(facilitatorId, facilitatorName, facilitatorE
 function updateSelectButton() {
   const selectButton = document.getElementById('facilitator-modal-select');
   const count = selectedFacilitators.length;
-  
+
   // Allow selecting 0 facilitators to unassign/clear the session
   if (count === 0) {
     selectButton.textContent = 'Unassign All';
@@ -6863,6 +6949,22 @@ function updateSelectButton() {
     selectButton.textContent = `Select (${count})`;
   }
   selectButton.disabled = false; // Always enabled - 0 means unassign
+}
+
+function setFacilitatorRole(facilitatorId, role, event) {
+  if (event) event.stopPropagation();
+  const entry = selectedFacilitators.find(f => String(f.id) === String(facilitatorId));
+  if (!entry) return;
+  entry.role = role;
+
+  // Update button styles
+  const toggle = document.getElementById(`role-toggle-${facilitatorId}`);
+  if (!toggle) return;
+  const [leadBtn, supportBtn] = toggle.querySelectorAll('button');
+  const activeStyle = 'border:1px solid #4f46e5; background:#4f46e5; color:#fff;';
+  const inactiveStyle = 'border:1px solid #d1d5db; background:#fff; color:#6b7280;';
+  leadBtn.style.cssText = `padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; ${role === 'lead' ? activeStyle : inactiveStyle}`;
+  supportBtn.style.cssText = `padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; ${role === 'support' ? activeStyle : inactiveStyle}`;
 }
 
 // Select multiple facilitators
@@ -6895,6 +6997,7 @@ async function selectMultipleFacilitators() {
     
     // Send assignment to backend
     const facilitatorIds = selectedFacilitators.map(f => f.id);
+    const facilitatorRoles = Object.fromEntries(selectedFacilitators.map(f => [f.id, f.role || 'lead']));
     const response = await fetch(`/unitcoordinator/units/${unitId}/sessions/${sessionId}/assign`, {
       method: 'POST',
       headers: {
@@ -6902,7 +7005,8 @@ async function selectMultipleFacilitators() {
         'X-CSRFToken': CSRF_TOKEN
       },
       body: JSON.stringify({
-        facilitator_ids: facilitatorIds
+        facilitator_ids: facilitatorIds,
+        facilitator_roles: facilitatorRoles
       })
     });
     
@@ -7273,9 +7377,17 @@ function openSessionDetailsModal(sessionData) {
   
   console.log('=== MODAL DEBUG END ===');
   
-  // Store session ID for delete function
+  // Store session ID and staffing data for save/delete
   modal.dataset.sessionId = sessionData.id;
-  
+  modal.dataset.moduleId = sessionData.module_id || '';
+
+  const leadInput = document.getElementById('modal-lead-staff');
+  const supportInput = document.getElementById('modal-support-staff');
+  const applyCheckbox = document.getElementById('modalApplyStaffingToModule');
+  if (leadInput) leadInput.value = sessionData.lead_staff_required ?? 1;
+  if (supportInput) supportInput.value = sessionData.support_staff_required ?? 0;
+  if (applyCheckbox) applyCheckbox.checked = false;
+
   modal.style.display = 'flex';
 }
 
@@ -7284,7 +7396,45 @@ function closeSessionDetailsModal() {
   if (modal) {
     modal.style.display = 'none';
     delete modal.dataset.sessionId;
+    delete modal.dataset.moduleId;
   }
+}
+
+async function saveSessionDetailsStaffing() {
+  const modal = document.getElementById('session-details-modal');
+  const sessionId = modal?.dataset?.sessionId;
+  if (!sessionId) return;
+
+  const leadStaff = parseInt(document.getElementById('modal-lead-staff')?.value) || 1;
+  const supportStaff = parseInt(document.getElementById('modal-support-staff')?.value) || 0;
+  const applyToModule = document.getElementById('modalApplyStaffingToModule')?.checked;
+  const moduleId = modal.dataset.moduleId;
+  const unitId = getUnitId();
+
+  const res = await fetch(withSessionId(UPDATE_SESS_TEMPLATE, sessionId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body: JSON.stringify({ lead_staff_required: leadStaff, support_staff_required: supportStaff })
+  });
+  const data = await res.json();
+  if (!data.ok) { alert(data.error || 'Failed to update staffing'); return; }
+
+  if (applyToModule && moduleId && unitId) {
+    await fetch(`/unitcoordinator/units/${unitId}/bulk-staffing/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+      body: JSON.stringify({
+        type: 'module',
+        value: String(moduleId),
+        lead_staff_required: leadStaff,
+        support_staff_required: supportStaff,
+        respect_overrides: false
+      })
+    });
+  }
+
+  closeSessionDetailsModal();
+  showSimpleNotification('Staffing requirements updated.', 'success');
 }
 
 // Delete session function
@@ -7980,6 +8130,13 @@ async function loadFacilitatorsForSelection(unitId) {
     } catch (e) {
       console.error('Error loading saved facilitator selections:', e);
     }
+
+    // Load saved max sessions per facilitator
+    let savedMaxSessions = {};
+    try {
+      const savedMs = localStorage.getItem(`autoAssignMaxSessions_unit_${unitId}`);
+      if (savedMs) savedMaxSessions = JSON.parse(savedMs);
+    } catch (e) { savedMaxSessions = {}; }
     
     // If no saved selections (null = never saved), select all by default
     // If saved is empty array [], that means user explicitly deselected all
@@ -8010,11 +8167,21 @@ async function loadFacilitatorsForSelection(unitId) {
             ${showEmailSeparately ? `<span style="font-size: 12px; color: #9ca3af;">${email}</span>` : ''}
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            ${hasManualUnavailability 
+            <div style="display: flex; align-items: center; gap: 4px;" title="Max sessions this facilitator can be assigned (leave blank for no limit)" onclick="event.stopPropagation(); event.preventDefault();">
+              <span style="font-size: 11px; color: #6b7280; white-space: nowrap;">Max:</span>
+              <input type="number" min="1"
+                     class="facilitator-max-sessions"
+                     data-facilitator-id="${facilitator.id}"
+                     value="${savedMaxSessions[facilitator.id] || ''}"
+                     placeholder="∞"
+                     style="width: 46px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; background: white;"
+                     onclick="event.stopPropagation()">
+            </div>
+            ${hasManualUnavailability
               ? `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #10b981; font-weight: 500;" title="Has manual unavailability set">
                    <span class="material-icons" style="font-size: 16px;">check_circle</span>
                    Unavail. Set
-                 </span>` 
+                 </span>`
               : `<span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ef4444; font-weight: 500;" title="No manual unavailability set">
                    <span class="material-icons" style="font-size: 16px;">cancel</span>
                    No Unavail.
@@ -8104,18 +8271,28 @@ function updateWeightDisplay(type, value) {
 }
 
 function resetToRecommended() {
+  const unitId = getUnitId();
+
   // Recommended defaults: balanced 50/50
   autoAssignWeights = {
     skill: 50,
     fairness: 50
   };
-  
+
   document.getElementById('skill-weight-slider').value = 50;
   document.getElementById('fairness-weight-slider').value = 50;
-  
+
   updateWeightDisplay('skill', 50);
-  
-  showSimpleNotification('Reset to recommended settings (50/50 balance)', 'success');
+
+  // Clear max sessions inputs
+  document.querySelectorAll('.facilitator-max-sessions').forEach(input => {
+    input.value = '';
+  });
+  if (unitId) {
+    localStorage.removeItem(`autoAssignMaxSessions_unit_${unitId}`);
+  }
+
+  showSimpleNotification('Reset to recommended settings (50/50 balance, no session caps)', 'success');
 }
 
 function saveAutoAssignSettings() {
@@ -8151,10 +8328,20 @@ function saveAutoAssignSettings() {
     document.querySelectorAll('.facilitator-checkbox:checked').forEach(checkbox => {
       selectedFacilitators.push(parseInt(checkbox.dataset.facilitatorId));
     });
-    
+
     const facilitatorStorageKey = `autoAssignFacilitators_unit_${unitId}`;
     localStorage.setItem(facilitatorStorageKey, JSON.stringify(selectedFacilitators));
-    
+
+    // Save max sessions per facilitator
+    const maxSessions = {};
+    document.querySelectorAll('.facilitator-max-sessions').forEach(input => {
+      const val = parseInt(input.value);
+      if (!isNaN(val) && val > 0) {
+        maxSessions[parseInt(input.dataset.facilitatorId)] = val;
+      }
+    });
+    localStorage.setItem(`autoAssignMaxSessions_unit_${unitId}`, JSON.stringify(maxSessions));
+
     showSimpleNotification(`Settings saved! ${selectedFacilitators.length} facilitator(s) will be included in auto-assignment.`, 'success');
     closeAutoAssignSettings();
   } catch (error) {

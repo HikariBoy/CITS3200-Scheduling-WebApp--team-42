@@ -1279,8 +1279,16 @@
                         </div>
                       </div>
 
-                      <!-- Right: skills + placeholders -->
+                      <!-- Right: skills + remove button -->
                       <div class="min-w-[420px]">
+                        <div class="flex justify-end mb-2">
+                          <button type="button"
+                                  onclick="removeFacilitatorFromUnit({{ unit.id }}, '{{ f.email|e }}', '{{ f.name|e }}')"
+                                  class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-red-200 text-xs font-medium text-red-500 hover:text-red-700 hover:border-red-400 hover:bg-red-50 transition-colors">
+                            <span class="material-icons" style="font-size: 14px;">person_remove</span>
+                            Remove from unit
+                          </button>
+                        </div>
                         <div class="text-sm text-gray-500 mb-1">Skills</div>
                         {% if f.skills and f.skills|length %}
                           <div class="flex flex-wrap gap-2 mb-3">
@@ -1934,6 +1942,11 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
                       <input id="inspSupportStaff" type="number" min="0" class="cal-input cal-input--soft" value="0" />
                     </label>
                   </div>
+
+                  <label style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer; font-size:13px; color:#374151;">
+                    <input type="checkbox" id="inspApplyStaffingToModule" style="width:15px; height:15px; cursor:pointer;">
+                    <span>Apply to all sessions in this module</span>
+                  </label>
                 </section>
 
               </div>
@@ -2452,13 +2465,35 @@ Tutorial A,Tuesday,09:00,1-12,120,EZONE 1.24
           <span class="detail-value" id="modal-session-status">Scheduled</span>
         </div>
       </div>
+
+      <hr style="margin: 16px 0; border: none; border-top: 1px solid #e5e7eb;">
+      <h4 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #374151;">Staffing Requirements</h4>
+      <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+        <div style="flex: 1;">
+          <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Lead Staff</label>
+          <input id="modal-lead-staff" type="number" min="0" value="1"
+                 style="width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+        </div>
+        <div style="flex: 1;">
+          <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Support Staff</label>
+          <input id="modal-support-staff" type="number" min="0" value="0"
+                 style="width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+        </div>
+      </div>
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; cursor: pointer;">
+        <input type="checkbox" id="modalApplyStaffingToModule" style="width: 15px; height: 15px; cursor: pointer;">
+        Apply to all sessions in this module
+      </label>
     </div>
     <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
       <button class="btn-danger" onclick="deleteSession()" style="background: #ef4444; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500;">
         <span class="material-icons" style="font-size: 18px;">delete</span>
         Delete Session
       </button>
-      <button class="btn-secondary" onclick="closeSessionDetailsModal()">Close</button>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-secondary" onclick="closeSessionDetailsModal()">Close</button>
+        <button class="btn-primary" onclick="saveSessionDetailsStaffing()" style="background: #4f46e5; color: white; padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;">Save</button>
+      </div>
     </div>
   </div>
 </div>
