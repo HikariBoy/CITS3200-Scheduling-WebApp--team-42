@@ -4467,30 +4467,43 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
                 "message": "The following scheduling conflicts were detected:\n\n" + "\n".join(conflict_messages)
             }), 400
         
-        # Remove existing assignments for this session
-        Assignment.query.filter_by(session_id=session_id).delete()
-        
-        # Create new assignments
+        # Resolve the requested facilitator set to what would actually be persisted
+        # (skip unknown users / facilitators not on this unit), so we can compare
+        # against the current assignments before touching anything.
+        resolved = []  # list of (facilitator_id, role)
         for facilitator_id in facilitator_ids:
-            # Verify facilitator exists (allow any role - UC/Admin can also facilitate)
             facilitator = User.query.get(facilitator_id)
-            
             if not facilitator:
                 continue
-                
-            # Check if facilitator is assigned to this unit
             unit_facilitator = UnitFacilitator.query.filter_by(
-                unit_id=unit_id, 
+                unit_id=unit_id,
                 user_id=facilitator_id
             ).first()
-            
             if not unit_facilitator:
                 continue
-            
-            # Create assignment
             role = facilitator_roles.get(str(facilitator_id), 'lead')
             if role not in ('lead', 'support'):
                 role = 'lead'
+            resolved.append((facilitator_id, role))
+
+        current_assignments = Assignment.query.filter_by(session_id=session_id).all()
+        current_set = {(a.facilitator_id, a.role) for a in current_assignments}
+        new_set = set(resolved)
+
+        # No actual change: leave assignments and session.status untouched so a
+        # published schedule doesn't get silently knocked back to 'assigned'.
+        if current_set == new_set:
+            return jsonify({
+                "ok": True,
+                "message": "No changes made",
+                "session_id": session_id
+            })
+
+        # Remove existing assignments for this session
+        Assignment.query.filter_by(session_id=session_id).delete()
+
+        # Create new assignments
+        for facilitator_id, role in resolved:
             assignment = Assignment(
                 session_id=session_id,
                 facilitator_id=facilitator_id,
@@ -4498,13 +4511,13 @@ def assign_facilitators_to_session(unit_id: int, session_id: int):
                 role=role
             )
             db.session.add(assignment)
-        
+
         # Update session status
-        if len(facilitator_ids) > 0:
+        if len(resolved) > 0:
             session.status = 'assigned'
         else:
             session.status = 'unassigned'
-        
+
         db.session.commit()
         
         # Return appropriate message
